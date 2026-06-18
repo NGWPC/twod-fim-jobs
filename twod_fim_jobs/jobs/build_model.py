@@ -44,7 +44,7 @@ from twod_fim_jobs.utils.geospatial import (
     write_gdf_asset,
 )
 from twod_fim_jobs.utils.hashing import hash_dict, hash_geometry, hash_str
-from twod_fim_jobs.utils.storage import query_reach, query_upstream_reach
+from twod_fim_jobs.utils.storage import copy_file, query_reach, query_upstream_reach
 from twod_fim_jobs.warnings import CenterlineInflowMultiIntersectionWarning
 
 
@@ -243,6 +243,20 @@ class BuildModelWorkflow(Job):
         )
 
         # Write files to storage
+        out = f"{inputs.base_output_path}/{model_id}/"
+        copy_file("dem.tif", out + "dem.tif")
+        copy_file("mannings.tif", out + "mannings.tif")
+        copy_file("reach.geojson", out + "reach.geojson")
+        copy_file("anchor.geojson", out + "anchor.geojson")
+        copy_file("domain.geojson", out + "domain.geojson")
+        copy_file("model_manifest.json", out + "model.json")
+
+        return BuildModelResult(
+            identity_hash=identity_hash,
+            model_id=model_id,
+            model_dir=model_dir,
+            warnings=job_warnings
+        )
 
     def _check_inflow_cl_intersection(
         self, centerline: gpd.GeoDataFrame, inflow: gpd.GeoDataFrame

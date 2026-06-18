@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel
 
 from twod_fim_jobs.jobs.shared import Job
+from twod_fim_jobs.utils.storage import copy_file
 
 
 class HealthInputs(BaseModel):
@@ -38,7 +40,10 @@ class HealthWorkflow(Job):
         print("Health check passed.")
 
         if inputs.test_write_uri is not None:
-            dest = Path(inputs.test_write_uri)
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text("health-check-ok\n")
-            print(f"Write check passed: {dest}")
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as tmp:
+                tmp.write(b"health check\n")
+                tmp_path = tmp.name
+            try:
+                copy_file(tmp_path, inputs.test_write_uri)
+            finally:
+                Path(tmp_path).unlink(missing_ok=True)

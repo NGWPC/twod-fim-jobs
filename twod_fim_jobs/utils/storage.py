@@ -1,4 +1,6 @@
 from urllib.parse import urlparse
+import shutil
+import fsspec
 
 import geopandas as gpd
 from sqlalchemy.exc import ArgumentError, OperationalError
@@ -102,3 +104,12 @@ def query_reach(
 def check_model_exists(model_uri: str) -> bool:
     # TODO: Implement this
     return False
+
+
+def copy_file(src: str, dst: str) -> None:
+    """Copy a file from src to dst.
+
+    Supports local paths and S3 URIs (s3://bucket/key).
+    """
+    with fsspec.open(src, "rb") as f_src, fsspec.open(dst, "wb") as f_dst:
+        shutil.copyfileobj(f_src, f_dst)

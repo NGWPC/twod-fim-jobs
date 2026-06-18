@@ -31,6 +31,8 @@ from twod_fim_jobs.data_models import (
     Identity,
     ModelManifest,
     Properties,
+    BuildModelInputs,
+    JobWarning
 )
 from twod_fim_jobs.exceptions import InvalidWKTGeometryError
 from twod_fim_jobs.jobs.shared import Job
@@ -48,7 +50,7 @@ from twod_fim_jobs.utils.storage import copy_file, query_reach, query_upstream_r
 from twod_fim_jobs.warnings import CenterlineInflowMultiIntersectionWarning
 
 
-class BuildModelInputs(BaseModel):
+class BuildModelConfig(BaseModel):
     """Inputs for the build-model workflow."""
 
     # Required
@@ -94,7 +96,7 @@ class BuildModelInputs(BaseModel):
         gt=0,
         description="Multiplier applied to the estimated bankfull width",
     )
-    lulc_lookup: dict | None = Field(
+    lulc_lookup: dict = Field(
         default=DEFAULT_LULC_LOOKUP,
         description="Mapping from land-cover class values to Manning's n roughness values",
     )
@@ -130,17 +132,18 @@ class BuildModelResult(BaseModel):
     identity_hash: str
     model_id: str
     model_dir: Path
-    warnings: list[str]
+    warnings: list[JobWarning]
 
 
 class BuildModelWorkflow(Job):
     """Initialize a 2D FIM model for a single reach."""
 
-    Inputs = BuildModelInputs
+    Inputs = BuildModelConfig
 
-    def run(self, inputs: BuildModelInputs) -> BuildModelResult:
+    def run(self, inputs: BuildModelConfig) -> BuildModelResult:
+        # TODO: eagerly check file access
         # Initialize empty warnings
-        job_warnings: list[str] = []
+        job_warnings: list[JobWarning] = []
 
         # Query database for relevant geometries
         reach = query_reach(inputs.reach_id, inputs.db_uri)
@@ -155,7 +158,7 @@ class BuildModelWorkflow(Job):
         )
         cl_inf_intersections = self._check_inflow_cl_intersection(reach, inflow_line)
         if cl_inf_intersections:
-            job_warnings.append(cl_inf_intersections)
+            job_warnings.append(cl_inf_intersections.to_manifest())
         all_other_geometries = gpd.GeoDataFrame(
             pd.concat([inflow_line, inputs.other_geometries_gdf])
         )
@@ -213,6 +216,7 @@ class BuildModelWorkflow(Job):
             reach_centroid=anchor_asset,
             domain=domain_asset,
         )
+        assets.normalize_hrefs(inputs.base_output_path)
 
         # Make properties block
         properties = Properties(
@@ -234,13 +238,15 @@ class BuildModelWorkflow(Job):
             identity_hash=identity_hash,
             domain_code=domain.offset_str,
             model_id=model_id,
-            inputs=inputs.model_dump(),
+            inputs=BuildModelInputs.model_validate(inputs.model_dump()),
             domain=domain,
             identity=identitiy,
             properties=properties,
             assets=assets,
             warnings=job_warnings,
         )
+        with open("model_manifest.json", mode="w") as f:
+            f.write(manifest.model_dump_json(indent=4))
 
         # Write files to storage
         out = f"{inputs.base_output_path}/{model_id}/"

@@ -30,7 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
         "payload",
         help=(
             "JSON payload containing workflow inputs. "
-            "Example: '{\"reach_id\":123,\"db_uri\":\"sqlite:////tmp/db.gpkg\"}'"
+            'Example: \'{"reach_id":123,"db_uri":"sqlite:////tmp/db.gpkg"}\''
         ),
     )
     return parser

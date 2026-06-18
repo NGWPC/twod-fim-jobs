@@ -1,6 +1,7 @@
 # This will eventually split out into more files once I have a better feel for contents.
 
 from datetime import datetime
+from pathlib import Path, PurePosixPath
 from typing import Literal
 
 from pydantic import BaseModel
@@ -33,7 +34,8 @@ class Domain(BaseModel):
 
     @property
     def offset_str(self) -> str:
-        return "N{}S{}E{}W{}".format(*self.offsets)
+        # TODO: Check with team whether this rounding can lead to issues.
+        return "N{}S{}E{}W{}".format(*[int(i) for i in self.offsets])
 
 
 class Identity(BaseModel):
@@ -87,8 +89,16 @@ class Assets(BaseModel):
     reach_centroid: Asset
     domain: Asset
 
+    def normalize_hrefs(self, new_base: str) -> None:
+        """Update the href for each asset such that they are all rooted in new_base."""
+        base = PurePosixPath(new_base)
 
-class Warning(BaseModel):
+        for _, asset in self:
+            filename = Path(asset.href).name
+            asset.href = str(base / filename)
+
+
+class JobWarning(BaseModel):
     code: str
     message: str
 
@@ -107,4 +117,4 @@ class ModelManifest(BaseModel):
     identity: Identity
     properties: Properties
     assets: Assets
-    warnings: list[Warning]
+    warnings: list[JobWarning]

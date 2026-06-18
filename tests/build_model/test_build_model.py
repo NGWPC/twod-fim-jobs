@@ -10,7 +10,7 @@ from twod_fim_jobs.exceptions import (
     ReachDatasetUnavailable,
     ReachNotFoundError,
 )
-from twod_fim_jobs.jobs.build_model import BuildModelInputs, BuildModelWorkflow
+from twod_fim_jobs.jobs.build_model import BuildModelConfig, BuildModelWorkflow
 
 ROOT = Path(__file__).parent
 SMALL_NETWORK = ROOT / "data" / "reach_network.gpkg"
@@ -26,7 +26,7 @@ ADDITIONAL_GEOMETRY_STR = (
 
 @pytest.fixture
 def build_model_input():
-    return BuildModelInputs(
+    return BuildModelConfig(
         reach_id=1257410962372414,
         db_uri=f"sqlite:///{SMALL_NETWORK.resolve()}",
         base_output_path="/tmp/test-output",
@@ -35,7 +35,7 @@ def build_model_input():
 
 @pytest.fixture
 def build_model_input_bad_connection():
-    return BuildModelInputs(
+    return BuildModelConfig(
         reach_id=1257410962372414,
         db_uri="sqlite:////FAKE_PATH",
         base_output_path="/tmp/test-output",
@@ -44,7 +44,7 @@ def build_model_input_bad_connection():
 
 @pytest.fixture
 def build_model_input_bad_attributes():
-    return BuildModelInputs(
+    return BuildModelConfig(
         reach_id=1257410962372414,
         db_uri=f"sqlite:///{SMALL_NETWORK_BAD_ATTRIBUTES.resolve()}",
         base_output_path="/tmp/test-output",
@@ -53,7 +53,7 @@ def build_model_input_bad_attributes():
 
 @pytest.fixture
 def build_model_input_missing_reach():
-    return BuildModelInputs(
+    return BuildModelConfig(
         reach_id=1,
         db_uri=f"sqlite:///{SMALL_NETWORK.resolve()}",
         base_output_path="/tmp/test-output",
@@ -62,7 +62,7 @@ def build_model_input_missing_reach():
 
 @pytest.fixture
 def build_model_input_duplicate_ids():
-    return BuildModelInputs(
+    return BuildModelConfig(
         reach_id=1257410962372414,
         db_uri=f"sqlite:///{SMALL_NETWORK_DUPLICATE_ID.resolve()}",
         base_output_path="/tmp/test-output",
@@ -71,7 +71,7 @@ def build_model_input_duplicate_ids():
 
 @pytest.fixture
 def build_model_input_w_extra_geometries():
-    return BuildModelInputs(
+    return BuildModelConfig(
         reach_id=1257410962372414,
         db_uri=f"sqlite:///{SMALL_NETWORK.resolve()}",
         base_output_path="/tmp/test-output",
@@ -81,7 +81,7 @@ def build_model_input_w_extra_geometries():
 
 @pytest.fixture
 def build_model_input_w_bad_extra_geometries():
-    return BuildModelInputs(
+    return BuildModelConfig(
         reach_id=1257410962372414,
         db_uri=f"sqlite:///{SMALL_NETWORK.resolve()}",
         base_output_path="/tmp/test-output",
@@ -107,7 +107,7 @@ def test_end_to_end_w_other_geom(build_model_input_w_extra_geometries):
 def test_inputs_missing_required_arg_raises():
     """Build-model input validation fails when required args are omitted."""
     with pytest.raises(ValidationError):
-        BuildModelInputs(
+        BuildModelConfig(
             reach_id=1257410962372414,
             db_uri=f"sqlite:///{SMALL_NETWORK.resolve()}",
         )

@@ -59,7 +59,10 @@ def make_inflow_line(
     bankfull_width_multiplier: float,
     walk_us_dist_pct: float,
 ) -> gpd.GeoDataFrame:
-    inflow_width = bieger_bankfull_width(reach[DA_FIELD]) * bankfull_width_multiplier
+    inflow_width = (
+        bieger_bankfull_width(float(reach[DA_FIELD].iloc[0]))
+        * bankfull_width_multiplier
+    )
     reach_geom = reach.geometry.iloc[0]
     us_geom = us_mainstem.geometry.iloc[0]
     if us_mainstem.empty:
@@ -82,7 +85,7 @@ def get_line_intersections(geom_1: LineString, geom_2: LineString) -> list[Point
     points = _intersection_points(intersection)
 
     # De-duplicate exact coordinate duplicates introduced by mixed geometry types.
-    return list({point.wkb_hex for point in points})
+    return list({point for point in points})
 
 
 def _intersection_points(geom) -> list[Point]:
@@ -118,18 +121,9 @@ def _flatten_points(point_lists: Iterable[list[Point]]) -> list[Point]:
     return [point for points in point_lists for point in points]
 
 
-def snap_bbox_to_grid(bbox: BBox, resolution: float) -> BBox:
-    return BBox(
-        xmin=floor(bbox.xmin / resolution) * resolution,
-        ymin=floor(bbox.ymin / resolution) * resolution,
-        xmax=ceil(bbox.xmax / resolution) * resolution,
-        ymax=ceil(bbox.ymax / resolution) * resolution,
-    )
-
-
 def build_model_domain(
     reach_cl: gpd.GeoDataFrame,
-    other_geometries: list[gpd.GeoDataFrame],
+    other_geometries: gpd.GeoDataFrame,
     resolution: float,
     buffer_distance: float,
 ) -> Domain:
@@ -155,6 +149,7 @@ def build_model_domain(
     ymax = ceil(ymax / resolution) * resolution
 
     # Calculate offsets
+
     w = ax - xmin
     e = xmax - ax
     s = ay - ymin
@@ -244,7 +239,7 @@ def download_dem(
     rows: int,
     dst_crs: str,
     return_asset: bool = True,
-) -> None:
+) -> Asset | None:
     def noop(data):
         return data
 
@@ -262,7 +257,7 @@ def download_roughness(
     dst_crs: str,
     lulc_lookup: dict[int, float],
     return_asset: bool = True,
-) -> None:
+) -> Asset | None:
     manning_lut = _make_lookup_array(lulc_lookup)
     return extract_raster(
         src_path,

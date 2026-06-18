@@ -5,7 +5,7 @@ from typing import Any, ClassVar
 
 from shapely import Point
 
-from twod_fim_jobs.data_models import Warning
+from twod_fim_jobs.data_models import JobWarning
 
 
 @dataclass(slots=True)
@@ -15,9 +15,9 @@ class GenericJobWarning:
     message: str
     code: ClassVar[str] = "generic_job_warning"
 
-    def to_manifest(self) -> Warning:
+    def to_manifest(self) -> JobWarning:
         """Convert to the canonical manifest warning model."""
-        return Warning(code=self.code, message=self.message)
+        return JobWarning(code=self.code, message=self.message)
 
 
 class CenterlineInflowMultiIntersectionWarning(GenericJobWarning):

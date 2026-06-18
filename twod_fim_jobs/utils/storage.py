@@ -60,7 +60,7 @@ def query_database(sql: str, db_uri: str) -> gpd.GeoDataFrame:
 
 def query_upstream_reach(
     reach_id: int, db_uri: str, layer: str = REACH_TABLE
-) -> list[list[int], gpd.GeoDataFrame]:
+) -> tuple[list[int], gpd.GeoDataFrame]:
     # Validate 1
     fields = [REACH_ID_FIELD, REACH_TO_ID_FIELD, DA_FIELD, "geom"]
     validate_db_connection(db_uri=db_uri, layer=layer, fields=fields)

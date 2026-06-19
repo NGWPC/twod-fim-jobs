@@ -79,7 +79,7 @@ class Assets(BaseModel):
 
 
 class BuildModelInputs(BaseModel):
-    """Inputs for the build-model workflow."""
+    """Inputs for the build_model workflow."""
 
     # Required
     reach_id: int = Field(description="Reach identifier")

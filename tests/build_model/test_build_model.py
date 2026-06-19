@@ -107,7 +107,7 @@ def test_end_to_end_w_other_geom(build_model_input_w_extra_geometries):
 
 
 def test_inputs_missing_required_arg_raises():
-    """Build-model input validation fails when required args are omitted."""
+    """Build_model input validation fails when required args are omitted."""
     with pytest.raises(ValidationError):
         BuildModelInputs(
             reach_id=1257410962372414,

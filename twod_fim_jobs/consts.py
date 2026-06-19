@@ -54,6 +54,14 @@ DEFAULT_LULC_LOOKUP = {
     95: 0.07,
 }
 
+# Artifact names (where they will be written)
+DEM_FILENAME = "dem.tif"
+ROUGHNESS_FILENAME = "roughness.tif"
+REACH_FILENAME = "reach.geojson"
+ANCHOR_FILENAME = "anchor.geojson"
+DOMAIN_FILENAME = "domain.geojson"
+MANIFEST_FILENAME = "model_manifest.json"
+
 # Warning thresholds
 LARGE_DOMAIN_AREA_THRESHOLD: float = 25_000_000.0  # TODO: tune (sq CRS units)
 SIMILAR_ROUGHNESS_STD_THRESHOLD: float = 0.005  # TODO: tune (Manning's n)

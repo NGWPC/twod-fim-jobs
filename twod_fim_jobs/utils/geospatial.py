@@ -2,8 +2,7 @@ from math import floor, ceil
 import math
 from collections.abc import Iterable
 from pathlib import Path
-from re import S
-from typing import Callable, Literal
+from typing import Callable
 from datetime import datetime
 
 import geopandas as gpd
@@ -12,7 +11,7 @@ import pandas as pd
 
 import rasterio
 from rasterio.transform import from_bounds
-from rasterio.warp import Resampling, reproject
+from rasterio.warp import reproject
 
 from shapely import (
     GeometryCollection,
@@ -24,7 +23,8 @@ from shapely import (
 )
 
 from twod_fim_jobs.consts import DA_FIELD, bieger_bankfull_width
-from twod_fim_jobs.data_models import Asset, Domain
+from twod_fim_jobs.models.common import Asset
+from twod_fim_jobs.models.build_model import Domain
 from twod_fim_jobs.exceptions import DatasetUnavailableError, RasterProcessingError
 
 
@@ -228,7 +228,7 @@ def _extract_raster(
             dst.write(data, 1)
 
     if return_asset:
-        return Asset.from_file(out_path, src_path, datetime.now())
+        return Asset.from_file(str(out_path), src_path, datetime.now())
 
 
 def download_dem(
@@ -291,7 +291,7 @@ def write_gdf_asset(
     gdf: gpd.GeoDataFrame, out_path: str | Path, source_url: str
 ) -> Asset:
     gdf.to_file(out_path)
-    return Asset.from_file(out_path, source_url, datetime.now())
+    return Asset.from_file(str(out_path), source_url, datetime.now())
 
 
 def export_domain_gdfs(

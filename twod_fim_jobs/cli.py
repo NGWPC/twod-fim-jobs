@@ -44,16 +44,14 @@ def main():
     if job not in WORKFLOWS:
         valid_jobs = ", ".join(sorted(WORKFLOWS))
         parser.error(f"Unknown job '{job}'. Valid jobs: {valid_jobs}")
-    input_values = _parse_payload(args.payload, parser)
+    input_dict = _parse_payload(args.payload, parser)
 
     # Initialize workflow
     workflow_cls = WORKFLOWS[job]
     workflow = workflow_cls()
-    input_model = workflow_cls.Inputs
-    inputs = input_model.model_validate(input_values)
 
     # Run workflow
-    workflow.run(inputs)
+    workflow.run(input_dict)
 
 
 if __name__ == "__main__":

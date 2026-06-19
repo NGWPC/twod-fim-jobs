@@ -2,17 +2,18 @@ import pytest
 from pydantic import BaseModel
 
 from twod_fim_jobs import cli
+from twod_fim_jobs.jobs.common import Job
 
 
 class DummyInputs(BaseModel):
     value: int
 
 
-class DummyWorkflow:
+class DummyWorkflow(Job):
     Inputs = DummyInputs
     last_inputs = None
 
-    def run(self, inputs):
+    def _run(self, inputs: DummyInputs, _):
         DummyWorkflow.last_inputs = inputs
 
 

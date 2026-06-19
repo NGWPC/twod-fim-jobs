@@ -1,7 +1,7 @@
-from .build_model import BuildModelWorkflow
+from .build_model import BuildModelJob
 from .health import HealthWorkflow
 
 WORKFLOWS = {
-    "build-model": BuildModelWorkflow,
+    "build-model": BuildModelJob,
     "health": HealthWorkflow,
 }

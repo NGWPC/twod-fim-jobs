@@ -1,41 +1,30 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import geopandas as gpd
 import pandas as pd
-from pydantic import BaseModel, Field
-from shapely.wkt import loads as load_wkt
 
 from twod_fim_jobs.consts import (
+    ANCHOR_FILENAME,
     DA_FIELD,
-    DEFAULT_BANKFULL_WIDTH_MULTIPLIER,
-    DEFAULT_DEM_SOURCE,
-    DEFAULT_DOMAIN_BUFFER,
-    DEFAULT_EPSG_CODE,
-    DEFAULT_GRID_RESOLUTION,
-    DEFAULT_LULC_LOOKUP,
-    DEFAULT_LULC_SOURCE,
-    DEFAULT_WALK_US_DIST_PCT,
+    DEM_FILENAME,
+    DOMAIN_FILENAME,
+    MANIFEST_FILENAME,
+    REACH_FILENAME,
     REACH_ID_FIELD,
+    ROUGHNESS_FILENAME,
     SDR_COMMIT,
     SLOPE_FIELD,
     STREAM_ORDER_FIELD,
     bieger_bankfull_width,
 )
-from twod_fim_jobs.data_models import (
-    Assets,
-    GridProperties,
-    Identity,
-    ModelManifest,
-    Properties,
-    BuildModelInputs,
-    JobWarning
-)
-from twod_fim_jobs.exceptions import InvalidWKTGeometryError
-from twod_fim_jobs.jobs.shared import Job
+
+from twod_fim_jobs.jobs.common import Job
+from twod_fim_jobs.models.build_model import Assets, BuildModelInputs, BuildModelResult, GridProperties, Identity, ModelManifest, Properties
+from twod_fim_jobs.models.common import Asset, CenterlineInflowMultiIntersectionWarning, JobWarning
 from twod_fim_jobs.utils.geospatial import (
     build_model_domain,
     download_dem,
@@ -47,100 +36,16 @@ from twod_fim_jobs.utils.geospatial import (
 )
 from twod_fim_jobs.utils.hashing import hash_dict, hash_geometry, hash_str
 from twod_fim_jobs.utils.storage import copy_file, query_reach, query_upstream_reach
-from twod_fim_jobs.warnings import CenterlineInflowMultiIntersectionWarning
 
 
-class BuildModelConfig(BaseModel):
-    """Inputs for the build-model workflow."""
-
-    # Required
-    reach_id: int = Field(description="Reach identifier")
-    db_uri: str = Field(description="Connection string for the hydrofabric database")
-    base_output_path: str = Field(description="Root directory for model output")
-
-    # Optional
-    dem_source: str = Field(
-        default=DEFAULT_DEM_SOURCE,
-        description="DEM data source",
-    )
-    lulc_source: str = Field(
-        default=DEFAULT_LULC_SOURCE,
-        description="Land-cover data source",
-    )
-    other_geometries: list[str] | None = Field(
-        default=None,
-        description="WKT geometries that must be included in the reach bounding box",
-    )
-    domain_buffer: float = Field(
-        default=DEFAULT_DOMAIN_BUFFER,
-        ge=0,
-        description="Buffer distance (CRS units) applied to the domain bounding box",
-    )
-    grid_resolution: int = Field(
-        default=DEFAULT_GRID_RESOLUTION,
-        gt=0,
-        description="Pixel size (CRS units) for DEM and roughness resampling",
-    )
-    walk_us_dist_pct: float = Field(
-        default=DEFAULT_WALK_US_DIST_PCT,
-        gt=0,
-        description="Upstream search distance as a fraction of reach length",
-    )
-    epsg_code: int = Field(
-        default=DEFAULT_EPSG_CODE,
-        gt=0,
-        description="Output coordinate reference system EPSG code",
-    )
-    bankfull_width_multiplier: float = Field(
-        default=DEFAULT_BANKFULL_WIDTH_MULTIPLIER,
-        gt=0,
-        description="Multiplier applied to the estimated bankfull width",
-    )
-    lulc_lookup: dict = Field(
-        default=DEFAULT_LULC_LOOKUP,
-        description="Mapping from land-cover class values to Manning's n roughness values",
-    )
-
-    @property
-    def other_geometries_gdf(self) -> gpd.GeoDataFrame:
-        """Convert optional WKT geometries into a GeoDataFrame."""
-        if not self.other_geometries:
-            return gpd.GeoDataFrame(geometry=[])
-
-        geometries = []
-        for index, wkt_text in enumerate(self.other_geometries):
-            try:
-                geometries.append(load_wkt(wkt_text))
-            except Exception as exc:
-                raise InvalidWKTGeometryError(
-                    f"Invalid WKT at other_geometries[{index}]: {wkt_text}"
-                ) from exc
-
-        return gpd.GeoDataFrame(
-            {"source_wkt": self.other_geometries},
-            geometry=geometries,
-            crs=self.epsg_code,
-        )
-
-    @property
-    def authority_str(self) -> str:
-        """Return the EPSG:num formatting of epsg code."""
-        return f"EPSG:{self.epsg_code}"
 
 
-class BuildModelResult(BaseModel):
-    identity_hash: str
-    model_id: str
-    model_dir: Path
-    warnings: list[JobWarning]
-
-
-class BuildModelWorkflow(Job):
+class BuildModelJob(Job):
     """Initialize a 2D FIM model for a single reach."""
 
-    Inputs = BuildModelConfig
+    Inputs = BuildModelInputs
 
-    def run(self, inputs: BuildModelConfig) -> BuildModelResult:
+    def _run(self, inputs: BuildModelInputs, working_directory: Path) -> BuildModelResult:
         # TODO: eagerly check file access
         # Initialize empty warnings
         job_warnings: list[JobWarning] = []
@@ -156,7 +61,7 @@ class BuildModelWorkflow(Job):
             inputs.bankfull_width_multiplier,
             inputs.walk_us_dist_pct,
         )
-        cl_inf_intersections = self._check_inflow_cl_intersection(reach, inflow_line)
+        cl_inf_intersections = _check_inflow_cl_intersection(reach, inflow_line)
         if cl_inf_intersections:
             job_warnings.append(cl_inf_intersections.to_manifest())
         all_other_geometries = gpd.GeoDataFrame(
@@ -182,19 +87,19 @@ class BuildModelWorkflow(Job):
         )
         identity_hash = hash_dict(identitiy.model_dump(), role_length=8)
         model_id = f"{identity_hash}+{domain.offset_str}"
-        model_dir = f"{inputs.base_output_path}/{model_id}/model.json"
+        model_dir = f"{inputs.base_output_path.rstrip('/')}/{model_id}/"
         # TODO: Check that model dir doesn't exist.  Exit if it does.
 
         # Get DEM
         dem_asset = download_dem(
-            inputs.dem_source, "dem.tif", domain.bbox, cols, rows, inputs.authority_str
+            inputs.dem_source, working_directory / DEM_FILENAME, domain.bbox, cols, rows, inputs.authority_str
         )
 
         # Get LULC
-        # TODO: add similarity check/warning
+        # TODO: add warning when mannings values are all similar
         roughness_asset = download_roughness(
             inputs.lulc_source,
-            "mannings.tif",
+            working_directory / ROUGHNESS_FILENAME,
             domain.bbox,
             cols,
             rows,
@@ -203,10 +108,10 @@ class BuildModelWorkflow(Job):
         )
 
         # Write vector artifacts
-        cl_asset = write_gdf_asset(reach, "reach.geojson", inputs.db_uri)
+        cl_asset = write_gdf_asset(reach, working_directory / REACH_FILENAME, inputs.db_uri)
         anchor_gdf, domain_gdf = export_domain_gdfs(domain, inputs.authority_str)
-        anchor_asset = write_gdf_asset(anchor_gdf, "anchor.geojson", inputs.db_uri)
-        domain_asset = write_gdf_asset(domain_gdf, "domain.geojson", inputs.db_uri)
+        anchor_asset = write_gdf_asset(anchor_gdf, working_directory / ANCHOR_FILENAME, inputs.db_uri)
+        domain_asset = write_gdf_asset(domain_gdf, working_directory / DOMAIN_FILENAME, inputs.db_uri)
 
         # Compile assets
         assets = Assets(
@@ -216,7 +121,7 @@ class BuildModelWorkflow(Job):
             reach_centroid=anchor_asset,
             domain=domain_asset,
         )
-        assets.normalize_hrefs(inputs.base_output_path)
+        assets, copy_job = _create_copy_job(assets, inputs.base_output_path)
 
         # Make properties block
         properties = Properties(
@@ -238,24 +143,21 @@ class BuildModelWorkflow(Job):
             identity_hash=identity_hash,
             domain_code=domain.offset_str,
             model_id=model_id,
-            inputs=BuildModelInputs.model_validate(inputs.model_dump()),
+            inputs=inputs,
             domain=domain,
             identity=identitiy,
             properties=properties,
             assets=assets,
             warnings=job_warnings,
         )
-        with open("model_manifest.json", mode="w") as f:
+        manifest_path = working_directory / MANIFEST_FILENAME
+        with open(manifest_path, mode="w") as f:
             f.write(manifest.model_dump_json(indent=4))
+        copy_job[str(manifest_path)] = _normalize_href(str(manifest_path), inputs.base_output_path)
 
         # Write files to storage
-        out = f"{inputs.base_output_path}/{model_id}/"
-        copy_file("dem.tif", out + "dem.tif")
-        copy_file("mannings.tif", out + "mannings.tif")
-        copy_file("reach.geojson", out + "reach.geojson")
-        copy_file("anchor.geojson", out + "anchor.geojson")
-        copy_file("domain.geojson", out + "domain.geojson")
-        copy_file("model_manifest.json", out + "model.json")
+        for src, dst in copy_job.items():
+            copy_file(src, dst)
 
         return BuildModelResult(
             identity_hash=identity_hash,
@@ -264,13 +166,29 @@ class BuildModelWorkflow(Job):
             warnings=job_warnings
         )
 
-    def _check_inflow_cl_intersection(
-        self, centerline: gpd.GeoDataFrame, inflow: gpd.GeoDataFrame
-    ) -> CenterlineInflowMultiIntersectionWarning | None:
-        intersections = get_line_intersections(
-            centerline.geometry.iloc[0], inflow.geometry.iloc[0]
-        )
-        if len(intersections) > 1:
-            return CenterlineInflowMultiIntersectionWarning(intersections)
-        else:
-            return None
+def _check_inflow_cl_intersection(
+    centerline: gpd.GeoDataFrame, inflow: gpd.GeoDataFrame
+) -> CenterlineInflowMultiIntersectionWarning | None:
+    intersections = get_line_intersections(
+        centerline.geometry.iloc[0], inflow.geometry.iloc[0]
+    )
+    if len(intersections) > 1:
+        return CenterlineInflowMultiIntersectionWarning(intersections)
+    else:
+        return None
+
+def _normalize_href(href: str, new_base_path: str) -> str:
+    parsed = urlparse(href)
+    filename = parsed.path.split("/")[-1]
+    return f"{new_base_path.rstrip('/')}/{filename}"
+
+def _create_copy_job(assets: Assets, new_base_path: str) -> tuple[Assets, dict[str, str]]:
+    """Return a new Assets with hrefs relocated to new_base_path and a mapping for how to copy them there."""
+    copy_job: dict[str, str] = {}
+    new_asset_fields: dict[str, Asset] = {}
+    for field_name, asset in assets:
+        dest = _normalize_href(asset.href, new_base_path)
+        copy_job[asset.href] = dest
+        new_asset_fields[field_name] = asset.model_copy(update={"href": dest})
+    return Assets(**new_asset_fields), copy_job
+

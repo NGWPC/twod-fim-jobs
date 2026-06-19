@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel
 
-from twod_fim_jobs.jobs.shared import Job
+from twod_fim_jobs.jobs.common import Job
 from twod_fim_jobs.utils.storage import copy_file
 
 
@@ -22,7 +21,7 @@ class HealthWorkflow(Job):
 
     Inputs = HealthInputs
 
-    def run(self, inputs: HealthInputs) -> None:
+    def _run(self, inputs: HealthInputs, working_directory: Path) -> None:
         # Eagerly import every job module so that broken environments (e.g.
         # missing GDAL shared libraries) surface here rather than silently at
         # job dispatch time.  New job modules are covered automatically.
@@ -40,10 +39,6 @@ class HealthWorkflow(Job):
         print("Health check passed.")
 
         if inputs.test_write_uri is not None:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as tmp:
-                tmp.write(b"health check\n")
-                tmp_path = tmp.name
-            try:
-                copy_file(tmp_path, inputs.test_write_uri)
-            finally:
-                Path(tmp_path).unlink(missing_ok=True)
+            tmp_path = working_directory / "health_check.txt"
+            tmp_path.write_bytes(b"health check\n")
+            copy_file(str(tmp_path), inputs.test_write_uri)

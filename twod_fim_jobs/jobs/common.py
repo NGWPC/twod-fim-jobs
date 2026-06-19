@@ -1,5 +1,8 @@
+import logging
+import tempfile
 from abc import ABC, abstractmethod
-from typing import Any
+from pathlib import Path
+from typing import Any, ClassVar
 
 from pydantic import BaseModel
 
@@ -22,8 +25,21 @@ class Job(ABC):
       builds its subcommands automatically.
     """
 
-    Inputs: type[BaseModel]
+    Inputs: ClassVar[type[BaseModel]]
+
+    def run(self, inputs: dict[str, Any]) -> Any:
+        """Validate inputs, configure logging, provide a temp directory, and delegate to ``_job``."""
+        validated = self.Inputs.model_validate(inputs)
+
+        logger = logging.getLogger(type(self).__name__)
+        logger.info("Starting job %s", type(self).__name__)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            result = self._run(validated, Path(tmp_dir))
+
+        logger.info("Finished job %s", type(self).__name__)
+        return result
 
     @abstractmethod
-    def run(self, inputs: Any) -> Any:
-        pass
+    def _run(self, inputs: BaseModel, tmp_dir: Path) -> Any:
+        """Execute the job. Subclasses must implement this method."""

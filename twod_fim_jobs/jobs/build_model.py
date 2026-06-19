@@ -121,7 +121,7 @@ class BuildModelJob(Job):
             reach_centroid=anchor_asset,
             domain=domain_asset,
         )
-        assets, copy_job = _create_copy_job(assets, inputs.base_output_path)
+        assets, copy_job = _create_copy_job(assets, model_dir)
 
         # Make properties block
         properties = Properties(
@@ -153,7 +153,7 @@ class BuildModelJob(Job):
         manifest_path = working_directory / MANIFEST_FILENAME
         with open(manifest_path, mode="w") as f:
             f.write(manifest.model_dump_json(indent=4))
-        copy_job[str(manifest_path)] = _normalize_href(str(manifest_path), inputs.base_output_path)
+        copy_job[str(manifest_path)] = _normalize_href(str(manifest_path), model_dir)
 
         # Write files to storage
         for src, dst in copy_job.items():

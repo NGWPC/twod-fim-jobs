@@ -7,6 +7,7 @@ from twod_fim_jobs.utils.hashing import hash_file
 
 ### MODELS SHARED ACROSS JOBS ###
 
+
 class Asset(BaseModel):
     href: str
     checksum: str

@@ -154,9 +154,21 @@ def test_bad_other_geometries_raises(build_model_input_w_bad_extra_geometries):
     "href, new_base_path, expected",
     [
         # S3 URIs
-        ("s3://bucket/prefix/dem.tif", "s3://bucket/output", "s3://bucket/output/dem.tif"),
-        ("s3://bucket/prefix/dem.tif", "s3://bucket/output/", "s3://bucket/output/dem.tif"),
-        ("s3://bucket/a/b/c/dem.tif", "s3://other-bucket/x/y", "s3://other-bucket/x/y/dem.tif"),
+        (
+            "s3://bucket/prefix/dem.tif",
+            "s3://bucket/output",
+            "s3://bucket/output/dem.tif",
+        ),
+        (
+            "s3://bucket/prefix/dem.tif",
+            "s3://bucket/output/",
+            "s3://bucket/output/dem.tif",
+        ),
+        (
+            "s3://bucket/a/b/c/dem.tif",
+            "s3://other-bucket/x/y",
+            "s3://other-bucket/x/y/dem.tif",
+        ),
         # Linux absolute paths
         ("/tmp/working/dem.tif", "/data/output", "/data/output/dem.tif"),
         ("/tmp/working/dem.tif", "/data/output/", "/data/output/dem.tif"),
@@ -164,13 +176,21 @@ def test_bad_other_geometries_raises(build_model_input_w_bad_extra_geometries):
         ("dem.tif", "/data/output", "/data/output/dem.tif"),
         ("subdir/dem.tif", "/data/output", "/data/output/dem.tif"),
         # Filenames with multiple dots
-        ("s3://bucket/prefix/my.model.v2.tif", "s3://bucket/out", "s3://bucket/out/my.model.v2.tif"),
+        (
+            "s3://bucket/prefix/my.model.v2.tif",
+            "s3://bucket/out",
+            "s3://bucket/out/my.model.v2.tif",
+        ),
         # Mixed: local href into S3 base
         ("/tmp/dem.tif", "s3://bucket/output", "s3://bucket/output/dem.tif"),
         # Mixed: S3 href into local base
         ("s3://bucket/prefix/dem.tif", "/data/output", "/data/output/dem.tif"),
         # Deep nesting — only the filename should be carried over
-        ("s3://bucket/a/b/c/d/e/reach.geojson", "s3://bucket/out", "s3://bucket/out/reach.geojson"),
+        (
+            "s3://bucket/a/b/c/d/e/reach.geojson",
+            "s3://bucket/out",
+            "s3://bucket/out/reach.geojson",
+        ),
     ],
 )
 def test_normalize_href(href, new_base_path, expected):

@@ -1,5 +1,5 @@
 from datetime import datetime
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel
@@ -72,7 +72,6 @@ class Assets(BaseModel):
     centerline: Asset
     reach_centroid: Asset
     domain: Asset
-
 
 
 ### CORE JOB MODELS ###

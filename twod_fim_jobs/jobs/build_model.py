@@ -23,8 +23,20 @@ from twod_fim_jobs.consts import (
 )
 
 from twod_fim_jobs.jobs.common import Job
-from twod_fim_jobs.models.build_model import Assets, BuildModelInputs, BuildModelResult, GridProperties, Identity, ModelManifest, Properties
-from twod_fim_jobs.models.common import Asset, CenterlineInflowMultiIntersectionWarning, JobWarning
+from twod_fim_jobs.models.build_model import (
+    Assets,
+    BuildModelInputs,
+    BuildModelResult,
+    GridProperties,
+    Identity,
+    ModelManifest,
+    Properties,
+)
+from twod_fim_jobs.models.common import (
+    Asset,
+    CenterlineInflowMultiIntersectionWarning,
+    JobWarning,
+)
 from twod_fim_jobs.utils.geospatial import (
     build_model_domain,
     download_dem,
@@ -38,14 +50,14 @@ from twod_fim_jobs.utils.hashing import hash_dict, hash_geometry, hash_str
 from twod_fim_jobs.utils.storage import copy_file, query_reach, query_upstream_reach
 
 
-
-
 class BuildModelJob(Job):
     """Initialize a 2D FIM model for a single reach."""
 
     Inputs = BuildModelInputs
 
-    def _run(self, inputs: BuildModelInputs, working_directory: Path) -> BuildModelResult:
+    def _run(
+        self, inputs: BuildModelInputs, working_directory: Path
+    ) -> BuildModelResult:
         # TODO: eagerly check file access
         # Initialize empty warnings
         job_warnings: list[JobWarning] = []
@@ -92,7 +104,12 @@ class BuildModelJob(Job):
 
         # Get DEM
         dem_asset = download_dem(
-            inputs.dem_source, working_directory / DEM_FILENAME, domain.bbox, cols, rows, inputs.authority_str
+            inputs.dem_source,
+            working_directory / DEM_FILENAME,
+            domain.bbox,
+            cols,
+            rows,
+            inputs.authority_str,
         )
 
         # Get LULC
@@ -108,10 +125,16 @@ class BuildModelJob(Job):
         )
 
         # Write vector artifacts
-        cl_asset = write_gdf_asset(reach, working_directory / REACH_FILENAME, inputs.db_uri)
+        cl_asset = write_gdf_asset(
+            reach, working_directory / REACH_FILENAME, inputs.db_uri
+        )
         anchor_gdf, domain_gdf = export_domain_gdfs(domain, inputs.authority_str)
-        anchor_asset = write_gdf_asset(anchor_gdf, working_directory / ANCHOR_FILENAME, inputs.db_uri)
-        domain_asset = write_gdf_asset(domain_gdf, working_directory / DOMAIN_FILENAME, inputs.db_uri)
+        anchor_asset = write_gdf_asset(
+            anchor_gdf, working_directory / ANCHOR_FILENAME, inputs.db_uri
+        )
+        domain_asset = write_gdf_asset(
+            domain_gdf, working_directory / DOMAIN_FILENAME, inputs.db_uri
+        )
 
         # Compile assets
         assets = Assets(
@@ -163,8 +186,9 @@ class BuildModelJob(Job):
             identity_hash=identity_hash,
             model_id=model_id,
             model_dir=model_dir,
-            warnings=job_warnings
+            warnings=job_warnings,
         )
+
 
 def _check_inflow_cl_intersection(
     centerline: gpd.GeoDataFrame, inflow: gpd.GeoDataFrame
@@ -177,12 +201,16 @@ def _check_inflow_cl_intersection(
     else:
         return None
 
+
 def _normalize_href(href: str, new_base_path: str) -> str:
     parsed = urlparse(href)
     filename = parsed.path.split("/")[-1]
     return f"{new_base_path.rstrip('/')}/{filename}"
 
-def _create_copy_job(assets: Assets, new_base_path: str) -> tuple[Assets, dict[str, str]]:
+
+def _create_copy_job(
+    assets: Assets, new_base_path: str
+) -> tuple[Assets, dict[str, str]]:
     """Return a new Assets with hrefs relocated to new_base_path and a mapping for how to copy them there."""
     copy_job: dict[str, str] = {}
     new_asset_fields: dict[str, Asset] = {}
@@ -191,4 +219,3 @@ def _create_copy_job(assets: Assets, new_base_path: str) -> tuple[Assets, dict[s
         copy_job[asset.href] = dest
         new_asset_fields[field_name] = asset.model_copy(update={"href": dest})
     return Assets(**new_asset_fields), copy_job
-

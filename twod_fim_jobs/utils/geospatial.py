@@ -132,6 +132,8 @@ def build_model_domain(
     anchor = reach_cl.centroid
     ax = anchor.x.iloc[0]
     ay = anchor.y.iloc[0]
+    ax = floor(ax / resolution) * resolution
+    ay = floor(ay / resolution) * resolution
 
     # Get bbox
     (xmin, ymin, xmax, ymax) = gpd.GeoDataFrame(
@@ -149,11 +151,10 @@ def build_model_domain(
     ymax = ceil(ymax / resolution) * resolution
 
     # Calculate offsets
-
-    w = ax - xmin
-    e = xmax - ax
-    s = ay - ymin
-    n = ymax - ay
+    w = (ax - xmin) / resolution
+    e = (xmax - ax) / resolution
+    s = (ay - ymin) / resolution
+    n = (ymax - ay) / resolution
 
     # Return Domain object
     return Domain(bbox=(xmin, ymin, xmax, ymax), anchor=(ax, ay), offsets=(n, s, e, w))

@@ -17,22 +17,26 @@ Brief description of the major components.
 ```text
 twod_fim_jobs
 ├── __init__.py
-├── cli.py                   # Entry point; parses job names and JSON payloads to dispatch workflows
-├── consts.py                # Shared constants (DEM/LULC sources, field names, processing thresholds)
-├── exceptions.py            # Custom exception classes for reach database and data processing errors
+├── cli.py                    # Entry point; parses job names and JSON payloads to dispatch workflows
+├── consts.py                 # Shared constants (DEM/LULC sources, field names, processing thresholds)
+├── exceptions.py             # Custom exception classes for reach database and data processing errors
 ├── jobs
 │   ├── __init__.py
-│   ├── build_model.py       # Job: initializes a 2D FIM model for a single reach
-│   ├── common.py            # Abstract base Job class with input validation, logging, and temp directory management
-│   └── health.py            # Job: health check that imports all modules to verify container environment
+│   ├── build_model.py        # Job: initializes a 2D FIM model for a single reach
+│   ├── run_nd_scenarios.py   # Job: runs normal depth process for a single reach
+│   ├── run_kwse_scenarios.py # Job: runs a set of KWSE runs for a single reach
+│   ├── common.py             # Abstract base Job class with input validation, logging, and temp directory management
+│   └── health.py             # Job: health check that imports all modules to verify container environment
 ├── models
 │   ├── __init__.py
-│   ├── build_model.py       # Pydantic models for BuildModelInputs, BuildModelResult, and related types
-│   └── common.py            # Shared Pydantic models: Asset (file references) and JobWarning base class
+│   ├── build_model.py        # Pydantic models for BuildModelInputs, BuildModelResult, and related types
+│   ├── run_nd_scenarios.py   # Pydantic models for RunNDInputs, RunNDResult, and related types
+│   ├── run_kwse_scenarios.py # Pydantic models for RunKWSEModelInputs, RunKWSEResult, and related types
+│   └── common.py             # Shared Pydantic models: Asset (file references) and JobWarning base class
 └── utils
-    ├── geospatial.py        # Utilities for line intersections, domain building, and raster clipping/reprojection
-    ├── hashing.py           # SHA256 hash helpers for dicts, strings, geometries, and files
-    └── storage.py           # Database utilities for querying reach geometries from PostgreSQL/SQLite hydrofabric DBs
+    ├── geospatial.py         # Utilities for line intersections, domain building, and raster clipping/reprojection
+    ├── hashing.py            # SHA256 hash helpers for dicts, strings, geometries, and files
+    └── storage.py            # Database utilities for querying reach geometries from PostgreSQL/SQLite hydrofabric DBs
 ```
 
 

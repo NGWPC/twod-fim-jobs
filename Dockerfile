@@ -23,10 +23,10 @@ ENV PATH="/app/.pixi/envs/prod/bin:$PATH"
 
 ENTRYPOINT ["twod_fim_jobs"]
 
-FROM 172866912423.dkr.ecr.us-east-1.amazonaws.com/lisflood-fp:sha-6a82d50f56ced47af7fb9dbb1db37b98368e8159-cpu AS two-dim-fim-lisflood
+# FROM 172866912423.dkr.ecr.us-east-1.amazonaws.com/lisflood-fp:sha-6a82d50f56ced47af7fb9dbb1db37b98368e8159-cpu AS two-dim-fim-lisflood
 
-COPY --from=builder /app/.pixi/envs/prod /app/.pixi/envs/prod
+# COPY --from=builder /app/.pixi/envs/prod /app/.pixi/envs/prod
 
-ENV PATH="/app/.pixi/envs/prod/bin:$PATH"
+# ENV PATH="/app/.pixi/envs/prod/bin:$PATH"
 
-ENTRYPOINT ["twod_fim_jobs"]
+# ENTRYPOINT ["twod_fim_jobs"]

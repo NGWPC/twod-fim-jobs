@@ -1,0 +1,27 @@
+NHF_NETWORK_MODIFIER = {
+    "area_sqkm": "area_sqkm",
+    "stream_order": "stream_order",
+    "length_km": "length_km",
+    "flowpaths_layer": "flowpaths",
+    "lakes_layer": "NHDWaterbody",
+    "lake_area_sqkm": "areasqkm",
+    "fp_to_id": "fp_to_id",
+    "fp_id": "fp_id",
+    "geometry_field": "geometry",
+    "is_headwater": "is_headwater",
+    "is_terminal": "is_terminal",
+    "terminal_reason": "terminal_reason",
+    "waterbody_inlet": {"lake": "lake_inlet", "coastal": "coastal_inlet"},
+    "waterbody_outlet": {
+        "lake": "lake_outlet",
+        "coastal": "coastal_outlet",
+    },
+    "waterbody_encompassed": {
+        "lake": "lake_encompassed",
+        "coastal": "coastal_encompassed",
+    },
+    "is_trimmed": "is_trimmed",
+    "reach_id": "reach_id",
+    "reach_to_id": "reach_to_id",
+    "stream_order_field": "stream_order",
+}

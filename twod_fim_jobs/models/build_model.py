@@ -94,8 +94,8 @@ class BuildModelInputs(BaseModel):
         default=DEFAULT_LULC_SOURCE,
         description="Land-cover data source",
     )
-    other_geometries: list[str] | None = Field(
-        default=None,
+    other_geometries: list[str] = Field(
+        default_factory=list,
         description="WKT geometries that must be included in the reach bounding box",
     )
     domain_buffer: float = Field(

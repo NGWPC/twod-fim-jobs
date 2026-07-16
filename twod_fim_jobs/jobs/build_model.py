@@ -98,7 +98,7 @@ class BuildModelJob(Job):
             lulc_lookup_dict_hash=hash_dict(inputs.lulc_lookup, role_length=8),
         )
         identity_hash = hash_dict(identitiy.model_dump(), role_length=8)
-        model_id = f"{identity_hash}+{domain.offset_str}"
+        model_id = f"{identity_hash}_{domain.offset_str}"
         model_dir = f"{inputs.base_output_path.rstrip('/')}/{model_id}/"
         # TODO: Check that model dir doesn't exist.  Exit if it does.
 

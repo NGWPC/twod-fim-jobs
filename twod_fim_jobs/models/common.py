@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import ClassVar, Literal
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,11 +13,23 @@ class Asset(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    href: str = Field(description="Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.")
-    checksum: str = Field(pattern=r"^[0-9a-f]{16}$", description="First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.")
-    source_url: str | None = Field(description="External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.")
-    retrieved: datetime | None = Field(default=None, description="When the source was fetched, if applicable.")
-    derived: bool = Field(default=False, description="True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.")
+    href: str = Field(
+        description="Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI."
+    )
+    checksum: str = Field(
+        pattern=r"^[0-9a-f]{16}$",
+        description="First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.",
+    )
+    source_url: str | None = Field(
+        description="External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets."
+    )
+    retrieved: datetime | None = Field(
+        default=None, description="When the source was fetched, if applicable."
+    )
+    derived: bool = Field(
+        default=False,
+        description="True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.",
+    )
 
     @classmethod
     def from_file(cls, href: str, source_url: str, retrieved: datetime | None):

@@ -17,6 +17,7 @@ from twod_fim_jobs.exceptions import (
     InvalidAttributeError,
     ReachNotFoundError,
     ReachDatasetUnavailable,
+    WriteFailureError,
 )
 
 
@@ -111,5 +112,8 @@ def copy_file(src: str, dst: str) -> None:
 
     Supports local paths and S3 URIs (s3://bucket/key).
     """
-    with fsspec.open(src, "rb") as f_src, fsspec.open(dst, "wb") as f_dst:
-        shutil.copyfileobj(f_src, f_dst)
+    try:
+        with fsspec.open(src, "rb") as f_src, fsspec.open(dst, "wb") as f_dst:
+            shutil.copyfileobj(f_src, f_dst)
+    except Exception as e:
+        raise WriteFailureError(str(e)) from e

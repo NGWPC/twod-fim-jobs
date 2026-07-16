@@ -22,9 +22,9 @@ DEFAULT_EPSG_CODE: int = 5070
 DEFAULT_BANKFULL_WIDTH_MULTIPLIER: float = 1.0
 
 # Settings
-REACH_TABLE = "flowpaths"
-REACH_ID_FIELD = "fp_id"
-REACH_TO_ID_FIELD = "fp_to_id"
+REACH_TABLE = "reach_network"
+REACH_ID_FIELD = "reach_id"
+REACH_TO_ID_FIELD = "reach_to_id"
 DA_FIELD = "total_da_sqkm"
 STREAM_ORDER_FIELD = "stream_order"
 SLOPE_FIELD = "slope"

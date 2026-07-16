@@ -63,5 +63,5 @@ DOMAIN_FILENAME = "domain.geojson"
 MANIFEST_FILENAME = "model_manifest.json"
 
 # Warning thresholds
-LARGE_DOMAIN_AREA_THRESHOLD: float = 25_000_000.0  # TODO: tune (sq CRS units)
+LARGE_DOMAIN_AREA_THRESHOLD: float = 1e9  # TODO: tune (sq CRS units)
 SIMILAR_ROUGHNESS_STD_THRESHOLD: float = 0.005  # TODO: tune (Manning's n)

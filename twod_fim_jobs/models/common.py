@@ -65,3 +65,17 @@ class CenterlineInflowMultiIntersectionWarning(JobWarning):
             f": {point_text}" if point_text else "."
         )
         super().__init__(message=message)
+
+
+class LargeDomainAreaWarning(JobWarning):
+    """Warning emitted when the domain area exceeds the large-domain threshold."""
+
+    code: ClassVar[str] = "large_domain_area"
+    domain_area: float
+    threshold: float
+
+    def __init__(self, domain_area: float, threshold: float):
+        self.domain_area = domain_area
+        self.threshold = threshold
+        message = f"Domain area ({domain_area:.0f} sq CRS units) exceeds threshold ({threshold:.0f} sq CRS units)."
+        super().__init__(message=message)

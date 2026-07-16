@@ -48,6 +48,10 @@ class Domain(BaseModel):
         # TODO: Check with team whether this rounding can lead to issues.
         return "N{}S{}E{}W{}".format(*[int(i) for i in self.offsets])
 
+    @property
+    def area(self) -> float:
+        return (self.bbox[2] - self.bbox[0]) * (self.bbox[3] - self.bbox[1])
+
 
 class Identity(BaseModel):
     """The inputs that define model identity; hashed to identity_hash."""

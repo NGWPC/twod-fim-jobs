@@ -12,6 +12,7 @@ from twod_fim_jobs.consts import (
     DA_FIELD,
     DEM_FILENAME,
     DOMAIN_FILENAME,
+    LARGE_DOMAIN_AREA_THRESHOLD,
     MANIFEST_FILENAME,
     REACH_FILENAME,
     REACH_ID_FIELD,
@@ -86,6 +87,8 @@ class BuildModelJob(Job):
         )
         cols = int((domain.bbox[2] - domain.bbox[0]) / inputs.grid_resolution)
         rows = int((domain.bbox[3] - domain.bbox[1]) / inputs.grid_resolution)
+        if domain.area > LARGE_DOMAIN_AREA_THRESHOLD:
+            job_warnings.append(cl_inf_intersections.to_manifest())
 
         # Build identity
         identitiy = Identity(

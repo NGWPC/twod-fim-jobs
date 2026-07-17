@@ -62,10 +62,19 @@ pixi install
 
 ### Installation With docker
 
+The Dockerfile defines several named stages. Build the stage that matches the job you want to run:
+
 ```bash
 git clone https://github.com/NGWPC/twod-fim-jobs.git
 cd twod-fim-jobs
-docker build --target prod -t twod-fim-runner .
+
+# Base image (includes all jobs via the generic entrypoint)
+docker build --target two-dim-fim-base -t twod-fim-jobs:base .
+
+# Job-specific images
+docker build --target health -t twod-fim-jobs:health .
+docker build --target build_model -t twod-fim-jobs:build_model .
+docker build --target run_kwse_scenarios-sfincs -t twod-fim-jobs:run_kwse_scenarios .
 ```
 
 ## Quick Start
@@ -81,7 +90,7 @@ pixi run twod_fim_jobs health {}
 ```
 
 ```bash
-docker run -v ./:/mount twod-fim-runner health {}
+docker run -v ./:/mount twod-fim-jobs:health {}
 ```
 
 Expected output:
@@ -142,7 +151,7 @@ twod_fim_jobs health '{"test_write_uri": "s3://bucket/copier.txt"}'
 
 Given a reach ID and build parameters, this job queries an NHD-based hydrofabric database for the target reach's geometry and attributes, constructs a 2D model domain (bounding box, inflow line, anchor point), and downloads clipped/reprojected terrain (DEM) and roughness (LULC-derived Manning's n) rasters aligned to the requested grid resolution. It then writes all geospatial vector artifacts and a JSON model manifest to the specified output path (local or S3).
 
-Example command:
+Example command (local install):
 
 ```bash
 twod_fim_jobs build_model '{
@@ -150,6 +159,20 @@ twod_fim_jobs build_model '{
   "db_uri": "sqlite:////path/to/hydrofabric.gpkg",
   "base_output_path": "output/"
 }'
+```
+
+Example command (Docker w/ test data and S3 write):
+
+```bash
+docker run --rm \
+  -v "$(pwd)":/mount \
+  --env-file .env \
+  twod-fim-jobs:build_model \
+  '{
+    "reach_id": 1257410962372414,
+    "db_uri": "sqlite:////mount/tests/build_model/data/reach_network.gpkg",
+    "base_output_path": "s3://bucket/prefix"
+  }'
 ```
 
 #### Outputs

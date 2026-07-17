@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build Docker image
-        run: docker build -t twod-fim-jobs:ci .
+        run: docker build --target health -t twod-fim-jobs:ci .
 
       - name: Run health check
-        run: docker run --rm twod-fim-jobs:ci health '{}'
+        run: docker run --rm twod-fim-jobs:ci '{}'

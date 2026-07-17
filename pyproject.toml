@@ -3,7 +3,7 @@ name = "twod-fim-jobs"
 description = "Jobs for generating 2D Flood Inundation Maps with SFINCS or LISFLOOD-FP"
 readme = "README.md"
 dynamic = ["version"]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.13.4,<3",
     "geopandas>=1.1.3,<2",

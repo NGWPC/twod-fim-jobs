@@ -8,6 +8,7 @@ dependencies = [
     "rasterio>=1.5.0,<2",
     "fsspec>=2026.6.0,<2027",
     "s3fs>=2026.6.0,<2027",
+    "pyarrow>=24.0.0,<25",
 ]
 
 [project.optional-dependencies]
@@ -25,6 +26,9 @@ twod-fim-jobs = { path = ".", editable = false }
 
 [tool.pixi.feature.dev.pypi-dependencies]
 twod-fim-jobs = { path = ".", editable = true }
+
+[tool.pixi.feature.dev.dependencies]
+pre-commit = ">=4.6.0,<5"
 
 [tool.pixi.environments]
 default = { features = ["dev"], solve-group = "default" }
@@ -44,3 +48,10 @@ twod_fim_jobs = "twod_fim_jobs.cli:main"
 
 [tool.pixi.activation]
 scripts = ["load_env.sh"]
+
+[tool.pixi.tasks]
+lint = "ruff check ."
+format = "ruff format ."
+lint-fix = "ruff check --fix ."
+ruff = { depends-on = ["lint-fix", "format"] }
+pyright = "pyright twod_fim_jobs"

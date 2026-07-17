@@ -92,9 +92,21 @@ Health check passed.
 
 ## Configuration
 
-This package requires AWS credentials in order to obtain MRLC LULC data from USGS. Those AWS credentials are also used if results should be read and/or written to AWS S3.  See `.env.template` for an example env file or the table below.
+This package requires AWS credentials in order to obtain MRLC LULC data from USGS. Those AWS credentials are also used if results should be read and/or written to AWS S3.
 
-### Environment Variables
+Copy `.env.template` to `.env` and fill in your credentials:
+
+```bash
+AWS_REQUEST_PAYER=requester
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+```
+
+Then load the variables into your shell before running:
+
+```bash
+source load_env.sh
+```
 
 ### Environment Variables
 
@@ -136,8 +148,34 @@ Example command:
 twod_fim_jobs build_model '{
   "reach_id": "12345",
   "db_uri": "sqlite:////path/to/hydrofabric.gpkg",
-  "base_output_path": "output/",
+  "base_output_path": "output/"
 }'
+```
+
+#### Outputs
+
+The job writes a self-contained model directory under `base_output_path`. The directory name is derived from the computed `model_id` (`<identity_hash>_<domain_code>`).
+
+```text
+<base_output_path>/
+└── <model_id>/               # e.g. 5f14368c_N350S296E449W355/
+    ├── model.json            # Model manifest (inputs, domain, identity, properties, asset references)
+    ├── dem.tif               # Clipped and reprojected terrain raster
+    ├── roughness.tif         # Manning's n raster derived from LULC
+    ├── reach.geojson         # River centerline geometry
+    ├── anchor.geojson        # Centroid of the river centerline
+    └── domain.geojson        # Derived model domain polygon
+```
+
+The job returns a JSON result payload on stdout:
+
+```json
+{
+  "identity_hash": "5f14368c",
+  "model_id": "5f14368c_N350S296E449W355",
+  "model_dir": "output/5f14368c_N350S296E449W355",
+  "warnings": []
+}
 ```
 
 ## Development
@@ -161,9 +199,9 @@ ruff format .
 pyright
 ```
 
-### Export json schemas
+### Export JSON Schemas
 
-Exports JSON schemas for each job's inputs, result payload, and model manifest to the `schemas/` directory.
+Exports JSON schemas for each job's inputs, result payload, and model manifest to the `schemas/` directory. Run this after any model change to regenerate the expected input/output contracts.
 
 ```bash
 python -m twod_fim_jobs.models.export_schemas

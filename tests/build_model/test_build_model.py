@@ -1,7 +1,9 @@
 from pathlib import Path
 
+import geopandas as gpd
 import pytest
 from pydantic import ValidationError
+from shapely.geometry import LineString
 
 from twod_fim_jobs.exceptions import (
     DuplicateReachError,
@@ -10,9 +12,10 @@ from twod_fim_jobs.exceptions import (
     ReachDatasetUnavailable,
     ReachNotFoundError,
 )
-from twod_fim_jobs.jobs.build_model import BuildModelJob
+from twod_fim_jobs.jobs.build_model import BuildModelJob, _check_inflow_cl_intersection
 from twod_fim_jobs.jobs.build_model import _normalize_href
 from twod_fim_jobs.models.build_model import BuildModelInputs
+from twod_fim_jobs.models.common import LargeDomainAreaWarning, CenterlineInflowMultiIntersectionWarning
 
 ROOT = Path(__file__).parent
 SMALL_NETWORK = ROOT / "data" / "reach_network.gpkg"
@@ -95,9 +98,10 @@ def build_model_input_w_bad_extra_geometries():
 
 
 def test_end_to_end(build_model_input):
-    """End to end test that should run without failure."""
+    """End to end test that should run without failure and produce no warnings."""
     workflow = BuildModelJob()
-    workflow.run(build_model_input)
+    result = workflow.run(build_model_input)
+    assert result.warnings == [], f"Unexpected warnings: {result.warnings}"
 
 
 def test_end_to_end_w_other_geom(build_model_input_w_extra_geometries):
@@ -195,3 +199,35 @@ def test_bad_other_geometries_raises(build_model_input_w_bad_extra_geometries):
 )
 def test_normalize_href(href, new_base_path, expected):
     assert _normalize_href(href, new_base_path) == expected
+
+def test_large_domain_area_warning_emitted(build_model_input, monkeypatch):
+    """When domain area exceeds the threshold a LargeDomainAreaWarning is in the result."""
+    # Force threshold to zero so any domain triggers the warning.
+    monkeypatch.setattr("twod_fim_jobs.jobs.build_model.LARGE_DOMAIN_AREA_THRESHOLD", 0.0)
+    result = BuildModelJob().run(build_model_input)
+    large_domain_warnings = [w for w in result.warnings if isinstance(w, LargeDomainAreaWarning)]
+    assert len(large_domain_warnings) == 1
+    w = large_domain_warnings[0]
+    assert w.threshold == 0.0
+    assert w.domain_area > 0.0
+
+
+def _make_cl_gdf(coords: list[tuple]) -> gpd.GeoDataFrame:
+    return gpd.GeoDataFrame(geometry=[LineString(coords)])
+
+
+def test_check_inflow_cl_single_intersection_returns_none():
+    """A simple crossing at one point should produce no warning."""
+    centerline = _make_cl_gdf([(0, 0), (10, 0)])
+    inflow = _make_cl_gdf([(5, -1), (5, 1)])
+    assert _check_inflow_cl_intersection(centerline, inflow) is None
+
+
+def test_check_inflow_cl_multiple_intersections_returns_warning():
+    """An inflow that crosses the centerline twice should return the warning with both points."""
+    centerline = _make_cl_gdf([(0, 0), (10, 0)])
+    # This inflow dips below, crosses up, then back down — two crossings of y=0.
+    inflow = _make_cl_gdf([(2, -1), (4, 1), (6, -1)])
+    warning = _check_inflow_cl_intersection(centerline, inflow)
+    assert isinstance(warning, CenterlineInflowMultiIntersectionWarning)
+    assert len(warning.intersection_points) == 2

@@ -57,14 +57,13 @@ class CenterlineInflowMultiIntersectionWarning(JobWarning):
     intersection_points: list[tuple[float, float]]
 
     def __init__(self, intersection_points: list[tuple[float, float]]):
-        self.intersection_points = intersection_points
         point_text = ", ".join(
             f"({pt[0]:.3f}, {pt[1]:.3f})" for pt in intersection_points
         )
         message = "Inflow line intersected centerline at multiple points" + (
             f": {point_text}" if point_text else "."
         )
-        super().__init__(message=message)
+        super().__init__(message=message, intersection_points=intersection_points)
 
 
 class LargeDomainAreaWarning(JobWarning):
@@ -75,7 +74,5 @@ class LargeDomainAreaWarning(JobWarning):
     threshold: float
 
     def __init__(self, domain_area: float, threshold: float):
-        self.domain_area = domain_area
-        self.threshold = threshold
         message = f"Domain area ({domain_area:.0f} sq CRS units) exceeds threshold ({threshold:.0f} sq CRS units)."
-        super().__init__(message=message)
+        super().__init__(message=message, domain_area=domain_area, threshold=threshold)

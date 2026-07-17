@@ -37,6 +37,7 @@ from twod_fim_jobs.models.common import (
     Asset,
     CenterlineInflowMultiIntersectionWarning,
     JobWarning,
+    LargeDomainAreaWarning,
 )
 from twod_fim_jobs.utils.geospatial import (
     build_model_domain,
@@ -76,7 +77,7 @@ class BuildModelJob(Job):
         )
         cl_inf_intersections = _check_inflow_cl_intersection(reach, inflow_line)
         if cl_inf_intersections:
-            job_warnings.append(cl_inf_intersections.to_manifest())
+            job_warnings.append(cl_inf_intersections)
         all_other_geometries = gpd.GeoDataFrame(
             pd.concat([inflow_line, inputs.other_geometries_gdf])
         )
@@ -88,7 +89,7 @@ class BuildModelJob(Job):
         cols = int((domain.bbox[2] - domain.bbox[0]) / inputs.grid_resolution)
         rows = int((domain.bbox[3] - domain.bbox[1]) / inputs.grid_resolution)
         if domain.area > LARGE_DOMAIN_AREA_THRESHOLD:
-            job_warnings.append(cl_inf_intersections.to_manifest())
+            job_warnings.append(LargeDomainAreaWarning(domain_area=domain.area, threshold=LARGE_DOMAIN_AREA_THRESHOLD))
 
         # Build identity
         identitiy = Identity(
@@ -200,7 +201,7 @@ def _check_inflow_cl_intersection(
         centerline.geometry.iloc[0], inflow.geometry.iloc[0]
     )
     if len(intersections) > 1:
-        return CenterlineInflowMultiIntersectionWarning(intersections)
+        return CenterlineInflowMultiIntersectionWarning([(pt.x, pt.y) for pt in intersections])
     else:
         return None
 

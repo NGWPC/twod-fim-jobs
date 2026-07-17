@@ -163,6 +163,8 @@ pyright
 
 ### Export json schemas
 
+Exports JSON schemas for each job's inputs, result payload, and model manifest to the `schemas/` directory.
+
 ```bash
-python twod_fim_jobs/models/export_schemas.py
+python -m twod_fim_jobs.models.export_schemas
 ```

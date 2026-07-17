@@ -15,7 +15,10 @@ from twod_fim_jobs.exceptions import (
 from twod_fim_jobs.jobs.build_model import BuildModelJob, _check_inflow_cl_intersection
 from twod_fim_jobs.jobs.build_model import _normalize_href
 from twod_fim_jobs.models.build_model import BuildModelInputs
-from twod_fim_jobs.models.common import LargeDomainAreaWarning, CenterlineInflowMultiIntersectionWarning
+from twod_fim_jobs.models.common import (
+    LargeDomainAreaWarning,
+    CenterlineInflowMultiIntersectionWarning,
+)
 
 ROOT = Path(__file__).parent
 SMALL_NETWORK = ROOT / "data" / "reach_network.gpkg"
@@ -200,12 +203,17 @@ def test_bad_other_geometries_raises(build_model_input_w_bad_extra_geometries):
 def test_normalize_href(href, new_base_path, expected):
     assert _normalize_href(href, new_base_path) == expected
 
+
 def test_large_domain_area_warning_emitted(build_model_input, monkeypatch):
     """When domain area exceeds the threshold a LargeDomainAreaWarning is in the result."""
     # Force threshold to zero so any domain triggers the warning.
-    monkeypatch.setattr("twod_fim_jobs.jobs.build_model.LARGE_DOMAIN_AREA_THRESHOLD", 0.0)
+    monkeypatch.setattr(
+        "twod_fim_jobs.jobs.build_model.LARGE_DOMAIN_AREA_THRESHOLD", 0.0
+    )
     result = BuildModelJob().run(build_model_input)
-    large_domain_warnings = [w for w in result.warnings if isinstance(w, LargeDomainAreaWarning)]
+    large_domain_warnings = [
+        w for w in result.warnings if isinstance(w, LargeDomainAreaWarning)
+    ]
     assert len(large_domain_warnings) == 1
     w = large_domain_warnings[0]
     assert w.threshold == 0.0

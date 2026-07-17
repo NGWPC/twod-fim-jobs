@@ -2,12 +2,14 @@ import logging
 import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Generic, TypeVar
 
 from pydantic import BaseModel
 
+T_Inputs = TypeVar("T_Inputs", bound=BaseModel)
 
-class Job(ABC):
+
+class Job(ABC, Generic[T_Inputs]):
     """Base class for all jobs.
 
     Using a class rather than a plain function gives every job a consistent
@@ -29,7 +31,7 @@ class Job(ABC):
 
     def run(self, inputs: dict[str, Any]) -> Any:
         """Validate inputs, configure logging, provide a temp directory, and delegate to ``_job``."""
-        validated = self.Inputs.model_validate(inputs)
+        validated: T_Inputs = self.Inputs.model_validate(inputs)  # type: ignore[assignment]
 
         logger = logging.getLogger(type(self).__name__)
         logger.info("Starting job %s", type(self).__name__)
@@ -41,5 +43,5 @@ class Job(ABC):
         return result
 
     @abstractmethod
-    def _run(self, inputs: BaseModel, tmp_dir: Path) -> Any:
+    def _run(self, inputs: T_Inputs, tmp_dir: Path) -> Any:
         """Execute the job. Subclasses must implement this method."""

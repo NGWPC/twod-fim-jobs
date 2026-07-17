@@ -1,5 +1,4 @@
 from datetime import datetime
-from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -191,7 +190,7 @@ class BuildModelInputs(BaseModel):
         gt=0,
         description="How much to multiply bankfull width to arrive at inflow line width",
     )
-    lulc_lookup: dict[str, float] = Field(
+    lulc_lookup: dict[int, float] = Field(
         default=DEFAULT_LULC_LOOKUP,
         description="A dictionary mapping land use codes to Manning's roughness values",
     )
@@ -228,7 +227,7 @@ class BuildModelResult(BaseModel):
 
     identity_hash: str
     model_id: str
-    model_dir: Path
+    model_dir: str
     warnings: list[JobWarning]
 
 

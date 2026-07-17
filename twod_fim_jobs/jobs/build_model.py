@@ -52,14 +52,12 @@ from twod_fim_jobs.utils.hashing import hash_dict, hash_geometry, hash_str
 from twod_fim_jobs.utils.storage import copy_file, query_reach, query_upstream_reach
 
 
-class BuildModelJob(Job):
+class BuildModelJob(Job[BuildModelInputs]):
     """Initialize a 2D FIM model for a single reach."""
 
     Inputs = BuildModelInputs
 
-    def _run(
-        self, inputs: BuildModelInputs, working_directory: Path
-    ) -> BuildModelResult:
+    def _run(self, inputs: BuildModelInputs, tmp_dir: Path) -> BuildModelResult:
         # TODO: eagerly check file access
         # Initialize empty warnings
         job_warnings: list[JobWarning] = []
@@ -89,7 +87,11 @@ class BuildModelJob(Job):
         cols = int((domain.bbox[2] - domain.bbox[0]) / inputs.grid_resolution)
         rows = int((domain.bbox[3] - domain.bbox[1]) / inputs.grid_resolution)
         if domain.area > LARGE_DOMAIN_AREA_THRESHOLD:
-            job_warnings.append(LargeDomainAreaWarning(domain_area=domain.area, threshold=LARGE_DOMAIN_AREA_THRESHOLD))
+            job_warnings.append(
+                LargeDomainAreaWarning(
+                    domain_area=domain.area, threshold=LARGE_DOMAIN_AREA_THRESHOLD
+                )
+            )
 
         # Build identity
         identitiy = Identity(
@@ -109,7 +111,7 @@ class BuildModelJob(Job):
         # Get DEM
         dem_asset = download_dem(
             inputs.dem_source,
-            working_directory / DEM_FILENAME,
+            tmp_dir / DEM_FILENAME,
             domain.bbox,
             cols,
             rows,
@@ -120,7 +122,7 @@ class BuildModelJob(Job):
         # TODO: add warning when mannings values are all similar
         roughness_asset = download_roughness(
             inputs.lulc_source,
-            working_directory / ROUGHNESS_FILENAME,
+            tmp_dir / ROUGHNESS_FILENAME,
             domain.bbox,
             cols,
             rows,
@@ -129,15 +131,13 @@ class BuildModelJob(Job):
         )
 
         # Write vector artifacts
-        cl_asset = write_gdf_asset(
-            reach, working_directory / REACH_FILENAME, inputs.db_uri
-        )
+        cl_asset = write_gdf_asset(reach, tmp_dir / REACH_FILENAME, inputs.db_uri)
         anchor_gdf, domain_gdf = export_domain_gdfs(domain, inputs.authority_str)
         anchor_asset = write_gdf_asset(
-            anchor_gdf, working_directory / ANCHOR_FILENAME, inputs.db_uri
+            anchor_gdf, tmp_dir / ANCHOR_FILENAME, inputs.db_uri
         )
         domain_asset = write_gdf_asset(
-            domain_gdf, working_directory / DOMAIN_FILENAME, inputs.db_uri
+            domain_gdf, tmp_dir / DOMAIN_FILENAME, inputs.db_uri
         )
 
         # Compile assets
@@ -177,7 +177,7 @@ class BuildModelJob(Job):
             assets=assets,
             warnings=job_warnings,
         )
-        manifest_path = working_directory / MANIFEST_FILENAME
+        manifest_path = tmp_dir / MANIFEST_FILENAME
         with open(manifest_path, mode="w") as f:
             f.write(manifest.model_dump_json(indent=4))
         copy_job[str(manifest_path)] = _normalize_href(str(manifest_path), model_dir)
@@ -201,7 +201,9 @@ def _check_inflow_cl_intersection(
         centerline.geometry.iloc[0], inflow.geometry.iloc[0]
     )
     if len(intersections) > 1:
-        return CenterlineInflowMultiIntersectionWarning([(pt.x, pt.y) for pt in intersections])
+        return CenterlineInflowMultiIntersectionWarning(
+            [(pt.x, pt.y) for pt in intersections]
+        )
     else:
         return None
 

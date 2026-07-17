@@ -1,3 +1,4 @@
+from typing import IO, cast
 from urllib.parse import urlparse
 import shutil
 import fsspec
@@ -114,6 +115,6 @@ def copy_file(src: str, dst: str) -> None:
     """
     try:
         with fsspec.open(src, "rb") as f_src, fsspec.open(dst, "wb") as f_dst:
-            shutil.copyfileobj(f_src, f_dst)
+            shutil.copyfileobj(cast(IO[bytes], f_src), cast(IO[bytes], f_dst))
     except Exception as e:
         raise WriteFailureError(str(e)) from e

@@ -46,7 +46,7 @@ class Asset(BaseModel):
 
 
 class JobWarning(BaseModel):
-    code: str
+    code: ClassVar[str]
     message: str
 
 
@@ -63,7 +63,9 @@ class CenterlineInflowMultiIntersectionWarning(JobWarning):
         message = "Inflow line intersected centerline at multiple points" + (
             f": {point_text}" if point_text else "."
         )
-        super().__init__(message=message, intersection_points=intersection_points)
+        BaseModel.__init__(
+            self, message=message, intersection_points=intersection_points
+        )
 
 
 class LargeDomainAreaWarning(JobWarning):
@@ -75,4 +77,6 @@ class LargeDomainAreaWarning(JobWarning):
 
     def __init__(self, domain_area: float, threshold: float):
         message = f"Domain area ({domain_area:.0f} sq CRS units) exceeds threshold ({threshold:.0f} sq CRS units)."
-        super().__init__(message=message, domain_area=domain_area, threshold=threshold)
+        BaseModel.__init__(
+            self, message=message, domain_area=domain_area, threshold=threshold
+        )

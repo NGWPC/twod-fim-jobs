@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 import rasterio
+import rasterio.errors
 from rasterio.transform import from_bounds
 from rasterio.warp import reproject
 
@@ -160,7 +161,7 @@ def build_model_domain(
     return Domain(bbox=(xmin, ymin, xmax, ymax), anchor=(ax, ay), offsets=(n, s, e, w))
 
 
-def extract_raster(*args, **kwargs) -> None:
+def extract_raster(*args, **kwargs) -> Asset:
     try:
         return _extract_raster(*args, **kwargs)
     except rasterio.errors.RasterioIOError as e:
@@ -177,12 +178,8 @@ def _extract_raster(
     rows: int,
     dst_crs: str,
     value_transform: Callable[[np.ndarray], np.ndarray] | None = None,
-    return_asset: bool = True,
-):
-    """
-    Extract/reproject a raster to a target grid and optionally transform values.
-    """
-
+) -> Asset:
+    """Extract/reproject a raster to a target grid and optionally transform values."""
     with rasterio.open(src_path) as src:
         dst_transform = from_bounds(
             *bbox,
@@ -228,8 +225,7 @@ def _extract_raster(
         with rasterio.open(out_path, "w", **profile) as dst:
             dst.write(data, 1)
 
-    if return_asset:
-        return Asset.from_file(str(out_path), src_path, datetime.now())
+    return Asset.from_file(str(out_path), str(src_path), datetime.now())
 
 
 def download_dem(
@@ -240,7 +236,7 @@ def download_dem(
     rows: int,
     dst_crs: str,
     return_asset: bool = True,
-) -> Asset | None:
+) -> Asset:
     def noop(data):
         return data
 
@@ -257,8 +253,7 @@ def download_roughness(
     rows: int,
     dst_crs: str,
     lulc_lookup: dict[int, float],
-    return_asset: bool = True,
-) -> Asset | None:
+) -> Asset:
     manning_lut = _make_lookup_array(lulc_lookup)
     return extract_raster(
         src_path,
@@ -268,7 +263,6 @@ def download_roughness(
         rows,
         dst_crs,
         lambda x: manning_lut[x.astype(np.uint8)],
-        return_asset,
     )
 
 

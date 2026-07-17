@@ -16,12 +16,12 @@ class HealthInputs(BaseModel):
     """Optional local path to write a small sentinel file to verify write access."""
 
 
-class HealthWorkflow(Job):
+class HealthWorkflow(Job[HealthInputs]):
     """Verify the container environment is intact."""
 
     Inputs = HealthInputs
 
-    def _run(self, inputs: HealthInputs, working_directory: Path) -> None:
+    def _run(self, inputs: HealthInputs, tmp_dir: Path) -> None:
         # Eagerly import every job module so that broken environments (e.g.
         # missing GDAL shared libraries) surface here rather than silently at
         # job dispatch time.  New job modules are covered automatically.
@@ -39,6 +39,6 @@ class HealthWorkflow(Job):
         print("Health check passed.")
 
         if inputs.test_write_uri is not None:
-            tmp_path = working_directory / "health_check.txt"
+            tmp_path = tmp_dir / "health_check.txt"
             tmp_path.write_bytes(b"health check\n")
             copy_file(str(tmp_path), inputs.test_write_uri)

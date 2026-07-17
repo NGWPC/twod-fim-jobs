@@ -235,14 +235,11 @@ def download_dem(
     cols: int,
     rows: int,
     dst_crs: str,
-    return_asset: bool = True,
 ) -> Asset:
     def noop(data):
         return data
 
-    return extract_raster(
-        src_path, out_path, bbox, cols, rows, dst_crs, noop, return_asset
-    )
+    return extract_raster(src_path, out_path, bbox, cols, rows, dst_crs, noop)
 
 
 def download_roughness(

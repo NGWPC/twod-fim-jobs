@@ -153,12 +153,12 @@ class BuildModelJob(Job[BuildModelInputs]):
         # Make properties block
         properties = Properties(
             grid=GridProperties(rows=rows, cols=cols),
-            drainage_area_sqkm=reach[DA_FIELD].iloc[0],
-            bankfull_width_m=bieger_bankfull_width(reach[DA_FIELD].iloc[0]),
+            drainage_area_sqkm=round(reach[DA_FIELD].iloc[0], 2),
+            bankfull_width_m=round(bieger_bankfull_width(reach[DA_FIELD].iloc[0]), 2),
             upstream_reach_ids=us_reaches,
             stream_order=reach[STREAM_ORDER_FIELD].iloc[0],
-            length_m=reach.length.iloc[0],
-            slope=reach[SLOPE_FIELD].iloc[0],
+            length_m=round(reach.length.iloc[0], 2),
+            slope=round(reach[SLOPE_FIELD].iloc[0], 7),
             downstream_reach_id=reach[REACH_ID_FIELD].iloc[0],
             upstream_mainstem_reach_id=us_mainstem[REACH_ID_FIELD].iloc[0],
         )

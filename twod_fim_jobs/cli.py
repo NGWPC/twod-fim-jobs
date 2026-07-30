@@ -2,8 +2,11 @@
 
 import argparse
 import json
+import logging
 
 from twod_fim_jobs.jobs import WORKFLOWS
+
+_QUIET_LOGGERS = ["rasterio", "pyogrio"]
 
 
 def _parse_payload(raw_payload: str, parser: argparse.ArgumentParser) -> dict:
@@ -36,7 +39,14 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _configure_logging() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+    for name in _QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
 def main():
+    _configure_logging()
     # Parse arguments
     parser = build_parser()
     args = parser.parse_args()

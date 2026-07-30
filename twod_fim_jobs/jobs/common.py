@@ -8,6 +8,8 @@ from pydantic import BaseModel
 
 T_Inputs = TypeVar("T_Inputs", bound=BaseModel)
 
+logger = logging.getLogger(__name__)
+
 
 class Job(ABC, Generic[T_Inputs]):
     """Base class for all jobs.
@@ -33,7 +35,6 @@ class Job(ABC, Generic[T_Inputs]):
         """Validate inputs, configure logging, provide a temp directory, and delegate to ``_job``."""
         validated: T_Inputs = self.Inputs.model_validate(inputs)  # type: ignore[assignment]
 
-        logger = logging.getLogger(type(self).__name__)
         logger.info("Starting job %s", type(self).__name__)
 
         with tempfile.TemporaryDirectory() as tmp_dir:

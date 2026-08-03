@@ -4,6 +4,8 @@ import argparse
 import json
 import logging
 
+from pydantic import BaseModel
+
 from twod_fim_jobs.jobs import WORKFLOWS
 
 _QUIET_LOGGERS = ["rasterio", "pyogrio"]
@@ -61,7 +63,9 @@ def main():
     workflow = workflow_cls()
 
     # Run workflow
-    workflow.run(input_dict)
+    result = workflow.run(input_dict)
+    if isinstance(result, BaseModel):
+        print(result.model_dump_json())
 
 
 if __name__ == "__main__":

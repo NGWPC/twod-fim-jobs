@@ -256,11 +256,11 @@ class ModelManifest(BaseModel):
         description="Hash of the identity object. Stable across domain changes; results group under it.",
     )
     domain_code: str = Field(
-        pattern=r"^N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
+        pattern=r"^N-?(0|[1-9][0-9]*)S-?(0|[1-9][0-9]*)E-?(0|[1-9][0-9]*)W-?(0|[1-9][0-9]*)$",
         description="Domain realization: grid-snapped N/S/E/W offsets in CRS units from the anchor. A grid-reference code, not a hash.",
     )
     model_id: str = Field(
-        pattern=r"^[0-9a-f]{8}_N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
+        pattern=r"^[0-9a-f]{8}_N-?(0|[1-9][0-9]*)S-?(0|[1-9][0-9]*)E-?(0|[1-9][0-9]*)W-?(0|[1-9][0-9]*)$",
         description="<identity_hash>+<domain_code>. Also the folder name.",
     )
     inputs: BuildModelInputs = Field(

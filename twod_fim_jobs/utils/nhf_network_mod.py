@@ -1,12 +1,14 @@
+import logging
 import os
 from functools import cached_property
 
+logger = logging.getLogger(__name__)
+
 import geopandas as gpd
 import pandas as pd
-from shapely import LineString, MultiPoint, Point, Polygon
-from shapely.ops import substring
-
 from consts import NHF_NETWORK_MODIFIER
+from shapely import LineString, MultiLineString, MultiPoint, Point, Polygon
+from shapely.ops import linemerge, substring
 
 
 class NHFNetworkModifier:
@@ -27,14 +29,14 @@ class NHFNetworkModifier:
         coastal_gpkg_path: str = None,
         drainage_area_threshold_percent: float = 5,
         stream_order_threshold: int = 3,
-        max_length_threshold_km: float = 8,
+        max_length_threshold_km: float = 3,
         lake_area_threshold_sqkm: float = 5,
         negative_lake_buffer_meters: float = 50,
     ):
         """Initialize the NHFNetworkModifier with the path to the GeoPackage file.
 
         Args:
-            nhf_gpkg_path (str): Path to the NHF GeoPackage file.
+            nhf_gpkg_path (str): Path to the NHF GeoPackage file..
             lakes_gpkg_path (str): Path to the lakes GeoPackage file.
             coastal_raster_path (str, optional): Path to the coastal raster file. Defaults to None.
             coastal_gpkg_path (str, optional): Path to the coastal GeoPackage file. Defaults to None.
@@ -143,7 +145,7 @@ class NHFNetworkModifier:
         """Load the NHF network data from the GeoPackage file."""
         if os.path.exists(self.nhf_gpkg_path):
             query = f"SELECT * FROM {self.flowpaths_layer} WHERE {self.stream_order_field} >= {self.stream_order_threshold}"
-            nhf_gdf = gpd.read_file(self.nhf_gpkg_path, query=query)
+            nhf_gdf = gpd.read_file(self.nhf_gpkg_path, sql=query)
             nhf_gdf["geometry"] = nhf_gdf.line_merge()
             return self.init_new_fields(nhf_gdf)
         else:
@@ -184,33 +186,50 @@ class NHFNetworkModifier:
         self._waterbody_type = value
 
     def merge_small_reaches(self, reach_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-        """Merge reaches that are shorter than the max length threshold."""
-        # Implementation of merging small reaches goes here
-        # if drainage area between reaches is < threshold, merge reaches
-        # and upstream reach is shorter than max length threshold, merge reaches
-        raise NotImplementedError("Merging small reaches is not yet implemented.")
+        """Merge small reaches into their downstream neighbor.
 
-    # def upstream_reaches(self, reach_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    #     """Get a mapping of each reach to its upstream reaches."""
-    #     return reach_gdf.loc[
-    #         reach_gdf[self.stream_order_threshold_field] == self.stream_order_threshold
-    #     ]
+        A reach is merged if:
+        - Its length is less than max_length_threshold_km (3 km)
+        - The combined length with its downstream reach is less than max_length_threshold_km
+        - The drainage area difference with its downstream reach is less than drainage_area_threshold (5%)
+        """
+        logger.debug("Starting merge_small_reaches with %d reaches", len(reach_gdf))
+        for _, reach_row in reach_gdf.iterrows():
+            reach_id = reach_row[self.fp_id]
+            reach_to_id = reach_row[self.fp_to_id]
 
-    # def downstream_reaches(self, reach_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    #     """Get a mapping of each reach to its downstream reaches."""
-    #     return reach_gdf.loc[
-    #         reach_gdf[self.stream_order_threshold_field] == self.stream_order_threshold
-    #     ]
+            downstream = reach_gdf.loc[reach_gdf[self.fp_id] == reach_to_id]
+            if downstream.empty:
+                logger.debug("Reach %s: no downstream reach found, skipping", reach_id)
+                continue
 
-    def compute_drainage_area_difference(
-        self, upstream_row: pd.Series, downstream_row: pd.Series
-    ) -> float:
-        """Compute the drainage area difference between reaches."""
-        return (
-            (downstream_row[self.area_sqkm_field] - upstream_row[self.area_sqkm_field])
-            / downstream_row[self.area_sqkm_field]
-            * 100
-        )
+            downstream_row = downstream.iloc[0]
+            area_pct = abs(
+                (
+                    (reach_row[self.area_sqkm] - downstream_row[self.area_sqkm])
+                    / reach_row[self.area_sqkm]
+                )
+                * 100
+            )
+            new_length = reach_row[self.length_km] + downstream_row[self.length_km]
+
+            if (
+                area_pct < self.drainage_area_threshold
+                and new_length <= self.max_length_threshold_km
+            ):
+                logger.debug(
+                    "Reach %s: merging with downstream reach %s", reach_id, reach_to_id
+                )
+                cond = (reach_gdf[self.fp_id] == reach_id) | (
+                    reach_gdf[self.fp_id] == reach_to_id
+                )
+                selected_gdf = reach_gdf[cond]
+                reach_gdf = reach_gdf[~cond]
+                selected_gdf = selected_gdf.dissolve()
+                reach_gdf = pd.concat([selected_gdf, reach_gdf]).reset_index(drop=True)
+
+        logger.debug("Finished merge_small_reaches with %d reaches", len(reach_gdf))
+        return reach_gdf
 
     def identify_terminal_reaches(
         self, reach_gdf: gpd.GeoDataFrame
@@ -258,13 +277,14 @@ class NHFNetworkModifier:
                 continue
 
             # if only one waterbody polygon, check if reach is complete within it
-            if len(waterbody_polygons) == 1:
-                if reach_row.geometry.within(waterbody_polygons.iloc[0]):
-                    reach_gdf.loc[
-                        reach_gdf[self.reach_id] == reach_id,
-                        self.waterbody_encompassed[self.waterbody_type],
-                    ] = True
-                    continue
+            if len(waterbody_polygons) == 1 and reach_row.geometry.within(
+                waterbody_polygons.iloc[0]
+            ):
+                reach_gdf.loc[
+                    reach_gdf[self.reach_id] == reach_id,
+                    self.waterbody_encompassed[self.waterbody_type],
+                ] = True
+                continue
 
             # there can be multiple waterbody polygons for a single reach; need to iterate through them
             for waterbody_polygon in waterbody_polygons:
@@ -506,15 +526,15 @@ class NHFNetworkModifier:
         nhf_gdf = self.adjust_reaches_at_waterbodies(nhf_gdf, self.coastal_gdf)
         self.waterbody_type = "lake"
         nhf_gdf = self.adjust_reaches_at_waterbodies(nhf_gdf, self.lakes_gdf)
-        # nhf_gdf = self.merge_small_reaches(nhf_gdf)
-
+        nhf_gdf = self.merge_small_reaches(nhf_gdf)
         self.save_modified_network(nhf_gdf, output_gpkg_path)
 
 
 if __name__ == "__main__":
-    coastal_gpkg_path = "/home/matthew.deshotel/Downloads/MHHW/MHHW/MHHW.gpkg"
-    nhf_gpkg_path = "/home/matthew.deshotel/Downloads/subset/nhf_subset.gpkg"
-    lakes_gpkg_path = "/home/matthew.deshotel/Downloads/NHD_H_Louisiana_State_GPKG/NHD_H_Louisiana_State_GPKG.gpkg"
+    logging.basicConfig(level=logging.DEBUG)
+    coastal_gpkg_path = "/mnt/d/NOAA/FIM/Data/MHHW.gpkg"
+    nhf_gpkg_path = "/mnt/d/NOAA/FIM/Data/nhf_test.gpkg"
+    lakes_gpkg_path = "/mnt/d/NOAA/FIM/Data/NHD_H_Louisiana_State_GPKG.gpkg"
 
     nm = NHFNetworkModifier(
         nhf_gpkg_path,
@@ -522,6 +542,4 @@ if __name__ == "__main__":
         coastal_raster_path=coastal_gpkg_path,
     )
 
-    nm.modify_network(
-        output_gpkg_path="/home/matthew.deshotel/Downloads/subset/NHF_modified.gpkg"
-    )
+    nm.modify_network(output_gpkg_path="/mnt/d/NOAA/FIM/Data/NHF_modified.gpkg")

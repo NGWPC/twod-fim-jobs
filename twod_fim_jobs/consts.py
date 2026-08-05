@@ -13,8 +13,12 @@ def bieger_bankfull_width(da_sqkm: float) -> float:
 ### BUILD_MODEL ###
 
 # Inputs
-DEFAULT_DEM_SOURCE: str = "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt"
-DEFAULT_LULC_SOURCE: str = "/vsis3/usgs-landcover/annual-nlcd/c1/v0/cu/mosaic/Annual_NLCD_LndCov_2023_CU_C1V0.tif"
+DEFAULT_DEM_SOURCE: str = (
+    "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt"
+)
+DEFAULT_LULC_SOURCE: str = (
+    "/vsis3/usgs-landcover/annual-nlcd/c1/v0/cu/mosaic/Annual_NLCD_LndCov_2023_CU_C1V0.tif"
+)
 DEFAULT_DOMAIN_BUFFER: float = 0.0
 DEFAULT_GRID_RESOLUTION: int = 10
 DEFAULT_WALK_US_DIST_PCT: float = 0.1
@@ -65,3 +69,32 @@ MANIFEST_FILENAME = "model_manifest.json"
 # Warning thresholds
 LARGE_DOMAIN_AREA_THRESHOLD: float = 1e9  # TODO: tune (sq CRS units)
 SIMILAR_ROUGHNESS_STD_THRESHOLD: float = 0.005  # TODO: tune (Manning's n)
+
+
+NHF_NETWORK_MODIFIER = {
+    "area_sqkm": "area_sqkm",
+    "stream_order": "stream_order",
+    "length_km": "length_km",
+    "flowpaths_layer": "flowpaths",
+    "lakes_layer": "NHDWaterbody",
+    "lake_area_sqkm": "areasqkm",
+    "fp_to_id": "fp_to_id",
+    "fp_id": "fp_id",
+    "geometry_field": "geometry",
+    "is_headwater": "is_headwater",
+    "is_terminal": "is_terminal",
+    "terminal_reason": "terminal_reason",
+    "waterbody_inlet": {"lake": "lake_inlet", "coastal": "coastal_inlet"},
+    "waterbody_outlet": {
+        "lake": "lake_outlet",
+        "coastal": "coastal_outlet",
+    },
+    "waterbody_encompassed": {
+        "lake": "lake_encompassed",
+        "coastal": "coastal_encompassed",
+    },
+    "is_trimmed": "is_trimmed",
+    "reach_id": "reach_id",
+    "reach_to_id": "reach_to_id",
+    "stream_order_field": "stream_order",
+}

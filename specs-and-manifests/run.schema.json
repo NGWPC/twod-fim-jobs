@@ -1,0 +1,307 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NGWPC/twod-fim-knowledge-base/system-design/run.schema.json",
+  "title": "run.json",
+  "description": "run_nd_scenarios / run_kwse_scenarios output record: one hydraulic simulation of one Model at one scenario point. One manifest per Run object — a job call that solves N scenarios writes N of these, never one shared file for the batch (job-execution-level info belongs in job logs / the job's Response, not a manifest). Written LAST to results/reach=<reach_id>/<model identity_hash>/<run identity_hash>/<scenario folder>/run.json. See guide.md's Identity/Realization/Provenance pattern and conventions.md for the shared envelope. All hashes are first-N-hex of SHA-256 (hash_algo): identity hashes 8-hex, file checksums 16-hex.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "type",
+    "hash_algo",
+    "twod_fim_version",
+    "created_at",
+    "reach_id",
+    "model_id",
+    "identity_hash",
+    "scenario_code",
+    "id",
+    "identity",
+    "scenario",
+    "inputs",
+    "assets"
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "description": "Discriminator vs. a model record.",
+      "const": "run"
+    },
+    "hash_algo": {
+      "type": "string",
+      "const": "sha256"
+    },
+    "twod_fim_version": {
+      "type": "string",
+      "description": "Producer software version (provenance)."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Run completion time (UTC). run.json is written last, after depth.tif/stl.geojson — see triggers-and-propagation.md's run-preemption policy."
+    },
+    "reach_id": {
+      "type": "integer",
+      "description": "Primary key for the reach in the reach db. Matches the Model's reach_id."
+    },
+    "model_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}\\+N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
+      "description": "The exact Model realization (identity_hash+domain_code) this run executed against. Recorded here because the results/ path groups by the Model's identity_hash alone, dropping domain_code — this field is how a run.json 'records the domain used' (see guide.md Storage Layout)."
+    },
+    "identity_hash": {
+      "$ref": "#/$defs/hash8",
+      "description": "Hash of the identity object. Stable across scenario points; results group under it (see guide.md)."
+    },
+    "scenario_code": {
+      "type": "string",
+      "pattern": "^(ND[0-9]+(\\.[0-9])?([eE][+-]?[0-9]+)?|KWSE[0-9]+(\\.[0-9])?)Q[0-9]+$",
+      "description": "Run's realization: bc_type + bc_value + 'Q' + q, concatenated (not hashed) — e.g. 'ND1.0e5Q200', 'KWSE200.2Q200'. Precision rules: Q always integer; ND slope and KWSE stage each 0 or 1 decimal digit (see guide.md's Scenario section)."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}_(ND[0-9]+(\\.[0-9])?([eE][+-]?[0-9]+)?|KWSE[0-9]+(\\.[0-9])?)Q[0-9]+$",
+      "description": "<identity_hash>_<scenario_code>. Note the underscore separator (Model's id uses '+') — matches the run_id examples in guide.md."
+    },
+    "identity": {
+      "type": "object",
+      "description": "The inputs that define Run identity; hashed to identity_hash. Answers 'what solver, what methodology' — same role as Model's identity, one level up the stack.",
+      "additionalProperties": false,
+      "required": ["sdr_commit", "solver"],
+      "properties": {
+        "sdr_commit": {
+          "type": "string",
+          "description": "Methodology version pin (output-determining)."
+        },
+        "solver": {
+          "type": "string",
+          "description": "Hydraulic engine name + version, e.g. 'lisflood@8.1' or 'sfincs@2.1.1'. Fixed by which job/container ran (each solver is its own job image — see run_kwse_scenarios_job_contract.md Dependencies), not a caller-supplied choice; still recorded here because it's output-determining."
+        }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "description": "Run's realization — which point in hydraulic condition-space. Concatenates into scenario_code the way Model's domain{} concatenates into domain_code. Not an entity with its own identity/realization split (see guide.md). bc_value here is the nominal/target value used to build the address — see properties.achieved_bc_value for what the solve actually produced.",
+      "additionalProperties": false,
+      "required": ["q", "bc_type", "bc_value"],
+      "properties": {
+        "q": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "description": "Discharge. Always integer, per scenario_code precision rules."
+        },
+        "bc_type": {
+          "type": "string",
+          "enum": ["ND", "KWSE"],
+          "description": "ND = normal-depth boundary condition. KWSE = known water-surface elevation boundary condition."
+        },
+        "bc_value": {
+          "type": "number",
+          "description": "Nominal normal-depth slope when bc_type is ND; nominal downstream stage (WSEL) when bc_type is KWSE. 0 or 1 decimal digit, per scenario_code precision rules."
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "description": "The run_nd_scenarios / run_kwse_scenarios call arguments for this one scenario, recorded verbatim. This is Run's provenance — not part of identity_hash or scenario_code. See conventions.md.",
+      "additionalProperties": false,
+      "required": ["model_id", "reach_id", "results_base_path", "q", "bc_type"],
+      "properties": {
+        "model_id": {
+          "type": "string",
+          "description": "Same as top-level model_id; recorded here too since inputs are the verbatim call args."
+        },
+        "reach_id": {
+          "type": "integer"
+        },
+        "results_base_path": {
+          "type": "string",
+          "description": "Path where run artifacts will be written."
+        },
+        "q": {
+          "type": "integer",
+          "description": "Requested discharge."
+        },
+        "bc_type": {
+          "type": "string",
+          "enum": ["ND", "KWSE"]
+        },
+        "bc_value": {
+          "type": ["number", "null"],
+          "description": "Caller-supplied nominal stage for KWSE runs (from plan_scenarios). Null for ND runs — the normal-depth slope is derived from the reach's own model.json (properties.slope), not caller-supplied; the derived value still ends up in scenario.bc_value."
+        },
+        "ds_model_id": {
+          "type": ["string", "null"],
+          "description": "model_id of the reach immediately downstream — KWSE runs only. Required in practice for reaches with a normal downstream reach; null for terminal/lake/coastal reaches, which use a different downstream boundary condition (DR-005, DR-006, DR-008)."
+        },
+        "hotstart": {
+          "$ref": "#/$defs/scenarioRef",
+          "description": "Reference to a prior Run's depth.tif used to warm-start this run's solver — typically a nearby scenario point on the same Model. reach_id/run_identity omitted implies same reach and same run_identity as this run."
+        },
+        "downstream_scenario": {
+          "type": "string",
+          "description": "Resolved S3 URI of the downstream reach's Run scenario-point directory (contains stl.geojson + depth.tif), used to build this run's boundary condition — sample the stage onto the STL per DR-031. KWSE runs only. Unlike hotstart, this is a full resolved path rather than scenarioRef coordinates — it crosses reach/model boundaries, so there's no 'same reach/model' default to omit fields against."
+        },
+        "max_simulation_length_hours": {
+          "type": ["number", "null"],
+          "description": "Maximum model-time (sim clock) before forced termination."
+        },
+        "max_simulation_wall_time_minutes": {
+          "type": ["number", "null"],
+          "description": "Maximum wall-clock time before forced termination."
+        },
+        "save_velocity": {
+          "type": ["boolean", "null"],
+          "description": "Whether to generate and save a velocity raster asset alongside depth."
+        }
+      }
+    },
+    "properties": {
+      "type": "object",
+      "description": "Computed/diagnostic values; informational, not part of identity.",
+      "additionalProperties": false,
+      "properties": {
+        "achieved_bc_value": {
+          "type": ["number", "null"],
+          "description": "The actual boundary value the solve produced, vs. scenario.bc_value's nominal/target value — 'true to nominal' mapping."
+        },
+        "depth_stats": {
+          "$ref": "#/$defs/summaryStats",
+          "description": "min/max/mean/median/std of the depth raster."
+        },
+        "stl_stats": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "elevation": { "$ref": "#/$defs/summaryStats" },
+            "n_sampled_cells": { "type": ["integer", "null"] }
+          }
+        },
+        "iterations": {
+          "type": ["integer", "null"],
+          "description": "Solver iterations to termination."
+        },
+        "volume_convergence": {
+          "type": ["number", "null"],
+          "description": "Volume convergence metric at termination (see Decision Register DR-022, DR-028)."
+        },
+        "sim_clock_time_s": {
+          "type": ["number", "null"],
+          "description": "Simulated model time elapsed, seconds."
+        },
+        "wall_clock_time_s": {
+          "type": ["number", "null"],
+          "description": "Actual wall-clock solve time, seconds."
+        }
+      }
+    },
+    "assets": {
+      "type": "object",
+      "description": "This run's own outputs, keyed by role. These become the next Run's provenance inputs (hotstart/downstream_scenario above) when referenced.",
+      "additionalProperties": false,
+      "required": ["depth"],
+      "properties": {
+        "depth": {
+          "$ref": "#/$defs/asset",
+          "description": "Depth raster, COG, EPSG:5070. Also usable as a hotstart seed for another run."
+        },
+        "velocity": {
+          "$ref": "#/$defs/asset",
+          "description": "Velocity raster. Present only if inputs.save_velocity was true."
+        },
+        "stl": {
+          "$ref": "#/$defs/asset",
+          "description": "This run's own Stage Transfer Line, generated per DR-026. Absent where there's no upstream reach to hand it to."
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "description": "Non-fatal check results; the run still completes and writes run.json. Non-convergence and hydraulic QC failures (water on an invalid boundary cell, etc.) are hard errors, not warnings — see the job contracts' Errors sections.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": ["run_exists"]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hash8": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}$",
+      "description": "First 8 hex of SHA-256 (32-bit). Identity hashes; scoped under reach_id."
+    },
+    "checksum16": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "First 16 hex of SHA-256 (64-bit). File-integrity checksums."
+    },
+    "summaryStats": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min": { "type": ["number", "null"] },
+        "max": { "type": ["number", "null"] },
+        "mean": { "type": ["number", "null"] },
+        "median": { "type": ["number", "null"] },
+        "std": { "type": ["number", "null"] }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["href", "checksum"],
+      "properties": {
+        "href": {
+          "type": "string",
+          "description": "Path to the file, e.g. depth.tif, or a full s3:// URI."
+        },
+        "checksum": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$"
+        },
+        "source_url": {
+          "type": ["string", "null"],
+          "description": "External provenance URL, if applicable. Null for purely computed assets."
+        },
+        "retrieved": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "derived": {
+          "type": "boolean",
+          "default": false,
+          "description": "True for outputs regenerable from sources; subject to S3 lifecycle deletion."
+        }
+      }
+    },
+    "scenarioRef": {
+      "type": "object",
+      "description": "A same-model reference to another Run's assets by coordinates, not a resolved path — used for hotstart, where 'same reach, same run_identity unless stated otherwise' is a meaningful default to omit fields against. Cross-model references (e.g. downstream_scenario) use a resolved string path instead, since there's no such default across reach/model boundaries.",
+      "additionalProperties": false,
+      "required": ["scenario_point"],
+      "properties": {
+        "reach_id": {
+          "type": ["integer", "null"],
+          "description": "Omitted/null implies the same reach as this run — true for every current use of this $def (hotstart)."
+        },
+        "run_identity": {
+          "type": ["string", "null"],
+          "description": "Omitted/null implies the same run_identity as this run."
+        },
+        "scenario_point": {
+          "type": "string",
+          "description": "The scenario folder token being referenced, e.g. 'z=283/q=200' or 'nd=1.2e5/q=200'."
+        }
+      }
+    }
+  }
+}

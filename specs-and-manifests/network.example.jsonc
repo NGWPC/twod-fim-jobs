@@ -1,0 +1,61 @@
+{
+  "type": "network",
+  "hash_algo": "sha256",
+  "twod_fim_version": "2.0.1",
+  "created_at": "2026-06-01T09:00:00Z",
+  "identity_hash": "7c2a9e41", // computed as hash of identity object
+  "id": "7c2a9e41", // equal to identity_hash — no realization axis
+  "identity": {
+    "sdr_commit": "826a602d",
+    "reach_network_hash": "3ba1c0e2", // raw NHF network source + version
+    "lakes_dataset_hash": "d4e9f1a0", // NHDWaterbody-style source, not a pre-built dead-pool dataset
+    "coasts_vector_hash": "91bb2c3d", // the only coastal source actually read for processing
+    "coasts_raster_hash": "77cc44dd", // optional — present here because coasts_raster_path was also given; not output-determining beyond deriving a default vector path
+    "drainage_area_threshold_percent": 5.0, // DR-024
+    "stream_order_filter_threshold": 3, // hard filter, not just merge gate
+    "max_length_threshold_km": 3.0, // DR-024
+    "lake_area_threshold_sqkm": 5.0, // code-only, not in DR-007/034 text
+    "negative_lake_buffer_meters": 50.0 // the actual DR-034 ALT-A "shrink" mechanism
+  },
+  "inputs": { // call args, verbatim — this is Network's provenance
+    "reach_network_path": "s3://bucket/pre/nhf_network_raw.gpkg",
+    "lakes_dataset_path": "s3://bucket/reference/nhd_waterbody.gpkg",
+    "coasts_vector_path": "s3://bucket/reference/coastal_boundary.gpkg",
+    "coasts_raster_path": "s3://bucket/reference/MHHW.tif", // optional; not read directly, see network.schema.json
+    "base_output_path": "s3://twod-fim/version=v1/network",
+    "drainage_area_threshold_percent": 5.0,
+    "stream_order_filter_threshold": 3,
+    "max_length_threshold_km": 3.0,
+    "lake_area_threshold_sqkm": 5.0,
+    "negative_lake_buffer_meters": 50.0
+  },
+  "properties": { // computed/diagnostic; informational, not part of identity — one counter per real code branch
+    "n_reaches_input": 2483911,
+    "n_reaches_below_stream_order_removed": 1611402,
+    "n_reaches_encompassed_removed_lake": 6104,
+    "n_reaches_encompassed_removed_coastal": 3184,
+    "n_reaches_trimmed_inlet_lake": 812,
+    "n_reaches_trimmed_outlet_lake": 799,
+    "n_reaches_trimmed_inlet_coastal": 421,
+    "n_reaches_dropped_coastal_cascade": 1907, // reaches removed downstream of a coastal encompassed/trimmed reach
+    "n_reaches_split_passthrough_lake": 133,
+    "n_reaches_merged": 41209,
+    "n_reaches_output": 820847,
+    "n_headwater_reaches": 118302,
+    "n_terminal_reaches": 9540
+  },
+  "assets": { // this job's own outputs — two GeoPackage layers, matches save_modified_network
+    "network": {
+      "href": "network.gpkg",
+      "checksum": "5151515151515151",
+      "source_url": null,
+      "derived": false
+    },
+    "lakes": {
+      "href": "lakes.gpkg",
+      "checksum": "6262626262626262",
+      "source_url": null
+    }
+  },
+  "warnings": []
+}

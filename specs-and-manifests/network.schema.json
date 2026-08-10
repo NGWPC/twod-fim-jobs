@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NGWPC/twod-fim-jobs/specs-and-manifests/network.schema.json",
+  "title": "network.json",
+  "description": "modify_network output record: the trimmed/tagged/merged reach network that build_model's db_uri subsequently points at. Grounded in jobs/modify_network/nhf_network_mod.py's NHFNetworkModifier (prototype, not yet wrapped as a stateless job) and modify_network_specs.md, the source of truth for field names. No Realization axis — operates on the whole network in one shot, not addressed by reach_id/domain/scenario — so id == identity_hash. See guide.md's Identity/Realization pattern (this is the Identity-only variant) and the shared envelope in guide.md#manifest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "type",
+    "hash_algo",
+    "twod_fim_version",
+    "created_at",
+    "identity_hash",
+    "id",
+    "identity",
+    "inputs",
+    "assets"
+  ],
+  "properties": {
+    "type": { "type": "string", "const": "network", "description": "Discriminator vs. model/run records." },
+    "hash_algo": { "type": "string", "const": "sha256" },
+    "twod_fim_version": { "type": "string", "description": "Producer software version (provenance)." },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Write completion time (UTC). network.json is written last, after network.gpkg/lakes.gpkg."
+    },
+    "identity_hash": { "$ref": "#/$defs/hash8", "description": "Hash of the identity object." },
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}$",
+      "description": "Equal to identity_hash — no realization code to append. See description above."
+    },
+    "identity": {
+      "type": "object",
+      "description": "The inputs that define Network identity; hashed to identity_hash. A change to any of these should fork identity_hash and force a rebuild — transitively forcing every downstream Model to notice via reach_geom_hash once it re-reads reach_network_path.",
+      "additionalProperties": false,
+      "required": [
+        "sdr_commit",
+        "reach_network_hash",
+        "lakes_dataset_hash",
+        "coasts_vector_hash",
+        "drainage_area_threshold_percent",
+        "stream_order_filter_threshold",
+        "max_length_threshold_km",
+        "lake_area_threshold_sqkm",
+        "negative_lake_buffer_meters"
+      ],
+      "properties": {
+        "sdr_commit": { "type": "string", "description": "Methodology version pin (output-determining)." },
+        "reach_network_hash": {
+          "$ref": "#/$defs/hash8",
+          "description": "Hash of the raw hydrofabric network source + version (NHFNetworkModifier.nhf_gpkg_path connection params)."
+        },
+        "lakes_dataset_hash": {
+          "$ref": "#/$defs/hash8",
+          "description": "Hash of the lakes/waterbody source + version (NHDWaterbody-style dataset — not a pre-built dead-pool dataset; the dead-pool extent is derived at runtime via negative_lake_buffer_meters, see DR-034)."
+        },
+        "coasts_vector_hash": {
+          "$ref": "#/$defs/hash8",
+          "description": "Hash of the coastal/tidal-surface vector source + version (DR-038). The only coastal source actually read for processing."
+        },
+        "coasts_raster_hash": {
+          "anyOf": [{ "$ref": "#/$defs/hash8" }, { "type": "null" }],
+          "description": "Hash of the coastal/tidal-surface raster source + version, if given. Not output-determining beyond deriving a default coasts_vector_path when the vector isn't supplied directly — raster-to-vector conversion itself is unimplemented (see modify_network_specs.md Errors). Optional; not part of required identity."
+        },
+        "drainage_area_threshold_percent": {
+          "type": "number",
+          "description": "Max drainage-area difference (%) between reaches eligible for merge. Code default 5 (DR-024)."
+        },
+        "stream_order_filter_threshold": {
+          "type": "integer",
+          "description": "Minimum Strahler stream order kept in the network at all — reaches below this are filtered out entirely, at load time, before lake/coastal/merge processing. Code default 3."
+        },
+        "max_length_threshold_km": {
+          "type": "number",
+          "description": "Max combined length (km) of a merged reach chain. Default 3 (DR-024)."
+        },
+        "lake_area_threshold_sqkm": {
+          "type": "number",
+          "description": "Minimum lake area (km2) to be considered at all; smaller waterbodies are dropped before reach classification. Code default 5. Not present in DR-007/DR-034 text — a code-only parameter."
+        },
+        "negative_lake_buffer_meters": {
+          "type": "number",
+          "description": "Inward buffer (m) applied to raw waterbody polygons to approximate the dead-pool extent. Code default 50. This is the actual mechanism behind DR-034 ALT-A ('shrink an existing waterbody dataset') — not a separately-sourced dead-pool dataset."
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "description": "The modify_network call arguments, recorded verbatim. This is Network's provenance — not part of identity_hash.",
+      "additionalProperties": false,
+      "required": ["reach_network_path", "lakes_dataset_path", "coasts_vector_path", "base_output_path"],
+      "properties": {
+        "reach_network_path": {
+          "type": "string",
+          "description": "Path to the raw input hydrofabric reach network. Must be a GPKG file. Maps to NHFNetworkModifier.nhf_gpkg_path."
+        },
+        "lakes_dataset_path": {
+          "type": "string",
+          "description": "Path to the lakes/waterbody dataset. Maps to lakes_gpkg_path."
+        },
+        "coasts_vector_path": {
+          "type": "string",
+          "description": "Path to the coastal/tidal-surface boundary as a vector dataset (e.g. GPKG). The only coastal input actually read for processing."
+        },
+        "coasts_raster_path": {
+          "type": ["string", "null"],
+          "description": "Path to the coastal/tidal-surface boundary as a raster (e.g. MHHW GeoTIFF). Optional — used only to derive a default coasts_vector_path (same path, .gpkg extension) when the vector isn't given directly. Raster-to-vector conversion is unimplemented in the prototype."
+        },
+        "base_output_path": {
+          "type": "string",
+          "description": "Path where the modified network and manifest are written."
+        },
+        "drainage_area_threshold_percent": { "type": ["number", "null"] },
+        "stream_order_filter_threshold": { "type": ["integer", "null"] },
+        "max_length_threshold_km": { "type": ["number", "null"] },
+        "lake_area_threshold_sqkm": { "type": ["number", "null"] },
+        "negative_lake_buffer_meters": { "type": ["number", "null"] }
+      }
+    },
+    "properties": {
+      "type": "object",
+      "description": "Computed/diagnostic values; informational, not part of identity. One counter per real processing branch, so a run is auditable against the code path it took.",
+      "additionalProperties": false,
+      "properties": {
+        "n_reaches_input": { "type": ["integer", "null"] },
+        "n_reaches_below_stream_order_removed": { "type": ["integer", "null"], "description": "Dropped by the stream_order_filter_threshold filter before any waterbody/merge processing." },
+        "n_reaches_encompassed_removed_lake": { "type": ["integer", "null"], "description": "Fully inside a lake polygon — dropped (waterbody_encompassed['lake'])." },
+        "n_reaches_encompassed_removed_coastal": { "type": ["integer", "null"], "description": "Fully inside coastal coverage — dropped (waterbody_encompassed['coastal'])." },
+        "n_reaches_trimmed_inlet_lake": { "type": ["integer", "null"], "description": "Downstream end inside a lake — trimmed to upstream portion, is_terminal set." },
+        "n_reaches_trimmed_outlet_lake": { "type": ["integer", "null"], "description": "Upstream end inside a lake — trimmed to downstream portion, is_headwater set." },
+        "n_reaches_trimmed_inlet_coastal": { "type": ["integer", "null"], "description": "Downstream end inside coastal coverage but upstream not — trimmed to upstream portion, terminal_reason='coast'. Coastal has no outlet/pass-through case." },
+        "n_reaches_dropped_coastal_cascade": { "type": ["integer", "null"], "description": "Removed for being downstream of a coastal encompassed/trimmed reach, not for their own classification." },
+        "n_reaches_split_passthrough_lake": { "type": ["integer", "null"], "description": "Passed through a lake at both ends outside it — split into a new inlet/outlet reach pair, minting a new reach_id." },
+        "n_reaches_merged": { "type": ["integer", "null"], "description": "Consumed by a drainage-area-difference merge into a downstream neighbor." },
+        "n_reaches_output": { "type": ["integer", "null"] },
+        "n_headwater_reaches": { "type": ["integer", "null"] },
+        "n_terminal_reaches": { "type": ["integer", "null"] }
+      }
+    },
+    "assets": {
+      "type": "object",
+      "description": "This job's own outputs. Matches NHFNetworkModifier.save_modified_network's two GeoPackage layers.",
+      "additionalProperties": false,
+      "required": ["network"],
+      "properties": {
+        "network": {
+          "$ref": "#/$defs/asset",
+          "description": "The modified reach network (flowpaths layer) — what build_model's db_uri points at downstream. Carries per-reach tags: is_headwater, is_terminal, terminal_reason (coastal breaks persist only as terminal_reason='coast' — no separate coastal inlet/outlet/encompassed tags), waterbody_inlet/waterbody_outlet (lake only — encompassed reaches are dropped before persistence, so there's no encompassed tag either), is_trimmed (initialized but not currently set by any code path)."
+        },
+        "lakes": {
+          "$ref": "#/$defs/asset",
+          "description": "The filtered (lake_area_threshold_sqkm) and buffered (negative_lake_buffer_meters) lake polygons actually used for classification — kept for QC/reference, not itself part of the reach network (DR-037 ALT-B: lakes are not inserted as network reaches)."
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "description": "Non-fatal check results; the job still completes and writes network.json.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": ["network_exists", "ambiguous_reach_classification"]
+          },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hash8": { "type": "string", "pattern": "^[0-9a-f]{8}$", "description": "First 8 hex of SHA-256 (32-bit)." },
+    "checksum16": { "type": "string", "pattern": "^[0-9a-f]{16}$", "description": "First 16 hex of SHA-256 (64-bit)." },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["href", "checksum"],
+      "properties": {
+        "href": { "type": "string" },
+        "checksum": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+        "source_url": { "type": ["string", "null"] },
+        "retrieved": { "type": ["string", "null"], "format": "date-time" },
+        "derived": { "type": "boolean", "default": false }
+      }
+    }
+  }
+}

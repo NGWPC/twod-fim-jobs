@@ -287,8 +287,10 @@ pyright
 
 ### Export JSON Schemas
 
-Exports JSON schemas for each job's inputs, result payload, and model manifest to the `schemas/` directory. Run this after any model change to regenerate the expected input/output contracts.
+To autogenerate tables, examples, and schemas for the docs folder, run one of the following commands
 
 ```bash
-python -m twod_fim_jobs.models.export_schemas
+python -m twod_fim_jobs.models.generate_docs
+
+pixi run generate_docs
 ```

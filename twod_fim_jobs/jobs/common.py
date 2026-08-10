@@ -35,7 +35,7 @@ class Job(ABC, Generic[T_Inputs]):
         logger.info("Finished job %s", type(self).__name__)
 
         if PRINT_SEPEX_STYLE_RESULTS:
-            print(json.dumps({"plugin_results": result.model_dump()}, indent=4))
+            print(json.dumps({"plugin_results": result.model_dump()}), flush=True)
 
         return result
 

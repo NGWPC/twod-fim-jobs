@@ -49,7 +49,7 @@ def validate_db_connection(db_uri: str, layer: str, fields: list[str]) -> None:
         )
 
 
-def query_database(sql: str, db_uri: str) -> gpd.GeoDataFrame:
+def query_database(sql: str, db_uri: str, epsg: int | None = None) -> gpd.GeoDataFrame:
     scheme = urlparse(db_uri).scheme
     if scheme in {"postgresql", "postgres"}:
         engine = create_engine(db_uri)
@@ -59,11 +59,15 @@ def query_database(sql: str, db_uri: str) -> gpd.GeoDataFrame:
         gdf = gpd.read_file(path, sql=sql)
     else:
         raise ValueError(f"scheme '{scheme}' is not supported for db_uri '{db_uri}'")
+    if epsg is not None and gdf.crs is not None and gdf.crs.to_epsg() != epsg:
+        raise InvalidAttributeError(
+            f"Expected CRS EPSG:{epsg}, got {gdf.crs.to_string()} from '{db_uri}'"
+        )
     return gdf
 
 
 def query_upstream_reach(
-    reach_id: int, db_uri: str, layer: str = REACH_TABLE
+    reach_id: int, db_uri: str, epsg: int | None = None, layer: str = REACH_TABLE
 ) -> tuple[list[int], gpd.GeoDataFrame]:
     # Validate 1
     fields = [REACH_ID_FIELD, REACH_TO_ID_FIELD, DA_FIELD, "geom"]
@@ -74,7 +78,7 @@ def query_upstream_reach(
     sql = (
         f"SELECT {reach_fields_str} FROM {layer} WHERE {REACH_TO_ID_FIELD} = {reach_id}"
     )
-    gdf = query_database(sql, db_uri)
+    gdf = query_database(sql, db_uri, epsg=epsg)
 
     # Validate 2
     if gdf.empty:
@@ -86,7 +90,7 @@ def query_upstream_reach(
 
 
 def query_reach(
-    reach_id: int, db_uri: str, layer: str = REACH_TABLE
+    reach_id: int, db_uri: str, epsg: int | None = None, layer: str = REACH_TABLE
 ) -> gpd.GeoDataFrame:
     """Load reach geometry and attributes from a reach provider."""
     # Validate 1
@@ -95,7 +99,7 @@ def query_reach(
     # Query
     reach_fields_str = ", ".join(REACH_FIELDS)
     sql = f"SELECT {reach_fields_str} FROM {layer} WHERE {REACH_ID_FIELD} = {reach_id}"
-    gdf = query_database(sql, db_uri)
+    gdf = query_database(sql, db_uri, epsg=epsg)
 
     # Validate 2
     if gdf.empty:

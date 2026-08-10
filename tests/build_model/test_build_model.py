@@ -15,7 +15,7 @@ from twod_fim_jobs.exceptions import (
 from twod_fim_jobs.jobs.build_model import BuildModelJob, _check_inflow_cl_intersection
 from twod_fim_jobs.jobs.build_model import _normalize_href
 from twod_fim_jobs.models.build_model import BuildModelInputs
-from twod_fim_jobs.models.common import (
+from twod_fim_jobs.models.warnings import (
     LargeDomainAreaWarning,
     CenterlineInflowMultiIntersectionWarning,
 )

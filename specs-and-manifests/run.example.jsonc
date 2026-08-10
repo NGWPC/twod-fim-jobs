@@ -30,7 +30,7 @@
       "scenario_point": "z=283/q=150",
       "run_identity": "af1436e4"
     },
-    "downstream_scenario": "s3://twod-fim/version=v1/results/reach=12345/a3f9c1e8/hf1436e4/z=283.2/q=200",
+    "downstream_scenario": "s3://twod-fim/version=v1/results/reach=12344/b7e2d4f0/af1436e4/z=283.2/q=200", // the DOWNSTREAM reach (12344 per model.example.jsonc), its own model identity, same run identity since same sdr_commit + solver
     "max_simulation_length_hours": 48,
     "max_simulation_wall_time_minutes": 30,
     "save_velocity": false

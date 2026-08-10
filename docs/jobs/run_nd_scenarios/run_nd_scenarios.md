@@ -115,7 +115,7 @@ This separation means the acceptance criteria measure *cumulative* change since 
 
 4. Apply the combined verdict — `reject_high` takes priority:
    - **`reject_high`** (any criterion above its ceiling): hold `q_current`, shrink `Δq` by `SHRINK_FACTOR`, retry.
-   - **`accept`** (any criterion in band, none above ceiling): save snapshot, advance both `q_current` and `q_accepted` to `q_trial`, grow `Δq` by `GROW_FACTOR`.
+   - **`accept`** (any criterion in band, none above ceiling): save snapshot, advance both `q_current` and `q_accepted` to `q_trial`.
    - **`reject_low`** (all criteria below their floor): advance `q_current` to `q_trial` without saving a snapshot, grow `Δq` by `GROW_FACTOR`.
 5. Repeat until `q_trial` reaches `max_upstream_inflow`, then run that discharge unconditionally as the final scenario.
 

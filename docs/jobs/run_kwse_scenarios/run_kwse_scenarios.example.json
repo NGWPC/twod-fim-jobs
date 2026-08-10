@@ -1,0 +1,15 @@
+{
+  "model_manifest_path": "<required: string>",
+  "model_results_base_path": "<required: string>",
+  "ds_scenario_manifest_paths": [
+    "<required: string>"
+  ],
+  "scenarios": [
+    [
+      "<required: any>"
+    ]
+  ],
+  "max_simulation_length_hours": "<required: number>",
+  "max_simulation_wall_time_minutes": "<required: number>",
+  "save_velocity": "<required: boolean>"
+}

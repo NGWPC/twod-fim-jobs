@@ -1,0 +1,683 @@
+{
+  "$defs": {
+    "BoundaryCheckResult": {
+      "properties": {
+        "wse_0": {
+          "description": "WSE at the upstream endpoint cell",
+          "title": "Wse 0",
+          "type": "number"
+        },
+        "wse_1": {
+          "description": "WSE at the downstream endpoint cell",
+          "title": "Wse 1",
+          "type": "number"
+        },
+        "wse_range": {
+          "description": "wse_0 - wse_1; the width of the valid WSE window",
+          "title": "Wse Range",
+          "type": "number"
+        },
+        "n_wetted_edge_cells": {
+          "description": "Number of edge cells with any water (non-nan WSE)",
+          "title": "N Wetted Edge Cells",
+          "type": "integer"
+        },
+        "n_violating_edge_cells": {
+          "description": "Number of edge cells whose WSE falls within [wse_1, wse_0]",
+          "title": "N Violating Edge Cells",
+          "type": "integer"
+        },
+        "n_violating_top": {
+          "description": "Violating cells on the top edge (row 0)",
+          "title": "N Violating Top",
+          "type": "integer"
+        },
+        "n_violating_bottom": {
+          "description": "Violating cells on the bottom edge (last row)",
+          "title": "N Violating Bottom",
+          "type": "integer"
+        },
+        "n_violating_left": {
+          "description": "Violating cells on the left edge (col 0, interior rows)",
+          "title": "N Violating Left",
+          "type": "integer"
+        },
+        "n_violating_right": {
+          "description": "Violating cells on the right edge (last col, interior rows)",
+          "title": "N Violating Right",
+          "type": "integer"
+        },
+        "worst_violating_wse": {
+          "description": "WSE of the edge cell furthest from wse_0 within the violation window; nan if no violations",
+          "title": "Worst Violating Wse",
+          "type": "number"
+        },
+        "closest_edge_margin": {
+          "description": "Minimum distance of any wetted non-violating edge cell WSE to the nearest range boundary; nan if all wetted edge cells are violating",
+          "title": "Closest Edge Margin",
+          "type": "number"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Error message if a boundary violation was detected, else None",
+          "title": "Error"
+        }
+      },
+      "required": [
+        "wse_0",
+        "wse_1",
+        "wse_range",
+        "n_wetted_edge_cells",
+        "n_violating_edge_cells",
+        "n_violating_top",
+        "n_violating_bottom",
+        "n_violating_left",
+        "n_violating_right",
+        "worst_violating_wse",
+        "closest_edge_margin"
+      ],
+      "title": "BoundaryCheckResult",
+      "type": "object"
+    },
+    "ConvergenceResult": {
+      "properties": {
+        "volume_convergence": {
+          "description": "Ratio of net volume change to total inflow volume over the last mass interval; lower is more converged.",
+          "examples": [
+            0.02
+          ],
+          "title": "Volume Convergence",
+          "type": "number"
+        },
+        "boundary_check": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BoundaryCheckResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Edge-boundary violation diagnostics; None if the check was not performed."
+        },
+        "model_running": {
+          "description": "True if the solver was still running at this print interval; False if it had already terminated.",
+          "examples": [
+            true
+          ],
+          "title": "Model Running",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "volume_convergence",
+        "model_running"
+      ],
+      "title": "ConvergenceResult",
+      "type": "object"
+    },
+    "Domain": {
+      "additionalProperties": false,
+      "description": "Computed domain realization.",
+      "properties": {
+        "bbox": {
+          "description": "Domain bbox in native CRS [west, south, east, north].",
+          "examples": [
+            [
+              -2059240.0,
+              2806980.0,
+              -2055870.0,
+              2810760.0
+            ]
+          ],
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Bbox",
+          "type": "array"
+        },
+        "anchor": {
+          "description": "Grid-snapped reach centroid in native CRS [x, y]; origin the offsets are measured from.",
+          "examples": [
+            [
+              -2058170.0,
+              2809120.0
+            ]
+          ],
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Anchor",
+          "type": "array"
+        },
+        "offsets": {
+          "description": "[N, S, E, W] grid-snapped offsets in CRS units; matches domain_token.",
+          "examples": [
+            [
+              164.0,
+              214.0,
+              230.0,
+              107.0
+            ]
+          ],
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Offsets",
+          "type": "array"
+        }
+      },
+      "required": [
+        "bbox",
+        "anchor",
+        "offsets"
+      ],
+      "title": "Domain",
+      "type": "object"
+    },
+    "GridProperties": {
+      "additionalProperties": false,
+      "description": "Grid dimensions of the model domain.",
+      "properties": {
+        "rows": {
+          "description": "Number of rows in the model domain",
+          "examples": [
+            378
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Rows",
+          "type": "integer"
+        },
+        "cols": {
+          "description": "Number of columns in the model domain",
+          "examples": [
+            337
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Cols",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rows",
+        "cols"
+      ],
+      "title": "GridProperties",
+      "type": "object"
+    },
+    "JobWarning": {
+      "properties": {
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "title": "JobWarning",
+      "type": "object"
+    },
+    "RunConfig": {
+      "description": "Solver execution settings; constructed once per job and passed to every worker.",
+      "properties": {
+        "sim_time_seconds": {
+          "examples": [
+            36000.0
+          ],
+          "title": "Sim Time Seconds",
+          "type": "number"
+        },
+        "save_interval_seconds": {
+          "examples": [
+            3600.0
+          ],
+          "title": "Save Interval Seconds",
+          "type": "number"
+        },
+        "mass_interval_seconds": {
+          "examples": [
+            60.0
+          ],
+          "title": "Mass Interval Seconds",
+          "type": "number"
+        },
+        "initial_tstep_seconds": {
+          "examples": [
+            0.5
+          ],
+          "title": "Initial Tstep Seconds",
+          "type": "number"
+        },
+        "use_cuda": {
+          "default": false,
+          "examples": [
+            true
+          ],
+          "title": "Use Cuda",
+          "type": "boolean"
+        },
+        "use_elevoff": {
+          "default": false,
+          "examples": [
+            false
+          ],
+          "title": "Use Elevoff",
+          "type": "boolean"
+        },
+        "initial_state_path": {
+          "anyOf": [
+            {
+              "format": "path",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "examples": [
+            null
+          ],
+          "title": "Initial State Path"
+        }
+      },
+      "required": [
+        "sim_time_seconds",
+        "save_interval_seconds",
+        "mass_interval_seconds",
+        "initial_tstep_seconds"
+      ],
+      "title": "RunConfig",
+      "type": "object"
+    },
+    "ScenarioAssets": {
+      "additionalProperties": false,
+      "properties": {
+        "depth": {
+          "description": "Path of the depth grid at the final timestep",
+          "examples": [
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/depth.tif"
+          ],
+          "format": "path",
+          "title": "Depth",
+          "type": "string"
+        },
+        "inundation_polygon": {
+          "description": "Path of the inundated area polygon at the final timestep",
+          "examples": [
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/inundation.geojson"
+          ],
+          "format": "path",
+          "title": "Inundation Polygon",
+          "type": "string"
+        },
+        "stage_transfer_line": {
+          "description": "Path of the stage transfer line",
+          "examples": [
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/stl.geojson"
+          ],
+          "format": "path",
+          "title": "Stage Transfer Line",
+          "type": "string"
+        },
+        "zarr_store": {
+          "anyOf": [
+            {
+              "format": "path",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path of the zarr with depths at each print interval",
+          "examples": [
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/depths.zarr"
+          ],
+          "title": "Zarr Store"
+        }
+      },
+      "required": [
+        "depth",
+        "inundation_polygon",
+        "stage_transfer_line"
+      ],
+      "title": "ScenarioAssets",
+      "type": "object"
+    },
+    "ScenarioProperties": {
+      "additionalProperties": false,
+      "properties": {
+        "nominal_wse": {
+          "description": "Nominal water surface elevation measured along the reach's u/s stage transfer line",
+          "examples": [
+            100.5
+          ],
+          "title": "Nominal Wse",
+          "type": "number"
+        },
+        "scenario_diagnostics": {
+          "description": "Diagnostics for each model print interval",
+          "items": {
+            "$ref": "#/$defs/ConvergenceResult"
+          },
+          "title": "Scenario Diagnostics",
+          "type": "array"
+        },
+        "termination_condition": {
+          "$ref": "#/$defs/TerminationCondition",
+          "description": "How the scenario run was terminated"
+        }
+      },
+      "required": [
+        "nominal_wse",
+        "scenario_diagnostics",
+        "termination_condition"
+      ],
+      "title": "ScenarioProperties",
+      "type": "object"
+    },
+    "ScenarioRunInputs": {
+      "additionalProperties": false,
+      "properties": {
+        "ds_slope": {
+          "description": "Normal-depth slope for the downstream boundary condition",
+          "examples": [
+            0.01
+          ],
+          "title": "Ds Slope",
+          "type": "number"
+        },
+        "ds_wse": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Nominal water surface elevation along the downstream stage trnasfer line",
+          "examples": [
+            100.5
+          ],
+          "title": "Ds Wse"
+        },
+        "us_discharge": {
+          "description": "Upstream inflow discharge in cms",
+          "examples": [
+            1000.0
+          ],
+          "title": "Us Discharge",
+          "type": "number"
+        },
+        "scenario_dir_name": {
+          "description": "Output directory name for this scenario's assets",
+          "examples": [
+            "nd=1.0E02/q=1000"
+          ],
+          "title": "Scenario Dir Name",
+          "type": "string"
+        },
+        "volume_convergence_tolerance": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Volume convergence threshold; None disables the check",
+          "examples": [
+            0.1
+          ],
+          "title": "Volume Convergence Tolerance"
+        },
+        "allow_water_on_edges": {
+          "description": "Whether to ignore or terminate when water pools on an invalid edge",
+          "examples": [
+            false
+          ],
+          "title": "Allow Water On Edges",
+          "type": "boolean"
+        },
+        "outflow_area_polygon_path": {
+          "description": "Path to polygon marking where the normal-depth boundary condition is applied",
+          "examples": [
+            "s3://twod-fim/version=v1/shared/outflow_area.geojson"
+          ],
+          "title": "Outflow Area Polygon Path",
+          "type": "string"
+        },
+        "inflow_line_path": {
+          "description": "Path to lineString defining the upstream inflow boundary",
+          "examples": [
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/inflow.geojson"
+          ],
+          "title": "Inflow Line Path",
+          "type": "string"
+        },
+        "centerline_path": {
+          "description": "Path to the reach centerline used to determine WSE sample points for domain expansion criteria",
+          "examples": [
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/reach.geojson"
+          ],
+          "title": "Centerline Path",
+          "type": "string"
+        },
+        "domain": {
+          "$ref": "#/$defs/Domain",
+          "description": "Domain configuration for the hydraulic model"
+        },
+        "grid": {
+          "$ref": "#/$defs/GridProperties",
+          "description": "Grid properties for the hydraulic model"
+        },
+        "run_config": {
+          "$ref": "#/$defs/RunConfig",
+          "description": "Solver runtime configuration"
+        },
+        "terrain_path": {
+          "description": "Path to the terrain raster",
+          "examples": [
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif"
+          ],
+          "title": "Terrain Path",
+          "type": "string"
+        },
+        "roughness_path": {
+          "description": "Path to the roughness raster",
+          "examples": [
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/roughness.tif"
+          ],
+          "title": "Roughness Path",
+          "type": "string"
+        },
+        "out_dir": {
+          "description": "Directory where solver output files are written",
+          "examples": [
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000"
+          ],
+          "title": "Out Dir",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ds_slope",
+        "us_discharge",
+        "scenario_dir_name",
+        "volume_convergence_tolerance",
+        "allow_water_on_edges",
+        "outflow_area_polygon_path",
+        "inflow_line_path",
+        "centerline_path",
+        "domain",
+        "grid",
+        "run_config",
+        "terrain_path",
+        "roughness_path",
+        "out_dir"
+      ],
+      "title": "ScenarioRunInputs",
+      "type": "object"
+    },
+    "TerminationCondition": {
+      "enum": [
+        "volume_convergence",
+        "edge_error",
+        "max_simulation_time"
+      ],
+      "title": "TerminationCondition",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "model",
+      "default": "model",
+      "description": "Discriminator vs. a run record.",
+      "title": "Type",
+      "type": "string"
+    },
+    "hash_algo": {
+      "const": "sha256",
+      "default": "sha256",
+      "description": "Hash function for every hash/checksum in this document. Truncation length is per-field (see build_model-design.md).",
+      "title": "Hash Algo",
+      "type": "string"
+    },
+    "twod_fim_version": {
+      "default": "0.1.0",
+      "description": "Producer software version (provenance).",
+      "title": "Twod Fim Version",
+      "type": "string"
+    },
+    "created_at": {
+      "description": "Run completion time (UTC). model.json is written last.",
+      "examples": [
+        "2026-08-06T22:17:07.406819Z"
+      ],
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "reach_id": {
+      "description": "Primary key for the reach in the reach db",
+      "examples": [
+        1257410937935512
+      ],
+      "title": "Reach Id",
+      "type": "integer"
+    },
+    "identity_hash": {
+      "description": "Hash of the identity object. Stable across domain changes; results group under it.",
+      "examples": [
+        "fceb20c6"
+      ],
+      "pattern": "^[0-9a-f]{8}$",
+      "title": "Identity Hash",
+      "type": "string"
+    },
+    "domain_code": {
+      "description": "Domain realization: grid-snapped N/S/E/W offsets in CRS units from the anchor. A grid-reference code, not a hash.",
+      "examples": [
+        "N164S214E230W107"
+      ],
+      "pattern": "^N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
+      "title": "Domain Code",
+      "type": "string"
+    },
+    "model_id": {
+      "description": "<identity_hash>+<domain_code>. Also the folder name.",
+      "examples": [
+        "fceb20c6_N164S214E230W107"
+      ],
+      "pattern": "^[0-9a-f]{8}_N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
+      "title": "Model Id",
+      "type": "string"
+    },
+    "inputs": {
+      "$ref": "#/$defs/ScenarioRunInputs",
+      "description": "Inputs used to run the model"
+    },
+    "properties": {
+      "$ref": "#/$defs/ScenarioProperties",
+      "description": "Computed values during the run."
+    },
+    "assets": {
+      "$ref": "#/$defs/ScenarioAssets",
+      "description": "One entry per output (model.json excluded), keyed by role; hrefs are the flat files under <id>/."
+    },
+    "warnings": {
+      "default": [],
+      "description": "Non-fatal check results; the scenario run still completes and writes scenario.json.",
+      "examples": [
+        []
+      ],
+      "items": {
+        "$ref": "#/$defs/JobWarning"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "created_at",
+    "reach_id",
+    "identity_hash",
+    "domain_code",
+    "model_id",
+    "inputs",
+    "properties",
+    "assets"
+  ],
+  "title": "ScenarioRunManifest",
+  "type": "object"
+}

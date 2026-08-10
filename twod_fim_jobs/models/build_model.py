@@ -32,24 +32,35 @@ class Identity(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    sdr_commit: str = Field(description="Methodology version pin (output-determining).")
+    sdr_commit: str = Field(
+        description="Methodology version pin (output-determining).",
+        examples=["a1b2c3d4"],
+    )
     reach_geom_hash: str = Field(
         pattern=r"^[0-9a-f]{8}$",
         description="Hash of WKT representation of reach geometry",
+        examples=["fceb20c6"],
     )
-    grid_resolution: float = Field(description="Model horizontal resolution", gt=0)
-    epsg_code: int = Field(description="EPSG integer that model will be created in")
+    grid_resolution: float = Field(
+        description="Model horizontal resolution", gt=0, examples=[10.0]
+    )
+    epsg_code: int = Field(
+        description="EPSG integer that model will be created in", examples=[5070]
+    )
     dem_source_inputs_hash: str = Field(
         pattern=r"^[0-9a-f]{8}$",
         description="Hash of connection parameters to roughness dataset",
+        examples=["a1b2c3d4"],
     )
     lulc_source_inputs_hash: str = Field(
         pattern=r"^[0-9a-f]{8}$",
         description="Hash of connection parameters to lulc dataset",
+        examples=["e5f6a7b8"],
     )
     lulc_lookup_dict_hash: str = Field(
         pattern=r"^[0-9a-f]{8}$",
         description="Hash of mapping from land use code to manning's roughness",
+        examples=["c9d0e1f2"],
     )
 
 
@@ -62,28 +73,36 @@ class Properties(BaseModel):
     drainage_area_sqkm: float = Field(
         description="From the reach DB; missing/invalid raises InvalidAttributeError (no model.json written).",
         gt=0,
+        examples=[142.7],
     )
     bankfull_width_m: float = Field(
         description="Estimated bankfull width (pre-multiplier) used to build the inflow.",
         gt=0,
+        examples=[35.2],
     )
     upstream_reach_ids: list[int] = Field(
-        description="Reach IDs in the network db of any reaches tributary to this model's reach"
+        description="Reach IDs in the network db of any reaches tributary to this model's reach",
+        examples=[[1257410937935510]],
     )
     stream_order: int | None = Field(
-        description="Strahler order of the reach for this model"
+        description="Strahler order of the reach for this model",
+        examples=[4],
     )
     length_m: float | None = Field(
-        description="Length of the reach centerline for this model"
+        description="Length of the reach centerline for this model",
+        examples=[2340.5],
     )
     slope: float | None = Field(
-        description="Slope along the reach centerline for this model"
+        description="Slope along the reach centerline for this model",
+        examples=[0.0012],
     )
     downstream_reach_id: int | None = Field(
-        description="ID of the reach downstream of this model's reach"
+        description="ID of the reach downstream of this model's reach",
+        examples=[1257410937935513],
     )
     upstream_mainstem_reach_id: int | None = Field(
-        description="ID of the reach with the largest drainage area of the reaches draining to this reach"
+        description="ID of the reach with the largest drainage area of the reaches draining to this reach",
+        examples=[1257410937935510],
     )
 
 
@@ -119,53 +138,73 @@ class BuildModelInputs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # Required
-    reach_id: int = Field(description="Primary key for the reach in the reach db")
-    db_uri: str = Field(description="Connection string for the refactored hydrofabric")
+    reach_id: int = Field(
+        description="Primary key for the reach in the reach db",
+        examples=[1257410937935512],
+    )
+    db_uri: str = Field(
+        description="Connection string for the refactored hydrofabric",
+        examples=["sqlite:///tests/build_model/data/reach_network.gpkg"],
+    )
     base_output_path: str = Field(
-        description="Path where output artifacts will be written"
+        description="Path where output artifacts will be written",
+        examples=["s3://twod-fim/version=v1/models/"],
     )
 
     # Optional
     dem_source: str = Field(
         default=DEFAULT_DEM_SOURCE,
         description="Connection string for the DEM dataset",
+        examples=[
+            "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt"
+        ],
     )
     lulc_source: str = Field(
         default=DEFAULT_LULC_SOURCE,
         description="Connection string for the LULC source dataset",
+        examples=[
+            "/vsis3/usgs-landcover/annual-nlcd/c1/v0/cu/mosaic/Annual_NLCD_LndCov_2023_CU_C1V0.tif"
+        ],
     )
     other_geometries: list[str] = Field(
         default_factory=list,
         description="A list of geometries that will be included when making the model domain bounding box",
+        examples=[["POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"]],
     )
     domain_buffer: float = Field(
         default=DEFAULT_DOMAIN_BUFFER,
         ge=0,
         description="How far to buffer the bounding box on model geometries",
+        examples=[100.0],
     )
     grid_resolution: float = Field(
         default=DEFAULT_GRID_RESOLUTION,
         gt=0,
         description="Resolution that grid will snap to and that DEM and roughness will resample to",
+        examples=[10.0],
     )
     walk_us_dist_pct: float = Field(
         default=DEFAULT_WALK_US_DIST_PCT,
         gt=0,
         description="How far to walk up the upstream mainstem centerline to place the inflow boundary condition, as percent of upstream centerline length",
+        examples=[0.25],
     )
     epsg_code: int = Field(
         default=DEFAULT_EPSG_CODE,
         gt=0,
         description="EPSG integer for all georeferenced output artifacts",
+        examples=[5070],
     )
     bankfull_width_multiplier: float = Field(
         default=DEFAULT_BANKFULL_WIDTH_MULTIPLIER,
         gt=0,
         description="How much to multiply bankfull width to arrive at inflow line width",
+        examples=[1.0],
     )
     lulc_lookup: dict[int, float] = Field(
         default=DEFAULT_LULC_LOOKUP,
         description="A dictionary mapping land use codes to Manning's roughness values",
+        examples=[{11: 0.04, 21: 0.04, 31: 0.025, 41: 0.16, 82: 0.035}],
     )
 
     @property
@@ -198,10 +237,14 @@ class BuildModelInputs(BaseModel):
 class BuildModelResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    identity_hash: str
-    model_id: str
-    model_dir: str
-    warnings: list[JobWarning]
+    identity_hash: str = Field(examples=["fceb20c6"])
+    model_id: str = Field(examples=["fceb20c6_N164S214E230W107"])
+    model_dir: str = Field(
+        examples=[
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107"
+        ]
+    )
+    warnings: list[JobWarning] = Field(examples=[[]])
 
 
 class ModelManifest(BaseModel):
@@ -221,20 +264,27 @@ class ModelManifest(BaseModel):
         description="Producer software version (provenance).",
     )
     created_at: datetime = Field(
-        description="Build completion time (UTC). model.json is written last."
+        description="Build completion time (UTC). model.json is written last.",
+        examples=["2026-08-06T22:17:07.406819Z"],
     )
-    reach_id: int = Field(description="Primary key for the reach in the reach db")
+    reach_id: int = Field(
+        description="Primary key for the reach in the reach db",
+        examples=[1257410937935512],
+    )
     identity_hash: str = Field(
         pattern=r"^[0-9a-f]{8}$",
         description="Hash of the identity object. Stable across domain changes; results group under it.",
+        examples=["fceb20c6"],
     )
     domain_code: str = Field(
         pattern=r"^N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
         description="Domain realization: grid-snapped N/S/E/W offsets in CRS units from the anchor. A grid-reference code, not a hash.",
+        examples=["N164S214E230W107"],
     )
     model_id: str = Field(
         pattern=r"^[0-9a-f]{8}_N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
         description="<identity_hash>+<domain_code>. Also the folder name.",
+        examples=["fceb20c6_N164S214E230W107"],
     )
     inputs: BuildModelInputs = Field(
         description="The build_model call arguments, recorded verbatim."
@@ -252,4 +302,5 @@ class ModelManifest(BaseModel):
     warnings: list[JobWarning] = Field(
         default=[],
         description="Non-fatal check results; the build still completes and writes model.json.",
+        examples=[[]],
     )

@@ -1,0 +1,718 @@
+{
+  "$defs": {
+    "Asset": {
+      "additionalProperties": false,
+      "description": "One output file entry: role-keyed href plus integrity metadata.",
+      "properties": {
+        "href": {
+          "description": "Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.",
+          "examples": [
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif"
+          ],
+          "title": "Href",
+          "type": "string"
+        },
+        "checksum": {
+          "description": "First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.",
+          "examples": [
+            "a1b2c3d4e5f6a7b8"
+          ],
+          "pattern": "^[0-9a-f]{16}$",
+          "title": "Checksum",
+          "type": "string"
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.",
+          "examples": [
+            "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt"
+          ],
+          "title": "Source Url"
+        },
+        "retrieved": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the source was fetched, if applicable.",
+          "examples": [
+            "2026-08-06T22:17:07.406819Z"
+          ],
+          "title": "Retrieved"
+        },
+        "derived": {
+          "default": false,
+          "description": "True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.",
+          "examples": [
+            true
+          ],
+          "title": "Derived",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "href",
+        "checksum",
+        "source_url"
+      ],
+      "title": "Asset",
+      "type": "object"
+    },
+    "Assets": {
+      "additionalProperties": false,
+      "description": "One entry per output (model.json excluded), keyed by role; hrefs are the flat files under <id>/.",
+      "properties": {
+        "terrain": {
+          "$ref": "#/$defs/Asset",
+          "description": "Terrain raster used by the hydraulic model."
+        },
+        "roughness": {
+          "$ref": "#/$defs/Asset",
+          "description": "Manning's n raster used by the hydraulic model."
+        },
+        "centerline": {
+          "$ref": "#/$defs/Asset",
+          "description": "River centerline for this model's reach."
+        },
+        "inflow_line": {
+          "$ref": "#/$defs/Asset",
+          "description": "Inflow boundary condition line for this model's reach."
+        },
+        "reach_centroid": {
+          "$ref": "#/$defs/Asset",
+          "description": "Centroid of the river centerline for this model's reach."
+        },
+        "domain": {
+          "$ref": "#/$defs/Asset",
+          "description": "Derived polygon of the full model domain."
+        }
+      },
+      "required": [
+        "terrain",
+        "roughness",
+        "centerline",
+        "inflow_line",
+        "reach_centroid",
+        "domain"
+      ],
+      "title": "Assets",
+      "type": "object"
+    },
+    "BuildModelInputs": {
+      "additionalProperties": false,
+      "description": "Inputs for the build_model workflow.",
+      "properties": {
+        "reach_id": {
+          "description": "Primary key for the reach in the reach db",
+          "examples": [
+            1257410937935512
+          ],
+          "title": "Reach Id",
+          "type": "integer"
+        },
+        "db_uri": {
+          "description": "Connection string for the refactored hydrofabric",
+          "examples": [
+            "sqlite:///tests/build_model/data/reach_network.gpkg"
+          ],
+          "title": "Db Uri",
+          "type": "string"
+        },
+        "base_output_path": {
+          "description": "Path where output artifacts will be written",
+          "examples": [
+            "s3://twod-fim/version=v1/models/"
+          ],
+          "title": "Base Output Path",
+          "type": "string"
+        },
+        "dem_source": {
+          "default": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",
+          "description": "Connection string for the DEM dataset",
+          "examples": [
+            "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt"
+          ],
+          "title": "Dem Source",
+          "type": "string"
+        },
+        "lulc_source": {
+          "default": "/vsis3/usgs-landcover/annual-nlcd/c1/v0/cu/mosaic/Annual_NLCD_LndCov_2023_CU_C1V0.tif",
+          "description": "Connection string for the LULC source dataset",
+          "examples": [
+            "/vsis3/usgs-landcover/annual-nlcd/c1/v0/cu/mosaic/Annual_NLCD_LndCov_2023_CU_C1V0.tif"
+          ],
+          "title": "Lulc Source",
+          "type": "string"
+        },
+        "other_geometries": {
+          "description": "A list of geometries that will be included when making the model domain bounding box",
+          "examples": [
+            [
+              "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"
+            ]
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Other Geometries",
+          "type": "array"
+        },
+        "domain_buffer": {
+          "default": 0.0,
+          "description": "How far to buffer the bounding box on model geometries",
+          "examples": [
+            100.0
+          ],
+          "minimum": 0,
+          "title": "Domain Buffer",
+          "type": "number"
+        },
+        "grid_resolution": {
+          "default": 10,
+          "description": "Resolution that grid will snap to and that DEM and roughness will resample to",
+          "examples": [
+            10.0
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Grid Resolution",
+          "type": "number"
+        },
+        "walk_us_dist_pct": {
+          "default": 0.1,
+          "description": "How far to walk up the upstream mainstem centerline to place the inflow boundary condition, as percent of upstream centerline length",
+          "examples": [
+            0.25
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Walk Us Dist Pct",
+          "type": "number"
+        },
+        "epsg_code": {
+          "default": 5070,
+          "description": "EPSG integer for all georeferenced output artifacts",
+          "examples": [
+            5070
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Epsg Code",
+          "type": "integer"
+        },
+        "bankfull_width_multiplier": {
+          "default": 1.0,
+          "description": "How much to multiply bankfull width to arrive at inflow line width",
+          "examples": [
+            1.0
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Bankfull Width Multiplier",
+          "type": "number"
+        },
+        "lulc_lookup": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "default": {
+            "11": 0.04,
+            "21": 0.04,
+            "22": 0.1,
+            "23": 0.08,
+            "24": 0.15,
+            "31": 0.025,
+            "41": 0.16,
+            "42": 0.16,
+            "43": 0.16,
+            "52": 0.1,
+            "71": 0.035,
+            "81": 0.03,
+            "82": 0.035,
+            "90": 0.12,
+            "95": 0.07
+          },
+          "description": "A dictionary mapping land use codes to Manning's roughness values",
+          "examples": [
+            {
+              "11": 0.04,
+              "21": 0.04,
+              "31": 0.025,
+              "41": 0.16,
+              "82": 0.035
+            }
+          ],
+          "title": "Lulc Lookup",
+          "type": "object"
+        }
+      },
+      "required": [
+        "reach_id",
+        "db_uri",
+        "base_output_path"
+      ],
+      "title": "BuildModelInputs",
+      "type": "object"
+    },
+    "Domain": {
+      "additionalProperties": false,
+      "description": "Computed domain realization.",
+      "properties": {
+        "bbox": {
+          "description": "Domain bbox in native CRS [west, south, east, north].",
+          "examples": [
+            [
+              -2059240.0,
+              2806980.0,
+              -2055870.0,
+              2810760.0
+            ]
+          ],
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Bbox",
+          "type": "array"
+        },
+        "anchor": {
+          "description": "Grid-snapped reach centroid in native CRS [x, y]; origin the offsets are measured from.",
+          "examples": [
+            [
+              -2058170.0,
+              2809120.0
+            ]
+          ],
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Anchor",
+          "type": "array"
+        },
+        "offsets": {
+          "description": "[N, S, E, W] grid-snapped offsets in CRS units; matches domain_token.",
+          "examples": [
+            [
+              164.0,
+              214.0,
+              230.0,
+              107.0
+            ]
+          ],
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Offsets",
+          "type": "array"
+        }
+      },
+      "required": [
+        "bbox",
+        "anchor",
+        "offsets"
+      ],
+      "title": "Domain",
+      "type": "object"
+    },
+    "GridProperties": {
+      "additionalProperties": false,
+      "description": "Grid dimensions of the model domain.",
+      "properties": {
+        "rows": {
+          "description": "Number of rows in the model domain",
+          "examples": [
+            378
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Rows",
+          "type": "integer"
+        },
+        "cols": {
+          "description": "Number of columns in the model domain",
+          "examples": [
+            337
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Cols",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rows",
+        "cols"
+      ],
+      "title": "GridProperties",
+      "type": "object"
+    },
+    "Identity": {
+      "additionalProperties": false,
+      "description": "The inputs that define model identity; hashed to identity_hash.",
+      "properties": {
+        "sdr_commit": {
+          "description": "Methodology version pin (output-determining).",
+          "examples": [
+            "a1b2c3d4"
+          ],
+          "title": "Sdr Commit",
+          "type": "string"
+        },
+        "reach_geom_hash": {
+          "description": "Hash of WKT representation of reach geometry",
+          "examples": [
+            "fceb20c6"
+          ],
+          "pattern": "^[0-9a-f]{8}$",
+          "title": "Reach Geom Hash",
+          "type": "string"
+        },
+        "grid_resolution": {
+          "description": "Model horizontal resolution",
+          "examples": [
+            10.0
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Grid Resolution",
+          "type": "number"
+        },
+        "epsg_code": {
+          "description": "EPSG integer that model will be created in",
+          "examples": [
+            5070
+          ],
+          "title": "Epsg Code",
+          "type": "integer"
+        },
+        "dem_source_inputs_hash": {
+          "description": "Hash of connection parameters to roughness dataset",
+          "examples": [
+            "a1b2c3d4"
+          ],
+          "pattern": "^[0-9a-f]{8}$",
+          "title": "Dem Source Inputs Hash",
+          "type": "string"
+        },
+        "lulc_source_inputs_hash": {
+          "description": "Hash of connection parameters to lulc dataset",
+          "examples": [
+            "e5f6a7b8"
+          ],
+          "pattern": "^[0-9a-f]{8}$",
+          "title": "Lulc Source Inputs Hash",
+          "type": "string"
+        },
+        "lulc_lookup_dict_hash": {
+          "description": "Hash of mapping from land use code to manning's roughness",
+          "examples": [
+            "c9d0e1f2"
+          ],
+          "pattern": "^[0-9a-f]{8}$",
+          "title": "Lulc Lookup Dict Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sdr_commit",
+        "reach_geom_hash",
+        "grid_resolution",
+        "epsg_code",
+        "dem_source_inputs_hash",
+        "lulc_source_inputs_hash",
+        "lulc_lookup_dict_hash"
+      ],
+      "title": "Identity",
+      "type": "object"
+    },
+    "JobWarning": {
+      "properties": {
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "title": "JobWarning",
+      "type": "object"
+    },
+    "Properties": {
+      "additionalProperties": false,
+      "description": "Computed values and hydrofabric attributes (informational; not part of identity).",
+      "properties": {
+        "grid": {
+          "$ref": "#/$defs/GridProperties"
+        },
+        "drainage_area_sqkm": {
+          "description": "From the reach DB; missing/invalid raises InvalidAttributeError (no model.json written).",
+          "examples": [
+            142.7
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Drainage Area Sqkm",
+          "type": "number"
+        },
+        "bankfull_width_m": {
+          "description": "Estimated bankfull width (pre-multiplier) used to build the inflow.",
+          "examples": [
+            35.2
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Bankfull Width M",
+          "type": "number"
+        },
+        "upstream_reach_ids": {
+          "description": "Reach IDs in the network db of any reaches tributary to this model's reach",
+          "examples": [
+            [
+              1257410937935510
+            ]
+          ],
+          "items": {
+            "type": "integer"
+          },
+          "title": "Upstream Reach Ids",
+          "type": "array"
+        },
+        "stream_order": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Strahler order of the reach for this model",
+          "examples": [
+            4
+          ],
+          "title": "Stream Order"
+        },
+        "length_m": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Length of the reach centerline for this model",
+          "examples": [
+            2340.5
+          ],
+          "title": "Length M"
+        },
+        "slope": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Slope along the reach centerline for this model",
+          "examples": [
+            0.0012
+          ],
+          "title": "Slope"
+        },
+        "downstream_reach_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ID of the reach downstream of this model's reach",
+          "examples": [
+            1257410937935513
+          ],
+          "title": "Downstream Reach Id"
+        },
+        "upstream_mainstem_reach_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ID of the reach with the largest drainage area of the reaches draining to this reach",
+          "examples": [
+            1257410937935510
+          ],
+          "title": "Upstream Mainstem Reach Id"
+        }
+      },
+      "required": [
+        "grid",
+        "drainage_area_sqkm",
+        "bankfull_width_m",
+        "upstream_reach_ids",
+        "stream_order",
+        "length_m",
+        "slope",
+        "downstream_reach_id",
+        "upstream_mainstem_reach_id"
+      ],
+      "title": "Properties",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "build_model output record: model definition + artifact inventory.",
+  "properties": {
+    "type": {
+      "const": "model",
+      "default": "model",
+      "description": "Discriminator vs. a run record.",
+      "title": "Type",
+      "type": "string"
+    },
+    "hash_algo": {
+      "const": "sha256",
+      "default": "sha256",
+      "description": "Hash function for every hash/checksum in this document. Truncation length is per-field (see build_model-design.md).",
+      "title": "Hash Algo",
+      "type": "string"
+    },
+    "twod_fim_version": {
+      "default": "0.1.0",
+      "description": "Producer software version (provenance).",
+      "title": "Twod Fim Version",
+      "type": "string"
+    },
+    "created_at": {
+      "description": "Build completion time (UTC). model.json is written last.",
+      "examples": [
+        "2026-08-06T22:17:07.406819Z"
+      ],
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "reach_id": {
+      "description": "Primary key for the reach in the reach db",
+      "examples": [
+        1257410937935512
+      ],
+      "title": "Reach Id",
+      "type": "integer"
+    },
+    "identity_hash": {
+      "description": "Hash of the identity object. Stable across domain changes; results group under it.",
+      "examples": [
+        "fceb20c6"
+      ],
+      "pattern": "^[0-9a-f]{8}$",
+      "title": "Identity Hash",
+      "type": "string"
+    },
+    "domain_code": {
+      "description": "Domain realization: grid-snapped N/S/E/W offsets in CRS units from the anchor. A grid-reference code, not a hash.",
+      "examples": [
+        "N164S214E230W107"
+      ],
+      "pattern": "^N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
+      "title": "Domain Code",
+      "type": "string"
+    },
+    "model_id": {
+      "description": "<identity_hash>+<domain_code>. Also the folder name.",
+      "examples": [
+        "fceb20c6_N164S214E230W107"
+      ],
+      "pattern": "^[0-9a-f]{8}_N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
+      "title": "Model Id",
+      "type": "string"
+    },
+    "inputs": {
+      "$ref": "#/$defs/BuildModelInputs",
+      "description": "The build_model call arguments, recorded verbatim."
+    },
+    "domain": {
+      "$ref": "#/$defs/Domain"
+    },
+    "identity": {
+      "$ref": "#/$defs/Identity"
+    },
+    "properties": {
+      "$ref": "#/$defs/Properties"
+    },
+    "assets": {
+      "$ref": "#/$defs/Assets"
+    },
+    "warnings": {
+      "default": [],
+      "description": "Non-fatal check results; the build still completes and writes model.json.",
+      "examples": [
+        []
+      ],
+      "items": {
+        "$ref": "#/$defs/JobWarning"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "created_at",
+    "reach_id",
+    "identity_hash",
+    "domain_code",
+    "model_id",
+    "inputs",
+    "domain",
+    "identity",
+    "properties",
+    "assets"
+  ],
+  "title": "ModelManifest",
+  "type": "object"
+}

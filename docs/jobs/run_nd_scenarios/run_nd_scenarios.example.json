@@ -1,0 +1,73 @@
+{
+  "type": "model",
+  "hash_algo": "sha256",
+  "twod_fim_version": "0.1.0",
+  "created_at": "2026-08-06T22:17:07.406819Z",
+  "reach_id": 1257410937935512,
+  "identity_hash": "fceb20c6",
+  "domain_code": "N164S214E230W107",
+  "model_id": "fceb20c6_N164S214E230W107",
+  "inputs": {
+    "ds_slope": 0.01,
+    "ds_wse": 100.5,
+    "us_discharge": 1000.0,
+    "scenario_dir_name": "nd=1.0E02/q=1000",
+    "volume_convergence_tolerance": 0.1,
+    "allow_water_on_edges": false,
+    "outflow_area_polygon_path": "s3://twod-fim/version=v1/shared/outflow_area.geojson",
+    "inflow_line_path": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/inflow.geojson",
+    "centerline_path": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/reach.geojson",
+    "domain": {
+      "bbox": [
+        -2059240.0,
+        2806980.0,
+        -2055870.0,
+        2810760.0
+      ],
+      "anchor": [
+        -2058170.0,
+        2809120.0
+      ],
+      "offsets": [
+        164.0,
+        214.0,
+        230.0,
+        107.0
+      ]
+    },
+    "grid": {
+      "rows": 378,
+      "cols": 337
+    },
+    "run_config": {
+      "sim_time_seconds": 36000.0,
+      "save_interval_seconds": 3600.0,
+      "mass_interval_seconds": 60.0,
+      "initial_tstep_seconds": 0.5,
+      "use_cuda": true,
+      "use_elevoff": false,
+      "initial_state_path": null
+    },
+    "terrain_path": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif",
+    "roughness_path": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/roughness.tif",
+    "out_dir": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000"
+  },
+  "properties": {
+    "nominal_wse": 100.5,
+    "scenario_diagnostics": [
+      {
+        "volume_convergence": 0.02,
+        "boundary_check": null,
+        "model_running": true
+      }
+    ],
+    "termination_condition": "volume_convergence"
+  },
+  "assets": {
+    "depth": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/depth.tif",
+    "inundation_polygon": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/inundation.geojson",
+    "stage_transfer_line": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/stl.geojson",
+    "zarr_store": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/depths.zarr"
+  },
+  "warnings": []
+}

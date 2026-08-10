@@ -63,3 +63,4 @@ format = "ruff format ."
 lint-fix = "ruff check --fix ."
 ruff = { depends-on = ["lint-fix", "format"] }
 pyright = "pyright twod_fim_jobs"
+generate_docs = "python -m twod_fim_jobs.models.generate_docs"

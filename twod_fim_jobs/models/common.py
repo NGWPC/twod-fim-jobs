@@ -21,13 +21,16 @@ class Domain(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     bbox: tuple[float, float, float, float] = Field(
-        description="Domain bbox in native CRS [west, south, east, north]."
+        description="Domain bbox in native CRS [west, south, east, north].",
+        examples=[[-2059240.0, 2806980.0, -2055870.0, 2810760.0]],
     )
     anchor: tuple[float, float] = Field(
-        description="Grid-snapped reach centroid in native CRS [x, y]; origin the offsets are measured from."
+        description="Grid-snapped reach centroid in native CRS [x, y]; origin the offsets are measured from.",
+        examples=[[-2058170.0, 2809120.0]],
     )
     offsets: tuple[float, float, float, float] = Field(
-        description="[N, S, E, W] grid-snapped offsets in CRS units; matches domain_token."
+        description="[N, S, E, W] grid-snapped offsets in CRS units; matches domain_token.",
+        examples=[[164.0, 214.0, 230.0, 107.0]],
     )
 
     @property
@@ -45,8 +48,12 @@ class GridProperties(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    rows: int = Field(description="Number of rows in the model domain", gt=0)
-    cols: int = Field(description="Number of columns in the model domain", gt=0)
+    rows: int = Field(
+        description="Number of rows in the model domain", gt=0, examples=[378]
+    )
+    cols: int = Field(
+        description="Number of columns in the model domain", gt=0, examples=[337]
+    )
 
 
 class Asset(BaseModel):
@@ -55,21 +62,31 @@ class Asset(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     href: str = Field(
-        description="Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI."
+        description="Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.",
+        examples=[
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif"
+        ],
     )
     checksum: str = Field(
         pattern=r"^[0-9a-f]{16}$",
         description="First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.",
+        examples=["a1b2c3d4e5f6a7b8"],
     )
     source_url: str | None = Field(
-        description="External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets."
+        description="External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.",
+        examples=[
+            "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt"
+        ],
     )
     retrieved: datetime | None = Field(
-        default=None, description="When the source was fetched, if applicable."
+        default=None,
+        description="When the source was fetched, if applicable.",
+        examples=["2026-08-06T22:17:07.406819Z"],
     )
     derived: bool = Field(
         default=False,
         description="True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.",
+        examples=[True],
     )
 
     @classmethod
@@ -88,13 +105,13 @@ class RunConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    sim_time_seconds: float
-    save_interval_seconds: float
-    mass_interval_seconds: float
-    initial_tstep_seconds: float
-    use_cuda: bool = False
-    use_elevoff: bool = False
-    initial_state_path: Path | None = None
+    sim_time_seconds: float = Field(examples=[36000.0])
+    save_interval_seconds: float = Field(examples=[3600.0])
+    mass_interval_seconds: float = Field(examples=[60.0])
+    initial_tstep_seconds: float = Field(examples=[0.5])
+    use_cuda: bool = Field(default=False, examples=[True])
+    use_elevoff: bool = Field(default=False, examples=[False])
+    initial_state_path: Path | None = Field(default=None, examples=[None])
 
 
 class BoundaryCheckResult(BaseModel):
@@ -132,16 +149,26 @@ class BoundaryCheckResult(BaseModel):
 
 
 class ConvergenceResult(BaseModel):
-    volume_convergence: float
-    boundary_check: BoundaryCheckResult | None = None
-    model_running: bool
+    volume_convergence: float = Field(
+        description="Ratio of net volume change to total inflow volume over the last mass interval; lower is more converged.",
+        examples=[0.02],
+    )
+    boundary_check: BoundaryCheckResult | None = Field(
+        default=None,
+        description="Edge-boundary violation diagnostics; None if the check was not performed.",
+    )
+    model_running: bool = Field(
+        description="True if the solver was still running at this print interval; False if it had already terminated.",
+        examples=[True],
+    )
 
 
 class ScenarioProperties(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     nominal_wse: float = Field(
-        description="Nominal water surface elevation measured along the reach's u/s stage transfer line"
+        description="Nominal water surface elevation measured along the reach's u/s stage transfer line",
+        examples=[100.5],
     )
     scenario_diagnostics: list[ConvergenceResult] = Field(
         description="Diagnostics for each model print interval"
@@ -154,13 +181,30 @@ class ScenarioProperties(BaseModel):
 class ScenarioAssets(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    depth: Path = Field(description="Path of the depth grid at the final timestep")
-    inundation_polygon: Path = Field(
-        description="Path of the inundated area polygon at the final timestep"
+    depth: Path = Field(
+        description="Path of the depth grid at the final timestep",
+        examples=[
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/depth.tif"
+        ],
     )
-    stage_transfer_line: Path = Field(description="Path of the stage transfer line")
+    inundation_polygon: Path = Field(
+        description="Path of the inundated area polygon at the final timestep",
+        examples=[
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/inundation.geojson"
+        ],
+    )
+    stage_transfer_line: Path = Field(
+        description="Path of the stage transfer line",
+        examples=[
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/stl.geojson"
+        ],
+    )
     zarr_store: Path | None = Field(
-        default=None, description="Path of the zarr with depths at each print interval"
+        default=None,
+        description="Path of the zarr with depths at each print interval",
+        examples=[
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/depths.zarr"
+        ],
     )
 
     @field_serializer(
@@ -174,37 +218,66 @@ class ScenarioRunInputs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     ds_slope: float = Field(
-        description="Normal-depth slope for the downstream boundary condition"
+        description="Normal-depth slope for the downstream boundary condition",
+        examples=[0.01],
     )
     ds_wse: float | None = Field(
         default=None,
         description="Nominal water surface elevation along the downstream stage trnasfer line",
+        examples=[100.5],
     )
-    us_discharge: float = Field(description="Upstream inflow discharge in cms")
+    us_discharge: float = Field(
+        description="Upstream inflow discharge in cms", examples=[1000.0]
+    )
     scenario_dir_name: str = Field(
-        description="Output directory name for this scenario's assets"
+        description="Output directory name for this scenario's assets",
+        examples=["nd=1.0E02/q=1000"],
     )
     volume_convergence_tolerance: float | None = Field(
-        description="Volume convergence threshold; None disables the check"
+        description="Volume convergence threshold; None disables the check",
+        examples=[0.1],
     )
     allow_water_on_edges: bool = Field(
-        description="Whether to ignore or terminate when water pools on an invalid edge"
+        description="Whether to ignore or terminate when water pools on an invalid edge",
+        examples=[False],
     )
     outflow_area_polygon_path: str = Field(
-        description="Path to polygon marking where the normal-depth boundary condition is applied"
+        description="Path to polygon marking where the normal-depth boundary condition is applied",
+        examples=["s3://twod-fim/version=v1/shared/outflow_area.geojson"],
     )
     inflow_line_path: str = Field(
-        description="Path to lineString defining the upstream inflow boundary"
+        description="Path to lineString defining the upstream inflow boundary",
+        examples=[
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/inflow.geojson"
+        ],
     )
     centerline_path: str = Field(
-        description="Path to the reach centerline used to determine WSE sample points for domain expansion criteria"
+        description="Path to the reach centerline used to determine WSE sample points for domain expansion criteria",
+        examples=[
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/reach.geojson"
+        ],
     )
     domain: Domain = Field(description="Domain configuration for the hydraulic model")
     grid: GridProperties = Field(description="Grid properties for the hydraulic model")
     run_config: RunConfig = Field(description="Solver runtime configuration")
-    terrain_path: str = Field(description="Path to the terrain raster")
-    roughness_path: str = Field(description="Path to the roughness raster")
-    out_dir: str = Field(description="Directory where solver output files are written")
+    terrain_path: str = Field(
+        description="Path to the terrain raster",
+        examples=[
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif"
+        ],
+    )
+    roughness_path: str = Field(
+        description="Path to the roughness raster",
+        examples=[
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/roughness.tif"
+        ],
+    )
+    out_dir: str = Field(
+        description="Directory where solver output files are written",
+        examples=[
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000"
+        ],
+    )
 
 
 class ScenarioRunManifest(BaseModel):
@@ -222,20 +295,27 @@ class ScenarioRunManifest(BaseModel):
         description="Producer software version (provenance).",
     )
     created_at: datetime = Field(
-        description="Run completion time (UTC). model.json is written last."
+        description="Run completion time (UTC). model.json is written last.",
+        examples=["2026-08-06T22:17:07.406819Z"],
     )
-    reach_id: int = Field(description="Primary key for the reach in the reach db")
+    reach_id: int = Field(
+        description="Primary key for the reach in the reach db",
+        examples=[1257410937935512],
+    )
     identity_hash: str = Field(
         pattern=r"^[0-9a-f]{8}$",
         description="Hash of the identity object. Stable across domain changes; results group under it.",
+        examples=["fceb20c6"],
     )
     domain_code: str = Field(
         pattern=r"^N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
         description="Domain realization: grid-snapped N/S/E/W offsets in CRS units from the anchor. A grid-reference code, not a hash.",
+        examples=["N164S214E230W107"],
     )
     model_id: str = Field(
         pattern=r"^[0-9a-f]{8}_N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
         description="<identity_hash>+<domain_code>. Also the folder name.",
+        examples=["fceb20c6_N164S214E230W107"],
     )
     inputs: ScenarioRunInputs = Field(description="Inputs used to run the model")
 
@@ -248,6 +328,7 @@ class ScenarioRunManifest(BaseModel):
     warnings: list[JobWarning] = Field(
         default=[],
         description="Non-fatal check results; the scenario run still completes and writes scenario.json.",
+        examples=[[]],
     )
 
 

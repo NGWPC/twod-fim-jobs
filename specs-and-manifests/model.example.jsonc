@@ -1,0 +1,88 @@
+{
+  "type": "model",
+  "hash_algo": "sha256", // all hashes/checksums are first-N-hex of sha256; see build_model-design.md
+  "twod_fim_version": "2.0.1",
+  "created_at": "2026-06-09T14:32:07Z",
+  "reach_id": 12345,
+  "identity_hash": "a3f9c1e8", // computed as hash of identity object
+  "domain_code": "N200S200E300W200", // computed after snapping
+  "id": "a3f9c1e8+N200S200E300W200",
+  "inputs": { // as is from the user request
+    "reach_id": 12345,
+    "db_uri": "s3://bucket/pre/network.parquet",
+    "base_output_path": "s3://bucket/pre",
+    "dem_source": "USGS_3DEP",
+    "lulc_source": "NLCD_2021",
+    "other_geometries": [],
+    "domain_buffer": 100.0,
+    "grid_resolution": 10,
+    "walk_us_dist_pct": 25.0,
+    "epsg_code": 5070,
+    "bankfull_width_multiplier": 2.0,
+    "lulc_lookup": { "11": 0.035, "21": 0.04, "41": 0.12, "82": 0.05 }
+  },
+  "domain": { // computed
+    "bbox": [1234800.0, 1988300.0, 1235300.0, 1988700.0],
+    "anchor": [1235000.0, 1988500.0],
+    "offsets": [200, 200, 300, 200] // N, S, E, W (matches domain_code)
+  },
+  "identity": { // inputs that matter for identity
+    "sdr_commit": "abcde123",
+    "reach_geom_hash": "11aa22bb",
+    "grid_resolution": 10,
+    "epsg_code": 5070,
+    "dem_source_inputs_hash": "99aabbcc", // hash of input parameters related to DEM source, e.g. source name, etc.
+    "lulc_source_inputs_hash": "aa11bb22",
+    "lulc_lookup_dict_hash": "facefeed"
+  },
+  "properties": {
+    "grid": {
+      "rows": 40,
+      "cols": 50
+    },
+    "drainage_area_sqkm": 842.6,
+    "bankfull_width_m": 38.4,
+    "upstream_reach_ids": [12346, 12351],
+    "stream_order": 4,
+    "length_m": 1180.0,
+    "slope": 0.0012,
+    "downstream_reach_id": 12344,
+    "upstream_mainstem_reach_id": 12346
+  },
+  "assets": {
+    "terrain": {
+      "href": "dem.tif",
+      "checksum": "1212121212121212",
+      "source_url": "https://elevation.nationalmap.gov/arcgis/services/3DEPElevation/ImageServer",
+      "retrieved": "2026-06-09T14:31:50"
+    },
+    "roughness": {
+      "href": "roughness.tif",
+      "checksum": "3434343434343434",
+      "source_url": "https://www.mrlc.gov/geoserver/NLCD_Land_Cover/wms?layer=NLCD_2021_Land_Cover_L48",
+      "retrieved": "2026-06-09T14:31:55Z"
+    },
+    "centerline": {
+      "href": "cl.geojson",
+      "checksum": "5656565656565656",
+      "source_url": "s3://bucket/pre/network.parquet",
+      "retrieved": "2026-06-09T14:31:40Z"
+    },
+    "reach_centroid": {
+      "href": "reach_centroid.geojson",
+      "checksum": "9a9a9a9a9a9a9a9a",
+      "source_url": null
+    },
+    "domain": {
+      "href": "domain.geojson",
+      "checksum": "bcbcbcbcbcbcbcbc",
+      "source_url": null
+    }
+  },
+  "warnings": [
+    {
+      "code": "large_domain",
+      "message": "Domain is larger than expected based on reach length; check if snapping and buffering worked as intended."
+    }
+  ]
+}

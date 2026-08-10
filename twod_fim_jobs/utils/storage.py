@@ -1,5 +1,7 @@
+import os
 from typing import IO, cast
 from urllib.parse import urlparse
+import json
 import shutil
 import fsspec
 
@@ -108,13 +110,49 @@ def check_model_exists(model_uri: str) -> bool:
     return False
 
 
-def copy_file(src: str, dst: str) -> None:
-    """Copy a file from src to dst.
-
-    Supports local paths and S3 URIs (s3://bucket/key).
-    """
+def copy_file(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:
+    """Copy a file from src to dst, supporting local paths and S3 URIs."""
     try:
-        with fsspec.open(src, "rb") as f_src, fsspec.open(dst, "wb") as f_dst:
+        with fsspec.open(str(src), "rb") as f_src, fsspec.open(str(dst), "wb") as f_dst:
             shutil.copyfileobj(cast(IO[bytes], f_src), cast(IO[bytes], f_dst))
+    except Exception as e:
+        raise WriteFailureError(str(e)) from e
+
+
+def copy_dir(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:
+    """Recursively copy a directory tree from src to dst, supporting local paths and S3 URIs."""
+    src, dst = str(src), str(dst)
+    src_fs, src_path = fsspec.core.url_to_fs(src)
+    dst_fs, dst_path = fsspec.core.url_to_fs(dst)
+    try:
+        for dirpath, _, filenames in src_fs.walk(src_path):
+            rel = dirpath[len(src_path) :].lstrip("/")
+            dst_dir = f"{dst_path}/{rel}" if rel else dst_path
+            dst_fs.makedirs(dst_dir, exist_ok=True)
+            for fname in filenames:
+                src_file = f"{dirpath}/{fname}"
+                dst_file = f"{dst_dir}/{fname}"
+                with (
+                    src_fs.open(src_file, "rb") as f_src,
+                    dst_fs.open(dst_file, "wb") as f_dst,
+                ):
+                    shutil.copyfileobj(f_src, f_dst)
+    except Exception as e:
+        raise WriteFailureError(str(e)) from e
+
+
+def read_json(path: str) -> str:
+    """Read a JSON file from a local path or S3 URI and return its contents as a string."""
+    with fsspec.open(path, "r") as f:
+        return cast(IO[str], f).read()
+
+
+def write_json(path: str, content: str, indent: int | None = 4) -> None:
+    """Write a JSON string to a local path or S3 URI."""
+    try:
+        if indent is not None:
+            content = json.dumps(json.loads(content), indent=indent)
+        with fsspec.open(path, "w") as f:
+            cast(IO[str], f).write(content)
     except Exception as e:
         raise WriteFailureError(str(e)) from e

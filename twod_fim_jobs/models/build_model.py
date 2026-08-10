@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Iterator, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -22,34 +22,9 @@ from twod_fim_jobs.consts import (
     DEFAULT_WALK_US_DIST_PCT,
 )
 from twod_fim_jobs.exceptions import InvalidWKTGeometryError
-
+from twod_fim_jobs.models.common import Domain, GridProperties
 
 ### HELPER JOB MODELS ###
-
-
-class Domain(BaseModel):
-    """Computed domain realization."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    bbox: tuple[float, float, float, float] = Field(
-        description="Domain bbox in native CRS [west, south, east, north]."
-    )
-    anchor: tuple[float, float] = Field(
-        description="Grid-snapped reach centroid in native CRS [x, y]; origin the offsets are measured from."
-    )
-    offsets: tuple[float, float, float, float] = Field(
-        description="[N, S, E, W] grid-snapped offsets in CRS units; matches domain_token."
-    )
-
-    @property
-    def offset_str(self) -> str:
-        # TODO: Check with team whether this rounding can lead to issues.
-        return "N{}S{}E{}W{}".format(*[int(i) for i in self.offsets])
-
-    @property
-    def area(self) -> float:
-        return (self.bbox[2] - self.bbox[0]) * (self.bbox[3] - self.bbox[1])
 
 
 class Identity(BaseModel):
@@ -76,15 +51,6 @@ class Identity(BaseModel):
         pattern=r"^[0-9a-f]{8}$",
         description="Hash of mapping from land use code to manning's roughness",
     )
-
-
-class GridProperties(BaseModel):
-    """Grid dimensions of the model domain."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    rows: int = Field(description="Number of rows in the model domain", gt=0)
-    cols: int = Field(description="Number of columns in the model domain", gt=0)
 
 
 class Properties(BaseModel):
@@ -131,10 +97,17 @@ class Assets(BaseModel):
         description="Manning's n raster used by the hydraulic model."
     )
     centerline: Asset = Field(description="River centerline for this model's reach.")
+    inflow_line: Asset = Field(
+        description="Inflow boundary condition line for this model's reach."
+    )
     reach_centroid: Asset = Field(
         description="Centroid of the river centerline for this model's reach."
     )
     domain: Asset = Field(description="Derived polygon of the full model domain.")
+
+    def __iter__(self) -> Iterator[tuple[str, Asset]]:  # type: ignore[override]
+        for field in Assets.model_fields:
+            yield field, getattr(self, field)
 
 
 ### CORE JOB MODELS ###

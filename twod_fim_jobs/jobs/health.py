@@ -41,4 +41,4 @@ class HealthWorkflow(Job[HealthInputs]):
         if inputs.test_write_uri is not None:
             tmp_path = tmp_dir / "health_check.txt"
             tmp_path.write_bytes(b"health check\n")
-            copy_file(str(tmp_path), inputs.test_write_uri)
+            copy_file(tmp_path, inputs.test_write_uri)

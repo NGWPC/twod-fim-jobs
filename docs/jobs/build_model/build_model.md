@@ -59,10 +59,10 @@ Initialize a model for a single reach by generating the terrain, roughness, geom
 <!-- AUTO:result_table -->
 | Name | Type | Description |
 | --- | --- | --- |
-| `identity_hash` | `string` |  |
-| `model_id` | `string` |  |
-| `model_dir` | `string` |  |
-| `warnings` | `list[JobWarning]` |  |
+| `identity_hash` | `string` | Hash of the model identity inputs (methodology, sources, params). Used for grouping, rollback, and path addressing. |
+| `model_id` | `string` | Full model identifier: identity_hash + domain_code. Locates the model within the storage layout. |
+| `model_dir` | `string` | Content-addressed path where model artifacts were written. |
+| `warnings` | `list[JobWarning]` | Non-fatal warnings raised during the job. |
 <!-- /AUTO:result_table -->
 
 ## Out of Scope

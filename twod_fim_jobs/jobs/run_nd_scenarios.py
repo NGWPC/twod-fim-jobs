@@ -231,7 +231,6 @@ def run_adaptive_step_scenarios(
             logger.info(f"Accepting trial discharge {round(q_trial, 1)}")
             ref_scenario = trial_scenario
             current_scenario = trial_scenario
-            delta_us_discharge *= ADAPTIVE_STEP_ALGORITHM_GROW_FACTOR
 
         elif scenario_comparison.result == "reject_low":
             logger.info(f"Rejecting trial discharge {round(q_trial, 1)}: low")

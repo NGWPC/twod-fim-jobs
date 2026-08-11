@@ -39,7 +39,7 @@
     "n_reaches_split_passthrough_lake": 133,
     "n_reaches_merged": 41209,
     "n_reaches_output": 820238, // reconciles: 2483911 -1611402 -6104 -3184 -1907 -41209 +133
-    "n_headwater_reaches": 118302,
+    "n_headwater_reaches": 615178, // dominated by order-3 reaches stranded by the order>=3 filter, not by true headwaters
     "n_terminal_reaches": 9540
   },
   "assets": { // this job's own outputs — separate GeoPackage files; lakes present only when lake processing ran

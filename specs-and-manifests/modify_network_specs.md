@@ -31,7 +31,7 @@ Order of operations
 
 1. Load the raw reach network from `reach_network_path`, restricted to `stream_order >= stream_order_filter_threshold` **at load time** — reaches below the threshold never enter processing at all. When `stream_order_filter_threshold` is not given, no restriction is applied and the whole network is loaded.
 2. Identify terminal reaches: null downstream reach (`fp_to_id`) → `is_terminal=true`, `terminal_reason="outlet"`.
-3. Identify headwater reaches: reaches whose `fp_to_id` isn't any other reach's `fp_id`, evaluated **after** the stream-order filter — a reach can become an apparent headwater purely because its true upstream neighbor was filtered out, not because it's hydrologically a headwater.
+3. Identify headwater reaches: reaches that are no other reach's `fp_to_id` — nothing in the network flows into them. Evaluated **after** the stream-order filter, so a reach can become an apparent headwater purely because its true upstream neighbor was filtered out, not because it's hydrologically a headwater. With a threshold of 3 that is the common case, not the exception: every order-3 reach loses both its order-2 feeders to the filter, so apparent headwaters dominate the count.
 4. **Coastal waterbodies** (processed before lakes) — **skipped entirely when `coastal_influence_layer_path` is not given**: for reaches intersecting the coast layer
 
    - fully inside → dropped it and all reaches further downstream.

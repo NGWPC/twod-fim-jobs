@@ -28,11 +28,12 @@ def run_scenario(
     endpoint_indices: tuple[tuple[int, int], tuple[int, int]] | None = None,
     dem_array: np.ndarray | None = None,
     allow_water_on_edges: bool = False,
-) -> tuple[list[ConvergenceResult], TerminationCondition]:
+) -> tuple[list[ConvergenceResult], TerminationCondition, float]:
     _validate_convergence_params(inflow, save_interval_sec, convergence_tolerance)
     _validate_boundary_params(endpoint_indices, dem_array)
     process = run_lisflood(parfile_path)
 
+    t0 = time.perf_counter()
     with ThreadPoolExecutor(max_workers=1) as executor:
         watcher_future = executor.submit(
             watch_run,
@@ -47,8 +48,9 @@ def run_scenario(
         )
         process.wait()  # watcher will terminate early if converged
         watcher_results = watcher_future.result()
+    runtime_seconds = time.perf_counter() - t0
 
-    return watcher_results
+    return (*watcher_results, runtime_seconds)
 
 
 def run_lisflood(parfile_path: Path, pipe_out_logs: bool = True) -> subprocess.Popen:

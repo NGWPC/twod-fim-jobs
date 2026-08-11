@@ -1,12 +1,19 @@
 {
-  "type": "model",
+  "type": "run",
   "hash_algo": "sha256",
   "twod_fim_version": "0.1.0",
   "created_at": "2026-08-06T22:17:07.406819Z",
   "reach_id": 1257410937935512,
   "identity_hash": "fceb20c6",
-  "domain_code": "N164S214E230W107",
+  "scenario_code": "KWSE200.2Q200",
   "model_id": "fceb20c6_N164S214E230W107",
+  "identity": {
+    "sdr_commit_id": "826a602ddcaf58bf4081dc04b65ba15b82cc8c8a",
+    "solver": {
+      "name": "lisflood",
+      "version": "8.0.0"
+    }
+  },
   "inputs": {
     "ds_slope": 0.01,
     "ds_wse": 100.5,
@@ -15,6 +22,7 @@
     "volume_convergence_tolerance": 0.1,
     "allow_water_on_edges": false,
     "outflow_area_polygon_path": "s3://twod-fim/version=v1/shared/outflow_area.geojson",
+    "model_manifest_path": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/model.json",
     "inflow_line_path": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/inflow.geojson",
     "centerline_path": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/reach.geojson",
     "domain": {
@@ -50,7 +58,8 @@
     },
     "terrain_path": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif",
     "roughness_path": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/roughness.tif",
-    "out_dir": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000"
+    "model_results_base_path": "s3://twod-fim/version=v1/results",
+    "out_dir": "s3://twod-fim/version=v1/results/nd=1.0E02/q=1000"
   },
   "properties": {
     "nominal_wse": 100.5,
@@ -61,13 +70,33 @@
         "model_running": true
       }
     ],
-    "termination_condition": "volume_convergence"
+    "termination_condition": "volume_convergence",
+    "sim_duration_seconds": 36000.0,
+    "runtime_seconds": 120.5
   },
   "assets": {
-    "depth": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/depth.tif",
-    "inundation_polygon": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/inundation.geojson",
-    "stage_transfer_line": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/stl.geojson",
-    "zarr_store": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/depths.zarr"
+    "depth": {
+      "href": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif",
+      "checksum": "a1b2c3d4e5f6a7b8",
+      "source_url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",
+      "retrieved": "2026-08-06T22:17:07.406819Z",
+      "derived": true
+    },
+    "inundation_polygon": {
+      "href": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif",
+      "checksum": "a1b2c3d4e5f6a7b8",
+      "source_url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",
+      "retrieved": "2026-08-06T22:17:07.406819Z",
+      "derived": true
+    },
+    "stage_transfer_line": {
+      "href": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif",
+      "checksum": "a1b2c3d4e5f6a7b8",
+      "source_url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",
+      "retrieved": "2026-08-06T22:17:07.406819Z",
+      "derived": true
+    },
+    "zarr_store": null
   },
   "warnings": []
 }

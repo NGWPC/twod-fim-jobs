@@ -170,6 +170,8 @@ def test_publish_scenario_preserves_s3_double_slash(tmp_path: Path) -> None:
         zarr_path=None,
         scenario_diagnostics=[],
         termination_condition="volume_convergence",
+        sim_duration_seconds=360.0,
+        runtime_seconds=10.5,
         run_config=RunConfig(
             sim_time_seconds=360,
             save_interval_seconds=60,

@@ -38,10 +38,10 @@ Iteratively runs the model for a reach using a normal depth downstream boundary 
 <!-- AUTO:artifacts_table -->
 | Name | Description |
 | --- | --- |
-| `depth` | Path of the depth grid at the final timestep |
-| `inundation_polygon` | Path of the inundated area polygon at the final timestep |
-| `stage_transfer_line` | Path of the stage transfer line |
-| `zarr_store` | Path of the zarr with depths at each print interval |
+| `depth` | Depth grid at the final timestep |
+| `inundation_polygon` | Inundated area polygon at the final timestep |
+| `stage_transfer_line` | Stage transfer line |
+| `zarr_store` | Zarr store with depths at each print interval |
 <!-- /AUTO:artifacts_table -->
 
 ## Response

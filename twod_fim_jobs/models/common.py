@@ -3,7 +3,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field
 import twod_fim_jobs
 from twod_fim_jobs.utils.hashing import hash_file
 from twod_fim_jobs.models.warnings import JobWarning
@@ -176,42 +176,49 @@ class ScenarioProperties(BaseModel):
     termination_condition: TerminationCondition = Field(
         description="How the scenario run was terminated"
     )
+    sim_duration_seconds: float = Field(
+        description="Simulated time elapsed at termination, in seconds",
+        examples=[36000.0],
+    )
+    runtime_seconds: float = Field(
+        description="Wall-clock time for the scenario run, in seconds",
+        examples=[120.5],
+    )
 
 
 class ScenarioAssets(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    depth: Path = Field(
-        description="Path of the depth grid at the final timestep",
-        examples=[
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/depth.tif"
-        ],
+    depth: Asset = Field(
+        description="Depth grid at the final timestep",
     )
-    inundation_polygon: Path = Field(
-        description="Path of the inundated area polygon at the final timestep",
-        examples=[
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/inundation.geojson"
-        ],
+    inundation_polygon: Asset = Field(
+        description="Inundated area polygon at the final timestep",
     )
-    stage_transfer_line: Path = Field(
-        description="Path of the stage transfer line",
-        examples=[
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/stl.geojson"
-        ],
+    stage_transfer_line: Asset = Field(
+        description="Stage transfer line",
     )
-    zarr_store: Path | None = Field(
+    zarr_store: Asset | None = Field(
         default=None,
-        description="Path of the zarr with depths at each print interval",
-        examples=[
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/depths.zarr"
-        ],
+        description="Zarr store with depths at each print interval",
     )
 
-    @field_serializer(
-        "depth", "inundation_polygon", "stage_transfer_line", "zarr_store"
+
+class SolverInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(description="Solver name", examples=["lisflood"])
+    version: str = Field(description="Solver version string", examples=["8.0.0"])
+
+
+class RunIdentity(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sdr_commit_id: str = Field(
+        description="Git commit SHA of the SDR used to run the model",
+        examples=["826a602ddcaf58bf4081dc04b65ba15b82cc8c8a"],
     )
-    def serialize_path(self, v) -> str | None:
-        return str(v) if v is not None else None
+    solver: SolverInfo = Field(description="Solver name and version")
 
 
 class ScenarioRunInputs(BaseModel):
@@ -245,6 +252,12 @@ class ScenarioRunInputs(BaseModel):
         description="Path to polygon marking where the normal-depth boundary condition is applied",
         examples=["s3://twod-fim/version=v1/shared/outflow_area.geojson"],
     )
+    model_manifest_path: str = Field(
+        description="Path to model manifest for the build_model job for this reach",
+        examples=[
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/model.json"
+        ],
+    )
     inflow_line_path: str = Field(
         description="Path to lineString defining the upstream inflow boundary",
         examples=[
@@ -272,19 +285,21 @@ class ScenarioRunInputs(BaseModel):
             "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/roughness.tif"
         ],
     )
+    model_results_base_path: str = Field(
+        description="Base directory to which identity hash and scenario point are appended to make the out directory",
+        examples=["s3://twod-fim/version=v1/results"],
+    )
     out_dir: str = Field(
         description="Directory where solver output files are written",
-        examples=[
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000"
-        ],
+        examples=["s3://twod-fim/version=v1/results/nd=1.0E02/q=1000"],
     )
 
 
 class ScenarioRunManifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["model"] = Field(
-        default="model", description="Discriminator vs. a run record."
+    type: Literal["run"] = Field(
+        default="run", description="Discriminator vs. a run record."
     )
     hash_algo: Literal["sha256"] = Field(
         default="sha256",
@@ -307,15 +322,18 @@ class ScenarioRunManifest(BaseModel):
         description="Hash of the identity object. Stable across domain changes; results group under it.",
         examples=["fceb20c6"],
     )
-    domain_code: str = Field(
-        pattern=r"^N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
-        description="Domain realization: grid-snapped N/S/E/W offsets in CRS units from the anchor. A grid-reference code, not a hash.",
-        examples=["N164S214E230W107"],
+    scenario_code: str = Field(
+        pattern=r"^[A-Z]+\d+(\.\d)?Q\d+$",
+        description="Scenario identifier: bc_type + bc_value (integer, optional 1 decimal digit) + 'Q' + integer discharge",
+        examples=["KWSE200.2Q200"],
     )
     model_id: str = Field(
         pattern=r"^[0-9a-f]{8}_N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
         description="<identity_hash>+<domain_code>. Also the folder name.",
         examples=["fceb20c6_N164S214E230W107"],
+    )
+    identity: RunIdentity = Field(
+        description="Canonical identity of the solver environment used for this run."
     )
     inputs: ScenarioRunInputs = Field(description="Inputs used to run the model")
 
@@ -366,5 +384,13 @@ class ScenarioWorkerManifest(BaseModel):
     )
     termination_condition: TerminationCondition = Field(
         description="How the scenario run was terminated"
+    )
+    sim_duration_seconds: float = Field(
+        description="Simulated time elapsed at termination, in seconds",
+        examples=[36000.0],
+    )
+    runtime_seconds: float = Field(
+        description="Wall-clock time for the scenario run, in seconds",
+        examples=[120.5],
     )
     run_config: RunConfig = Field(description="Solver runtime configuration")

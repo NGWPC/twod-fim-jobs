@@ -625,7 +625,7 @@ def compute_wse_contour(
 
 
 def wd_files_to_zarr(
-    out_dir: Path,
+    wd_files: list[Path],
     zarr_path: Path,
     dem_path: Path,
     delete: bool = False,
@@ -634,11 +634,6 @@ def wd_files_to_zarr(
     crs: CRS | None = None,
 ) -> Path:
     """Write all .wd depth rasters in out_dir to a Zarr time-series store."""
-    stem = out_dir.name
-    wd_files = sorted(out_dir.glob(f"{stem}-????.wd"))
-    if not wd_files:
-        raise FileNotFoundError(f"No .wd files found in {out_dir}")
-
     compressor = Blosc(cname="zstd", clevel=5, shuffle=Blosc.BITSHUFFLE)
     _chunk = {
         "compressor": compressor,

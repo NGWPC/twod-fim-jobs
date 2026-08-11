@@ -237,15 +237,23 @@ class BuildModelInputs(BaseModel):
 class BuildModelResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    identity_hash: str = Field(description="Hash of the model identity inputs (methodology, sources, params). Used for grouping, rollback, and path addressing.", examples=["fceb20c6"])
-    model_id: str = Field(description="Full model identifier: identity_hash + domain_code. Locates the model within the storage layout.", examples=["fceb20c6_N164S214E230W107"])
+    identity_hash: str = Field(
+        description="Hash of the model identity inputs (methodology, sources, params). Used for grouping, rollback, and path addressing.",
+        examples=["fceb20c6"],
+    )
+    model_id: str = Field(
+        description="Full model identifier: identity_hash + domain_code. Locates the model within the storage layout.",
+        examples=["fceb20c6_N164S214E230W107"],
+    )
     model_dir: str = Field(
         description="Content-addressed path where model artifacts were written.",
         examples=[
             "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107"
-        ]
+        ],
     )
-    warnings: list[JobWarning] = Field(description="Non-fatal warnings raised during the job.", examples=[[]])
+    warnings: list[JobWarning] = Field(
+        description="Non-fatal warnings raised during the job.", examples=[[]]
+    )
 
 
 class ModelManifest(BaseModel):

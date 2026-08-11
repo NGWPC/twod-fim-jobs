@@ -26,19 +26,16 @@ class PostProcessResult(BaseModel):
     inundation_polygon_path: Path
     stl_path: Path
     nominal_wse: float
+    sim_time: float
     zarr_path: Path | None
 
 
-def get_last_wd_file(out_dir: Path) -> Path:
-    stem = out_dir.name
-    wd_files = sorted(out_dir.glob(f"{stem}-????.wd"))
-    if not wd_files:
-        raise FileNotFoundError(f"No .wd files found in {out_dir}")
-    return wd_files[-1]
-
-
 def post_process_lisflood(
-    out_dir: Path, us_point: Point, dem_path: Path, save_zarr: bool
+    out_dir: Path,
+    us_point: Point,
+    dem_path: Path,
+    save_zarr: bool,
+    save_interval: float,
 ) -> PostProcessResult:
     """Post-process a LISFLOOD output directory into a COG and a flood polygon GeoJSON."""
     logger.info(f"Post-processing lisflood model at {out_dir}")
@@ -47,9 +44,14 @@ def post_process_lisflood(
     inun_path = out_dir / INUNDATED_AREA_FILENAME
     stl_path = out_dir / STL_FILENAME
 
-    # Process
-    last_wd = get_last_wd_file(out_dir)
+    # Get wd files
+    stem = out_dir.name
+    wd_files = sorted(out_dir.glob(f"{stem}-????.wd"))
+    if not wd_files:
+        raise FileNotFoundError(f"No .wd files found in {out_dir}")
 
+    # Process
+    last_wd = wd_files[-1]
     wd_to_cog(last_wd, depth_path)
     raster_to_polygon(depth_path, inun_path)
     wse_value = compute_wse_contour(
@@ -57,7 +59,7 @@ def post_process_lisflood(
     )
     if save_zarr:
         zarr_path = out_dir / DEPTH_ZARR_FILENAME
-        wd_files_to_zarr(out_dir, zarr_path, dem_path)
+        wd_files_to_zarr(wd_files, zarr_path, dem_path)
     else:
         zarr_path = None
 
@@ -66,5 +68,6 @@ def post_process_lisflood(
         inundation_polygon_path=inun_path,
         stl_path=stl_path,
         nominal_wse=wse_value,
+        sim_time=save_interval * len(wd_files),
         zarr_path=zarr_path,
     )

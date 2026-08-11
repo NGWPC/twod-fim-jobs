@@ -1,5 +1,76 @@
 {
   "$defs": {
+    "Asset": {
+      "additionalProperties": false,
+      "description": "One output file entry: role-keyed href plus integrity metadata.",
+      "properties": {
+        "href": {
+          "description": "Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.",
+          "examples": [
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif"
+          ],
+          "title": "Href",
+          "type": "string"
+        },
+        "checksum": {
+          "description": "First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.",
+          "examples": [
+            "a1b2c3d4e5f6a7b8"
+          ],
+          "pattern": "^[0-9a-f]{16}$",
+          "title": "Checksum",
+          "type": "string"
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.",
+          "examples": [
+            "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt"
+          ],
+          "title": "Source Url"
+        },
+        "retrieved": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the source was fetched, if applicable.",
+          "examples": [
+            "2026-08-06T22:17:07.406819Z"
+          ],
+          "title": "Retrieved"
+        },
+        "derived": {
+          "default": false,
+          "description": "True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.",
+          "examples": [
+            true
+          ],
+          "title": "Derived",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "href",
+        "checksum",
+        "source_url"
+      ],
+      "title": "Asset",
+      "type": "object"
+    },
     "BoundaryCheckResult": {
       "properties": {
         "wse_0": {
@@ -333,52 +404,55 @@
       "title": "RunConfig",
       "type": "object"
     },
+    "RunIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "sdr_commit_id": {
+          "description": "Git commit SHA of the SDR used to run the model",
+          "examples": [
+            "826a602ddcaf58bf4081dc04b65ba15b82cc8c8a"
+          ],
+          "title": "Sdr Commit Id",
+          "type": "string"
+        },
+        "solver": {
+          "$ref": "#/$defs/SolverInfo",
+          "description": "Solver name and version"
+        }
+      },
+      "required": [
+        "sdr_commit_id",
+        "solver"
+      ],
+      "title": "RunIdentity",
+      "type": "object"
+    },
     "ScenarioAssets": {
       "additionalProperties": false,
       "properties": {
         "depth": {
-          "description": "Path of the depth grid at the final timestep",
-          "examples": [
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/depth.tif"
-          ],
-          "format": "path",
-          "title": "Depth",
-          "type": "string"
+          "$ref": "#/$defs/Asset",
+          "description": "Depth grid at the final timestep"
         },
         "inundation_polygon": {
-          "description": "Path of the inundated area polygon at the final timestep",
-          "examples": [
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/inundation.geojson"
-          ],
-          "format": "path",
-          "title": "Inundation Polygon",
-          "type": "string"
+          "$ref": "#/$defs/Asset",
+          "description": "Inundated area polygon at the final timestep"
         },
         "stage_transfer_line": {
-          "description": "Path of the stage transfer line",
-          "examples": [
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/stl.geojson"
-          ],
-          "format": "path",
-          "title": "Stage Transfer Line",
-          "type": "string"
+          "$ref": "#/$defs/Asset",
+          "description": "Stage transfer line"
         },
         "zarr_store": {
           "anyOf": [
             {
-              "format": "path",
-              "type": "string"
+              "$ref": "#/$defs/Asset"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "description": "Path of the zarr with depths at each print interval",
-          "examples": [
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/depths.zarr"
-          ],
-          "title": "Zarr Store"
+          "description": "Zarr store with depths at each print interval"
         }
       },
       "required": [
@@ -411,12 +485,30 @@
         "termination_condition": {
           "$ref": "#/$defs/TerminationCondition",
           "description": "How the scenario run was terminated"
+        },
+        "sim_duration_seconds": {
+          "description": "Simulated time elapsed at termination, in seconds",
+          "examples": [
+            36000.0
+          ],
+          "title": "Sim Duration Seconds",
+          "type": "number"
+        },
+        "runtime_seconds": {
+          "description": "Wall-clock time for the scenario run, in seconds",
+          "examples": [
+            120.5
+          ],
+          "title": "Runtime Seconds",
+          "type": "number"
         }
       },
       "required": [
         "nominal_wse",
         "scenario_diagnostics",
-        "termination_condition"
+        "termination_condition",
+        "sim_duration_seconds",
+        "runtime_seconds"
       ],
       "title": "ScenarioProperties",
       "type": "object"
@@ -495,6 +587,14 @@
           "title": "Outflow Area Polygon Path",
           "type": "string"
         },
+        "model_manifest_path": {
+          "description": "Path to model manifest for the build_model job for this reach",
+          "examples": [
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/model.json"
+          ],
+          "title": "Model Manifest Path",
+          "type": "string"
+        },
         "inflow_line_path": {
           "description": "Path to lineString defining the upstream inflow boundary",
           "examples": [
@@ -539,10 +639,18 @@
           "title": "Roughness Path",
           "type": "string"
         },
+        "model_results_base_path": {
+          "description": "Base directory to which identity hash and scenario point are appended to make the out directory",
+          "examples": [
+            "s3://twod-fim/version=v1/results"
+          ],
+          "title": "Model Results Base Path",
+          "type": "string"
+        },
         "out_dir": {
           "description": "Directory where solver output files are written",
           "examples": [
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000"
+            "s3://twod-fim/version=v1/results/nd=1.0E02/q=1000"
           ],
           "title": "Out Dir",
           "type": "string"
@@ -555,6 +663,7 @@
         "volume_convergence_tolerance",
         "allow_water_on_edges",
         "outflow_area_polygon_path",
+        "model_manifest_path",
         "inflow_line_path",
         "centerline_path",
         "domain",
@@ -562,9 +671,37 @@
         "run_config",
         "terrain_path",
         "roughness_path",
+        "model_results_base_path",
         "out_dir"
       ],
       "title": "ScenarioRunInputs",
+      "type": "object"
+    },
+    "SolverInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Solver name",
+          "examples": [
+            "lisflood"
+          ],
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "description": "Solver version string",
+          "examples": [
+            "8.0.0"
+          ],
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "title": "SolverInfo",
       "type": "object"
     },
     "TerminationCondition": {
@@ -580,8 +717,8 @@
   "additionalProperties": false,
   "properties": {
     "type": {
-      "const": "model",
-      "default": "model",
+      "const": "run",
+      "default": "run",
       "description": "Discriminator vs. a run record.",
       "title": "Type",
       "type": "string"
@@ -625,13 +762,13 @@
       "title": "Identity Hash",
       "type": "string"
     },
-    "domain_code": {
-      "description": "Domain realization: grid-snapped N/S/E/W offsets in CRS units from the anchor. A grid-reference code, not a hash.",
+    "scenario_code": {
+      "description": "Scenario identifier: bc_type + bc_value (integer, optional 1 decimal digit) + 'Q' + integer discharge",
       "examples": [
-        "N164S214E230W107"
+        "KWSE200.2Q200"
       ],
-      "pattern": "^N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
-      "title": "Domain Code",
+      "pattern": "^[A-Z]+\\d+(\\.\\d)?Q\\d+$",
+      "title": "Scenario Code",
       "type": "string"
     },
     "model_id": {
@@ -642,6 +779,10 @@
       "pattern": "^[0-9a-f]{8}_N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
       "title": "Model Id",
       "type": "string"
+    },
+    "identity": {
+      "$ref": "#/$defs/RunIdentity",
+      "description": "Canonical identity of the solver environment used for this run."
     },
     "inputs": {
       "$ref": "#/$defs/ScenarioRunInputs",
@@ -672,8 +813,9 @@
     "created_at",
     "reach_id",
     "identity_hash",
-    "domain_code",
+    "scenario_code",
     "model_id",
+    "identity",
     "inputs",
     "properties",
     "assets"

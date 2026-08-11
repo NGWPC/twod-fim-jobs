@@ -44,6 +44,14 @@ class Job(ABC, Generic[T_Inputs]):
         """Execute the job logic; subclasses must implement this method."""
 
 
+def make_scenario_code(bc_type: str, bc_value: float, q: float) -> str:
+    """Build a scenario code string, e.g. KWSE200.2Q1000."""
+    rounded = round(bc_value, RUN_NAME_KWSE_ROUNDING_PRECISION)
+    val_str = f"{rounded:.{RUN_NAME_KWSE_ROUNDING_PRECISION}f}".rstrip("0").rstrip(".")
+    q_str = f"{round(q)}"
+    return f"{bc_type}{val_str}Q{q_str}"
+
+
 def make_scenario_dir_name(
     q: float, kwse: float | None = None, nd: float | None = None
 ) -> str:

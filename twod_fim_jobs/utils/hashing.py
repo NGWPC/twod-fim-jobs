@@ -2,8 +2,7 @@ import hashlib
 import json
 from pathlib import Path
 from shapely.geometry.base import BaseGeometry
-from twod_fim_jobs.consts import HASH_ALGORITHM, SupportedSolver, SDR_COMMIT
-from twod_fim_jobs.hydraulic_solvers.versions import get_model_version
+from twod_fim_jobs.consts import HASH_ALGORITHM
 
 
 def hash_dict(
@@ -55,13 +54,3 @@ def hash_file(
     if role_length:
         hash_str = hash_str[:role_length]
     return hash_str
-
-
-def get_run_identity_hash(solver: SupportedSolver) -> str:
-    "Make canonical hash for solver and sdr commit id."
-    version = get_model_version(solver)
-    js = {
-        "sdr_commit_id": SDR_COMMIT,
-        "solver": {"name": solver.value, "version": version},
-    }
-    return hash_dict(js, role_length=8)

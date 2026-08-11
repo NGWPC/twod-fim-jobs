@@ -23,16 +23,23 @@ from twod_fim_jobs.consts import (
     USE_CUDA,
 )
 from twod_fim_jobs.hydraulic_solvers.run import run_scenario
-from twod_fim_jobs.jobs.common import Job, make_scenario_dir_name
+from twod_fim_jobs.jobs.common import Job, make_scenario_dir_name, make_scenario_code
 from twod_fim_jobs.models.build_model import Domain, GridProperties, ModelManifest
 from twod_fim_jobs.models.common import (
+    Asset,
     RunConfig,
+    RunIdentity,
     ScenarioAssets,
     ScenarioProperties,
     ScenarioRunInputs,
     ScenarioRunManifest,
     ScenarioWorkerManifest,
+    SolverInfo,
 )
+from twod_fim_jobs.utils.hashing import hash_file
+from twod_fim_jobs.consts import SupportedSolver, SDR_COMMIT
+from twod_fim_jobs.hydraulic_solvers.versions import get_model_version
+
 from twod_fim_jobs.models.run_nd_scenarios import (
     RunNDScenariosInputs,
     RunNDScenariosResult,
@@ -40,7 +47,7 @@ from twod_fim_jobs.models.run_nd_scenarios import (
 )
 from twod_fim_jobs.utils.storage import copy_file, copy_dir, read_json, write_json
 from twod_fim_jobs.utils.geospatial import Raster, tif_to_asc
-from twod_fim_jobs.utils.hashing import get_run_identity_hash
+from twod_fim_jobs.utils.hashing import hash_dict
 from twod_fim_jobs.hydraulic_solvers.pre_process import write_nd_model_files
 
 logger = logging.getLogger(__name__)
@@ -296,7 +303,7 @@ def process_scenario_worker(
     endpoint_indices = (us_inds, ds_inds)
 
     # Initialize simulation and watch
-    scenario_diagnostics, termination_condition = run_scenario(
+    scenario_diagnostics, termination_condition, wall_time = run_scenario(
         paths["par_path"],
         us_discharge,
         convergence_tolerance,
@@ -307,7 +314,9 @@ def process_scenario_worker(
     )
 
     # Post-process results
-    processed = post_process_lisflood(out_dir, us_point, terrain_asc, save_zarr)
+    processed = post_process_lisflood(
+        out_dir, us_point, terrain_asc, save_zarr, run_config.save_interval_seconds
+    )
 
     # Initialize scenario scenario manifest
     return ScenarioWorkerManifest(
@@ -322,6 +331,8 @@ def process_scenario_worker(
         stl_path=processed.stl_path,
         scenario_diagnostics=scenario_diagnostics,
         termination_condition=termination_condition,
+        runtime_seconds=wall_time,
+        sim_duration_seconds=processed.sim_time,
         zarr_path=processed.zarr_path,
         run_config=run_config,
     )
@@ -369,6 +380,15 @@ def compare_scenario_changes(
     )
 
 
+def get_run_identity(solver: SupportedSolver) -> RunIdentity:
+    "Make canonical identity for solver and sdr commit id."
+    version = get_model_version(solver)
+    return RunIdentity(
+        sdr_commit_id=SDR_COMMIT,
+        solver=SolverInfo(name=solver.value, version=version),
+    )
+
+
 def publish_scenario(
     manifest: ScenarioWorkerManifest,
     job_inputs: RunNDScenariosInputs,
@@ -377,7 +397,9 @@ def publish_scenario(
     """Copy scenario assets to model_results_base_path, write the manifest JSON, and return its path."""
     # NOTE: Doing manual path construction because PurePosixPath was dropping s3:// to s3:/
     # TODO: Investigate better path management.
-    run_identity_hash = get_run_identity_hash(job_inputs.solver_enum)
+    identity = get_run_identity(job_inputs.solver_enum)
+    run_identity_hash = hash_dict(identity.model_dump(), role_length=8)
+    scenario_code = make_scenario_code("ND", manifest.ds_slope, manifest.us_discharge)
 
     # Handle S3 and other cloud paths by using string concatenation to preserve scheme
     base_path = job_inputs.model_results_base_path.rstrip("/")
@@ -417,8 +439,9 @@ def publish_scenario(
     final_manifest = ScenarioRunManifest(
         created_at=datetime.now(timezone.utc),
         reach_id=model_manifest.reach_id,
-        identity_hash=model_manifest.identity_hash,
-        domain_code=model_manifest.domain_code,
+        identity=identity,
+        identity_hash=run_identity_hash,
+        scenario_code=scenario_code,
         model_id=model_manifest.model_id,
         inputs=ScenarioRunInputs(
             ds_slope=manifest.ds_slope,
@@ -428,6 +451,7 @@ def publish_scenario(
             volume_convergence_tolerance=job_inputs.volume_convergence_tolerance,
             allow_water_on_edges=manifest.allow_water_on_edges,
             outflow_area_polygon_path=job_inputs.outflow_area_polygon_path,
+            model_manifest_path=job_inputs.model_manifest_path,
             inflow_line_path=model_manifest.assets.inflow_line.href,
             centerline_path=model_manifest.assets.centerline.href,
             domain=model_manifest.domain,
@@ -437,18 +461,42 @@ def publish_scenario(
             ),
             terrain_path=model_manifest.assets.terrain.href,
             roughness_path=model_manifest.assets.roughness.href,
+            model_results_base_path=job_inputs.model_results_base_path,
             out_dir=dest_dir_str,
         ),
         properties=ScenarioProperties(
             nominal_wse=manifest.nominal_wse,
             scenario_diagnostics=manifest.scenario_diagnostics,
             termination_condition=manifest.termination_condition,
+            sim_duration_seconds=manifest.sim_duration_seconds,
+            runtime_seconds=manifest.runtime_seconds,
         ),
         assets=ScenarioAssets(
-            depth=Path(str(dest_depth)),
-            inundation_polygon=Path(str(dest_inun)),
-            stage_transfer_line=Path(str(dest_stl)),
-            zarr_store=Path(str(dest_zarr)) if dest_zarr is not None else None,
+            # hash local files before they're no longer accessible; use S3 paths as hrefs
+            depth=Asset(
+                href=dest_depth,
+                checksum=hash_file(manifest.depth_path, role_length=16),
+                source_url=None,
+                derived=True,
+            ),
+            inundation_polygon=Asset(
+                href=dest_inun,
+                checksum=hash_file(manifest.inundation_polygon_path, role_length=16),
+                source_url=None,
+                derived=True,
+            ),
+            stage_transfer_line=Asset(
+                href=dest_stl,
+                checksum=hash_file(manifest.stl_path, role_length=16),
+                source_url=None,
+                derived=True,
+            ),
+            # zarr is a directory; checksum is a sentinel value
+            zarr_store=Asset(
+                href=dest_zarr, checksum="0" * 16, source_url=None, derived=True
+            )
+            if dest_zarr is not None
+            else None,
         ),
     )
 

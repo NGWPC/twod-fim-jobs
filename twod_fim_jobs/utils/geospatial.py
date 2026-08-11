@@ -44,7 +44,11 @@ from affine import Affine
 from twod_fim_jobs.consts import DA_FIELD, DEFAULT_EPSG_CODE, bieger_bankfull_width
 from twod_fim_jobs.models.common import Asset
 from twod_fim_jobs.models.build_model import Domain
-from twod_fim_jobs.exceptions import AnchorOutsideDomainError, DatasetUnavailableError, RasterProcessingError
+from twod_fim_jobs.exceptions import (
+    AnchorOutsideDomainError,
+    DatasetUnavailableError,
+    RasterProcessingError,
+)
 
 ### CLASSES ###
 

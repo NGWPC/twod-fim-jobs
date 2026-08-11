@@ -8,9 +8,8 @@
   "identity": {
     "sdr_commit": "826a602d",
     "reach_network_hash": "3ba1c0e2", // raw NHF network source + version
-    "lakes_dataset_hash": "d4e9f1a0", // NHDWaterbody-style source, not a pre-built dead-pool dataset
-    "coasts_vector_hash": "91bb2c3d", // the only coastal source actually read for processing
-    "coasts_raster_hash": "77cc44dd", // optional — present here because coasts_raster_path was also given; not output-determining beyond deriving a default vector path
+    "lakes_layer_hash": "d4e9f1a0", // NHF v1.2.3 lakes_polygon layer, not a pre-built dead-pool dataset
+    "coastal_influence_layer_hash": "91bb2c3d", // coastal/tidal-influence vector source + version (DR-038)
     "drainage_area_threshold_percent": 5.0, // DR-024
     "stream_order_filter_threshold": 3, // hard filter, not just merge gate
     "max_length_threshold_km": 3.0, // DR-024
@@ -19,9 +18,8 @@
   },
   "inputs": { // call args, verbatim — this is Network's provenance
     "reach_network_path": "s3://bucket/pre/nhf_network_raw.gpkg",
-    "lakes_dataset_path": "s3://bucket/reference/nhd_waterbody.gpkg",
-    "coasts_vector_path": "s3://bucket/reference/coastal_boundary.gpkg",
-    "coasts_raster_path": "s3://bucket/reference/MHHW.tif", // optional; not read directly, see network.schema.json
+    "lakes_layer_path": "s3://bucket/reference/nhf_lakes_polygon.gpkg", // optional; omit to skip lake processing
+    "coastal_influence_layer_path": "s3://bucket/reference/coastal_boundary.gpkg", // optional; omit to skip coastal processing
     "base_output_path": "s3://twod-fim/version=v1/network",
     "drainage_area_threshold_percent": 5.0,
     "stream_order_filter_threshold": 3,
@@ -40,11 +38,11 @@
     "n_reaches_dropped_coastal_cascade": 1907, // reaches removed downstream of a coastal encompassed/trimmed reach
     "n_reaches_split_passthrough_lake": 133,
     "n_reaches_merged": 41209,
-    "n_reaches_output": 820847,
+    "n_reaches_output": 820238, // reconciles: 2483911 -1611402 -6104 -3184 -1907 -41209 +133
     "n_headwater_reaches": 118302,
     "n_terminal_reaches": 9540
   },
-  "assets": { // this job's own outputs — two GeoPackage layers, matches save_modified_network
+  "assets": { // this job's own outputs — separate GeoPackage files; lakes present only when lake processing ran
     "network": {
       "href": "network.gpkg",
       "checksum": "5151515151515151",
@@ -54,7 +52,8 @@
     "lakes": {
       "href": "lakes.gpkg",
       "checksum": "6262626262626262",
-      "source_url": null
+      "source_url": null,
+      "derived": false // retained like network.gpkg; nothing this job writes is lifecycle-eligible
     }
   },
   "warnings": []

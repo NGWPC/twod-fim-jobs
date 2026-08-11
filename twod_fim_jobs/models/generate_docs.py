@@ -27,10 +27,6 @@ from twod_fim_jobs.models.run_nd_scenarios import (
     RunNDScenariosInputs,
     RunNDScenariosResult,
 )
-from twod_fim_jobs.models.run_kwse_scenarios import (
-    RunKWSEScenariosInputs,
-    RunKWSEScenariosResult,
-)
 from twod_fim_jobs.models.common import ScenarioRunManifest
 
 
@@ -42,7 +38,6 @@ JOBS: list[tuple[str, type[BaseModel], type[BaseModel], type[BaseModel] | None]]
         RunNDScenariosResult,
         ScenarioRunManifest,
     ),
-    ("run_kwse_scenarios", RunKWSEScenariosInputs, RunKWSEScenariosResult, None),
 ]
 
 SENTINEL_START = "<!-- AUTO:{key} -->"

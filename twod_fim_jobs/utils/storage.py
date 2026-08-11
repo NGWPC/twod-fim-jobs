@@ -54,6 +54,7 @@ def query_database(sql: str, db_uri: str, epsg: int | None = None) -> gpd.GeoDat
     if scheme in {"postgresql", "postgres"}:
         engine = create_engine(db_uri)
         gdf = gpd.read_postgis(sql, engine, geom_col="geom")
+        gdf = gdf.rename_geometry("geometry")
     elif scheme == "sqlite":
         path = db_uri.removeprefix("sqlite:///")
         gdf = gpd.read_file(path, sql=sql)

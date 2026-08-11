@@ -28,3 +28,7 @@ class WriteFailureError(Exception):
 
 class InvalidWKTGeometryError(Exception):
     """Raised when one or more WKT geometries are malformed or unparsable."""
+
+
+class AnchorOutsideDomainError(Exception):
+    """Raised when the computed anchor point falls outside the model domain bbox."""

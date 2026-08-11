@@ -44,7 +44,7 @@ from affine import Affine
 from twod_fim_jobs.consts import DA_FIELD, DEFAULT_EPSG_CODE, bieger_bankfull_width
 from twod_fim_jobs.models.common import Asset
 from twod_fim_jobs.models.build_model import Domain
-from twod_fim_jobs.exceptions import DatasetUnavailableError, RasterProcessingError
+from twod_fim_jobs.exceptions import AnchorOutsideDomainError, DatasetUnavailableError, RasterProcessingError
 
 ### CLASSES ###
 
@@ -228,6 +228,11 @@ def build_model_domain(
     e = (xmax - ax) / resolution
     s = (ay - ymin) / resolution
     n = (ymax - ay) / resolution
+
+    if n < 0 or s < 0 or e < 0 or w < 0:
+        raise AnchorOutsideDomainError(
+            f"Anchor ({ax}, {ay}) falls outside domain bbox ({xmin}, {ymin}, {xmax}, {ymax})"
+        )
 
     # Return Domain object
     return Domain(bbox=(xmin, ymin, xmax, ymax), anchor=(ax, ay), offsets=(n, s, e, w))

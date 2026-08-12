@@ -40,6 +40,7 @@ from shapely.ops import substring
 from twod_fim_jobs.consts import (
     COAST_ID_FIELD,
     COAST_TO_ID_FIELD,
+    COASTAL_LAYER,
     DA_FIELD,
     FLOWPATHS_LAYER,
     FP_ID_FIELD,
@@ -49,6 +50,7 @@ from twod_fim_jobs.consts import (
     IS_TRIMMED_FIELD,
     LAKE_ID_FIELD,
     LAKE_INLET_FIELD,
+    LAKES_LAYER,
     LAKE_OUTLET_FIELD,
     LAKE_TO_ID_FIELD,
     LENGTH_KM_FIELD,
@@ -318,19 +320,42 @@ def prepare_lakes(
 ### SHARED GEOMETRY HELPERS ###
 
 
-def _waterbody_ids(polys: gpd.GeoDataFrame, id_field: str) -> np.ndarray:
-    """Positional lookup of a waterbody layer's id column, as text.
+def _waterbody_ids(
+    polys: gpd.GeoDataFrame, id_field: str, layer: str
+) -> np.ndarray:
+    """A waterbody layer's id column as text, or nulls when it has none.
 
-    Falls back to the positional index when the layer has no id column, so a
-    layer without one still yields a stable, if less meaningful, reference.
+    Nulls rather than a fabricated positional index: this array is written
+    into lake_to_id / coast_to_id, which a consumer joins back to the source.
+    A row number looks like an identifier, joins to nothing, and changes
+    meaning if the source is reordered or re-exported. A null says plainly
+    that no identifier was available. Classification, trimming and tagging
+    are unaffected — only traceability to the source polygon is lost.
     """
     if id_field in polys.columns:
         return _as_id(polys[id_field]).to_numpy(dtype=object)
     logger.warning(
-        "Waterbody layer has no '%s' column; recording positional index instead",
+        "Layer '%s' has no '%s' column: reaches meeting it will record a null "
+        "reference. Trimming and tagging are unaffected; only the join back "
+        "to the source polygon is lost.",
+        layer,
         id_field,
     )
-    return np.array([str(i) for i in range(len(polys))], dtype=object)
+    return np.full(len(polys), None, dtype=object)
+
+
+def _waterbody_groups(ids: np.ndarray) -> np.ndarray:
+    """Comparison keys for "is this the same waterbody?".
+
+    Separate from the ids written to the output, because null must not
+    compare equal to null: two unidentified lakes are still two lakes, and
+    treating them as one would encompass a channel that runs between them
+    instead of keeping its middle. Unidentified polygons get a per-polygon
+    token, which cannot collide with a real id.
+    """
+    return np.array(
+        [f"#{i}" if pd.isna(v) else v for i, v in enumerate(ids)], dtype=object
+    )
 
 
 def _topology(gdf: gpd.GeoDataFrame) -> tuple[np.ndarray, np.ndarray]:
@@ -444,7 +469,7 @@ def apply_coastal(
     within_pos, crossing_pos, up_poly, dn_poly, poly_map = _classify_crossings(
         gdf, coastal_gdf
     )
-    coast_ids = _waterbody_ids(coastal_gdf, COAST_ID_FIELD)
+    coast_ids = _waterbody_ids(coastal_gdf, COAST_ID_FIELD, COASTAL_LAYER)
 
     is_inlet = (dn_poly >= 0) & (up_poly < 0)
     inlet_pos = crossing_pos[is_inlet]
@@ -533,7 +558,8 @@ def apply_lakes(
     within_pos, crossing_pos, up_poly, dn_poly, poly_map = _classify_crossings(
         gdf, lakes_gdf
     )
-    lake_ids = _waterbody_ids(lakes_gdf, LAKE_ID_FIELD)
+    lake_ids = _waterbody_ids(lakes_gdf, LAKE_ID_FIELD, LAKES_LAYER)
+    lake_groups = _waterbody_groups(lake_ids)
 
     encompassed = np.zeros(len(gdf), dtype=bool)
     encompassed[within_pos] = True
@@ -557,7 +583,7 @@ def apply_lakes(
     same_lake_mask = np.zeros(len(crossing_pos), dtype=bool)
     if both_ends_in.any():
         idx = np.flatnonzero(both_ends_in)
-        same = lake_ids[up_poly[idx]] == lake_ids[dn_poly[idx]]
+        same = lake_groups[up_poly[idx]] == lake_groups[dn_poly[idx]]
         same_lake_mask[idx[same]] = True
         encompassed[crossing_pos[idx[same]]] = True
         if int(same.sum()):

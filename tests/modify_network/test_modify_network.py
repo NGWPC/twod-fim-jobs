@@ -1450,3 +1450,61 @@ def test_one_lake_split_into_parts_counts_once(tmp_path):
     parts = nw.prepare_lakes(gpd.read_file(path), 0.0, 20.0)
     assert len(parts) > 1, "buffer must actually pinch it apart"
     assert parts[LAKE_ID_FIELD].nunique() == 1
+
+
+### MISSING WATERBODY ID COLUMNS ###
+
+
+def test_missing_coastal_id_records_null_not_a_row_number(tmp_path, caplog):
+    """A fabricated index joins to nothing and moves if the source is reordered."""
+    import logging
+
+    net = tmp_path / "n.gpkg"
+    gpd.GeoDataFrame(
+        {"fp_id": ["A"], "fp_to_id": [None], "total_da_sqkm": [10.0],
+         "stream_order": [3]},
+        geometry=[LineString([(0, 0), (800, 0)])], crs=CRS,
+    ).to_file(net, layer="flowpaths", driver="GPKG")
+    coast = tmp_path / "c.gpkg"
+    gpd.GeoDataFrame(  # no 'id' column
+        {"name": ["shore"]}, geometry=[box(500, -100, 900, 100)], crs=CRS
+    ).to_file(coast, layer="coastal_influence", driver="GPKG")
+
+    gdf, counters = nw.load_reach_network(str(net), None)
+    gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
+    with caplog.at_level(logging.WARNING, logger="twod_fim_jobs.utils.network"):
+        gdf, _ = nw.apply_coastal(gdf, gpd.read_file(coast).to_crs(gdf.crs), counters)
+
+    row = gdf.set_index(REACH_ID_FIELD).loc["A"]
+    assert counters.n_reaches_trimmed_inlet_coastal == 1
+    assert row[TERMINAL_REASON_FIELD] == "coast", "tagging is unaffected"
+    assert pd.isna(row[COAST_TO_ID_FIELD]), "no fabricated reference"
+    assert any("coastal_influence" in m for m in caplog.messages), (
+        "the warning must name the layer that is missing the column"
+    )
+
+
+def test_unidentified_lakes_do_not_compare_as_one_lake(tmp_path):
+    """Null must not equal null: two unnamed lakes are still two lakes.
+
+    Otherwise a channel running between them would be encompassed instead of
+    keeping its middle.
+    """
+    net = tmp_path / "n.gpkg"
+    gpd.GeoDataFrame(
+        {"fp_id": ["M"], "fp_to_id": [None], "total_da_sqkm": [10.0],
+         "stream_order": [3]},
+        geometry=[LineString([(100, 0), (900, 0)])], crs=CRS,
+    ).to_file(net, layer="flowpaths", driver="GPKG")
+    lake = tmp_path / "l.gpkg"
+    gpd.GeoDataFrame(  # no 'lake_id' column
+        {"name": ["a", "b"]},
+        geometry=[box(0, -100, 300, 100), box(700, -100, 1200, 100)], crs=CRS,
+    ).to_file(lake, layer="lakes_polygons", driver="GPKG")
+
+    gdf, counters = _run_lakes(net, lake)
+    assert counters.n_reaches_trimmed_between_lakes == 1, (
+        "two null-id lakes must still read as two lakes"
+    )
+    assert counters.n_reaches_encompassed_removed_lake == 0
+    assert pd.isna(gdf.set_index(REACH_ID_FIELD).loc["M", LAKE_TO_ID_FIELD])

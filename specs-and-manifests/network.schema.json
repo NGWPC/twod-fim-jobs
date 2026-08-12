@@ -77,7 +77,7 @@
               "type": "null"
             }
           ],
-          "description": "Hash of the lakes/waterbody source + version read from inputs.lakes_layer_path (NHF v1.2.3 lakes_polygons layer — not a pre-built dead-pool dataset; the dead-pool extent is derived at runtime via negative_lake_buffer_meters, see DR-034). Null when no lakes dataset was supplied and lake processing was skipped — required-but-nullable so 'no lakes' is stated explicitly rather than by omission, which would otherwise hash differently."
+          "description": "Hash of the lakes source + version read from inputs.lakes_layer_path (NHF v1.2.3 lakes_polygons layer — not a pre-built dead-pool dataset; the dead-pool extent is derived at runtime via negative_lake_buffer_meters, see DR-034). Null when no lakes dataset was supplied and lake processing was skipped — required-but-nullable so 'no lakes' is stated explicitly rather than by omission, which would otherwise hash differently."
         },
         "coastal_influence_layer_hash": {
           "anyOf": [
@@ -111,7 +111,7 @@
         },
         "negative_lake_buffer_meters": {
           "type": "number",
-          "description": "Inward buffer (m) applied to raw waterbody polygons to approximate the dead-pool extent. Code default 50. This is the actual mechanism behind DR-034 ALT-A ('shrink an existing waterbody dataset') — not a separately-sourced dead-pool dataset."
+          "description": "Inward buffer (m) applied to raw lake polygons to approximate the dead-pool extent. Code default 50. This is the actual mechanism behind DR-034 ALT-A ('shrink an existing waterbody dataset') — not a separately-sourced dead-pool dataset."
         }
       }
     },
@@ -133,7 +133,7 @@
             "string",
             "null"
           ],
-          "description": "Path to the lakes/waterbody dataset. Must be a GPKG file; column/layer names follow the NHF v1.2.3 lakes_polygons layer schema by default. Optional — when absent, lake processing is skipped entirely (no reaches encompassed, trimmed, or split on lakes) and no lakes asset is written. Maps to NHFNetworkModifier.lakes_layer_path."
+          "description": "Path to the lakes dataset. Must be a GPKG file; column/layer names follow the NHF v1.2.3 lakes_polygons layer schema by default. Optional — when absent, lake processing is skipped entirely (no reaches encompassed, trimmed, or split on lakes) and no lakes asset is written. Maps to NHFNetworkModifier.lakes_layer_path."
         },
         "coastal_influence_layer_path": {
           "type": [

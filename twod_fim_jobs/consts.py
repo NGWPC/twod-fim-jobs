@@ -91,7 +91,9 @@ FP_ID_FIELD = "fp_id"
 FP_TO_ID_FIELD = "fp_to_id"
 AREA_SQKM_FIELD = "area_sqkm"
 LENGTH_KM_FIELD = "length_km"
-# Identity columns on the waterbody layers, carried onto the reaches they touch.
+# Identity columns on the lakes and coastal layers, carried onto the reaches
+# they touch. A layer without its column yields a null reference, never a
+# fabricated one.
 LAKE_ID_FIELD = "lake_id"
 COAST_ID_FIELD = "id"
 

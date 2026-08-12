@@ -17,13 +17,13 @@ Modify NGWPC Hydrofabric (NHF) to prepare for hydraulic modeling. The job trim, 
 
 | Name                            | Type  | Description                                                                                          |
 | ------------------------------- | ----- | ---------------------------------------------------------------------------------------------------- |
-| lakes_layer_path                | str   | Lakes/waterbody dataset. Current column/layer names compliance is with NHF v1.2.3 `lakes_polygons` layer schema by default. It must be GPKG file. **Omit to skip lake processing entirely** — step 5 is not run, no `lakes.gpkg` is written, and every lake metric is null. |
+| lakes_layer_path                | str   | Lakes dataset. Current column/layer names compliance is with NHF v1.2.3 `lakes_polygons` layer schema by default. It must be GPKG file. **Omit to skip lake processing entirely** — step 5 is not run, no `lakes.gpkg` is written, and every lake metric is null. |
 | coastal_influence_layer_path    | str   | Coastal/tidal influence surface boundary as a vector dataset . It must be GPKG file. Default layer name is `coastal_influence`. **Omit to skip coastal processing entirely** — step 4 is not run and every coastal metric is null. |
 | drainage_area_threshold_percent | float | Max drainage-area difference (%) between reaches eligible for merge. Default 5 (DR-024)              |
 | stream_order_filter_threshold   | int   | Minimum Strahler stream order kept in the network at all. No default — **omit to skip stream-order filtering entirely**: every reach in `reach_network_path` enters processing and `n_reaches_below_stream_order_removed` is null. |
 | min_length_threshold_km         | float | **Minimum** length (km) a reach should reach by merging — a floor, not a ceiling. Merging continues until the chain clears it, so no output reach is shorter unless topology or drainage area prevented it. A reach already at or above it never merges. Default 5. (DR-024, whose wording says "max" — see note below) |
 | lake_area_threshold_sqkm        | float | Minimum lake area (km²) considered at all; smaller waterbodies are dropped before any reach classification. Default 5. |
-| negative_lake_buffer_meters     | float | Inward buffer (m) applied to raw waterbody polygons to approximate the dead-pool extent — this *is* DR-034 ALT-A's "shrink an existing waterbody dataset," not a separate dataset. Default 50 |
+| negative_lake_buffer_meters     | float | Inward buffer (m) applied to raw lake polygons to approximate the dead-pool extent — this *is* DR-034 ALT-A's "shrink an existing waterbody dataset," not a separate dataset. Default 50 |
 
 ## Processing Scope
 
@@ -38,7 +38,7 @@ Order of operations
    - downstream end inside but upstream not→ trimmed to the upstream portion, `is_terminal=true`, `reach_to_id=null`, `terminal_reason='coast'` and reaches downstream of it are dropped.
    - after the cascade, any surviving reach whose `reach_to_id` points at a deleted reach — a tributary that flowed into the cascade zone without itself intersecting the coast layer — → `is_terminal=true`, `reach_to_id=null`, `terminal_reason='coast'`, geometry untouched. Counted by `n_reaches_stranded_coastal`; not removed, so it does not enter the accounting identity.
 
-   Trimmed reaches record the coastal polygon's `id` in `coast_to_id`. Stranded reaches leave it null — that null is what distinguishes "met the coast" from "lost its downstream to the cascade".
+   Trimmed reaches record the coastal polygon's `id` in `coast_to_id`. If the layer has no `id` column the reference is recorded as null and a warning names the layer.
 5. **Lakes** — **skipped entirely when `lakes_layer_path` is not given**:
 
    - fully inside → `lake_encompassed=true`, dropped.
@@ -48,7 +48,7 @@ Order of operations
    - **both ends inside different `lake_id`s** → a real channel running between two waterbodies: trimmed at *both* ends, keeping the dry middle. The inverse of the pass-through case below, which keeps the ends and drops the middle. The survivor is `lake_outlet=true` and `lake_inlet=true`, `is_headwater=true` and `is_terminal=true` with `terminal_reason='lake'`, `reach_to_id=null`. `lake_to_id` names the lake it flows *into*. If the two lakes touch and leave no dry middle, it is encompassed instead. Counted by `n_reaches_trimmed_between_lakes`; the row is kept, so it does not enter the accounting identity.
    - passes through (neither end inside, crosses the boundary twice) → split into two reaches, **both suffixed**, retiring the parent id exactly as an explode does: `8` becomes `8_1` (upstream/inlet) and `8_2` (downstream/outlet); an exploded part `3434_3` becomes `3434_3_1` and `3434_3_2`. Tributaries that pointed at the parent are repointed at the upstream piece. Deriving ids from the parent keeps lineage readable and makes collision with a source id impossible, including with reaches the stream-order filter removed.
 
-   Every reach that meets a lake records that lake's `lake_id` in `lake_to_id`; both split pieces record the lake between them.
+   Every reach that meets a lake records that lake's `lake_id` in `lake_to_id` (null, with a warning, if the layer has no such column); both split pieces record the lake between them.
 
    After the four cases above, any reach left with **no upstream and no downstream** in the surviving network is dropped as an orphan, counted by `n_reaches_orphaned_lake`. Lake removal can strip both of a reach's neighbours and leave it attached to nothing. `is_headwater` is the discriminator and needs no special case: it is false only for reaches that had an upstream neighbour at step 3, so a genuine one-reach watershed draining into a lake is kept, and so is a lake outlet whose downstream was encompassed (the outlet rule marks it headwater).
 

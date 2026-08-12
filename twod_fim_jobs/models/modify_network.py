@@ -109,7 +109,7 @@ class Identity(BaseModel):
         description="Hash of the raw hydrofabric network source + version."
     )
     lakes_layer_hash: Hash8 | None = Field(
-        description="Hash of the lakes/waterbody source + version. Null when no "
+        description="Hash of the lakes source + version. Null when no "
         "lakes dataset was supplied and lake processing was skipped."
     )
     coastal_influence_layer_hash: Hash8 | None = Field(
@@ -343,7 +343,7 @@ class ModifyNetworkInputs(BaseModel):
     # Optional
     lakes_layer_path: str | None = Field(
         default=None,
-        description="Lakes/waterbody dataset (NHF v1.2.3 lakes_polygons layer "
+        description="Lakes dataset (NHF v1.2.3 lakes_polygons layer "
         "schema). Must be a GPKG file. Omit to skip lake processing entirely.",
     )
     coastal_influence_layer_path: str | None = Field(
@@ -379,7 +379,7 @@ class ModifyNetworkInputs(BaseModel):
     negative_lake_buffer_meters: float = Field(
         default=DEFAULT_NEGATIVE_LAKE_BUFFER_METERS,
         ge=0,
-        description="Inward buffer (m) applied to raw waterbody polygons to "
+        description="Inward buffer (m) applied to raw lake polygons to "
         "approximate the dead-pool extent (DR-034 ALT-A).",
     )
 

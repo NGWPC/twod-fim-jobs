@@ -22,7 +22,7 @@ DEFAULT_EPSG_CODE: int = 5070
 DEFAULT_BANKFULL_WIDTH_MULTIPLIER: float = 1.0
 
 # Settings
-REACH_TABLE = "reach_network"
+REACH_TABLE = "reach_network"  # layer modify_network writes, build_model queries
 REACH_ID_FIELD = "reach_id"
 REACH_TO_ID_FIELD = "reach_to_id"
 DA_FIELD = "total_da_sqkm"
@@ -84,13 +84,16 @@ NETWORK_MANIFEST_FILENAME = "network.json"
 
 # NHF v1.2.3 input layer/field names. STREAM_ORDER_FIELD (above) is shared:
 # modify_network's output network is build_model's input reach db.
-FLOWPATHS_LAYER = "flowpaths"
+FLOWPATHS_LAYER = "flowpaths"  # NHF input layer; the OUTPUT layer is REACH_TABLE
 LAKES_LAYER = "lakes_polygons"
 COASTAL_LAYER = "coastal_influence"
 FP_ID_FIELD = "fp_id"
 FP_TO_ID_FIELD = "fp_to_id"
 AREA_SQKM_FIELD = "area_sqkm"
 LENGTH_KM_FIELD = "length_km"
+# Identity columns on the waterbody layers, carried onto the reaches they touch.
+LAKE_ID_FIELD = "lake_id"
+COAST_ID_FIELD = "id"
 
 # Output tag columns - the literal GPKG column names in network.gpkg
 # (contract: specs-and-manifests/network.schema.json assets.network).
@@ -101,8 +104,33 @@ TERMINAL_REASON_FIELD = "terminal_reason"
 LAKE_INLET_FIELD = "lake_inlet"
 LAKE_OUTLET_FIELD = "lake_outlet"
 IS_TRIMMED_FIELD = "is_trimmed"
+LAKE_TO_ID_FIELD = "lake_to_id"
+COAST_TO_ID_FIELD = "coast_to_id"
 
 # terminal_reason vocabulary (null when is_terminal is false)
 TERMINAL_REASON_OUTLET = "outlet"
 TERMINAL_REASON_COAST = "coast"
 TERMINAL_REASON_LAKE = "lake"
+
+
+# The output schema of network.gpkg. Every source column not listed here is
+# dropped on write: fp_id/fp_to_id are superseded by reach_id/reach_to_id, and
+# unlisted NHF attributes are not part of the contract. stream_order,
+# total_da_sqkm and length_km are kept because build_model reads them off this
+# network. area_sqkm (the LOCAL catchment) is deliberately not carried: nothing
+# downstream reads it, and it would be wrong on a merged row unless summed.
+OUTPUT_COLUMNS = [
+    REACH_ID_FIELD,
+    REACH_TO_ID_FIELD,
+    LAKE_TO_ID_FIELD,
+    COAST_TO_ID_FIELD,
+    IS_HEADWATER_FIELD,
+    IS_TERMINAL_FIELD,
+    TERMINAL_REASON_FIELD,
+    LAKE_INLET_FIELD,
+    LAKE_OUTLET_FIELD,
+    IS_TRIMMED_FIELD,
+    STREAM_ORDER_FIELD,
+    DA_FIELD,
+    LENGTH_KM_FIELD,
+]

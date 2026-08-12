@@ -2,16 +2,21 @@
 
 Pure transforms over GeoDataFrames plus plain numpy topology arrays — no
 manifest or storage concerns (those live in jobs/modify_network.py). Every
-function is deterministic: iteration orders are sorted, split ids are minted
-sequentially in reach_id order, and finalize_network() sorts the output
-canonically, so identical inputs produce byte-identical artifacts.
+function is deterministic: iteration orders are sorted, split ids derive from
+the reach they came from, and finalize_network() sorts the output canonically,
+so identical inputs produce byte-identical artifacts.
+
+Reach ids are TEXT, not integers. A pass-through split names its new piece
+after its parent (``8`` -> ``8`` and ``8_1``), which keeps the lineage legible
+and makes collision with a source id impossible by construction — including
+with reaches the stream-order filter removed, which a numeric high-water mark
+would have to be told about.
 
 Assumptions, stated once:
 - Flowpath geometries are digitized upstream -> downstream (first vertex is
   the upstream end), matching NHF convention.
 - The network CRS is projected with meter units; lengths and the negative
   lake buffer depend on it (checked at load).
-- reach ids are non-negative integers (-1 is used as a null sentinel).
 
 Counter discipline (see modify_network_specs.md Metrics/Accounting): every
 removal is counted in exactly one branch, so the reconciliation identity
@@ -21,6 +26,7 @@ holds by construction. Trims, strands, and splits keep their rows.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 
 import geopandas as gpd
@@ -32,16 +38,21 @@ from shapely import Point
 from shapely.ops import substring
 
 from twod_fim_jobs.consts import (
-    AREA_SQKM_FIELD,
+    COAST_ID_FIELD,
+    COAST_TO_ID_FIELD,
+    DA_FIELD,
     FLOWPATHS_LAYER,
     FP_ID_FIELD,
     FP_TO_ID_FIELD,
     IS_HEADWATER_FIELD,
     IS_TERMINAL_FIELD,
     IS_TRIMMED_FIELD,
+    LAKE_ID_FIELD,
     LAKE_INLET_FIELD,
     LAKE_OUTLET_FIELD,
+    LAKE_TO_ID_FIELD,
     LENGTH_KM_FIELD,
+    OUTPUT_COLUMNS,
     REACH_ID_FIELD,
     REACH_TO_ID_FIELD,
     STREAM_ORDER_FIELD,
@@ -60,6 +71,12 @@ _FLAG_FIELDS = (
     LAKE_INLET_FIELD,
     LAKE_OUTLET_FIELD,
     IS_TRIMMED_FIELD,
+)
+_REQUIRED_SOURCE_FIELDS = (
+    FP_ID_FIELD,
+    FP_TO_ID_FIELD,
+    DA_FIELD,
+    LENGTH_KM_FIELD,
 )
 
 
@@ -88,17 +105,12 @@ class NetworkCounters:
 
 def load_reach_network(
     path: str, stream_order_filter_threshold: int | None
-) -> tuple[gpd.GeoDataFrame, NetworkCounters, int]:
+) -> tuple[gpd.GeoDataFrame, NetworkCounters]:
     """Load the flowpaths layer, filtering by stream order at read time.
 
     Reaches below the threshold never materialize (pushed down to GDAL).
     When the threshold is None no filter is applied and the whole network
     loads; n_reaches_below_stream_order_removed stays None.
-
-    Also returns the maximum reach id present in the SOURCE, before
-    filtering. Split reaches must be numbered above that: a filtered-out
-    reach still exists in the hydrofabric, so minting from the loaded
-    maximum would silently reuse its id.
     """
     counters = NetworkCounters()
     try:
@@ -107,21 +119,34 @@ def load_reach_network(
         if stream_order_filter_threshold is not None:
             where = f"{STREAM_ORDER_FIELD} >= {int(stream_order_filter_threshold)}"
         gdf = gpd.read_file(path, layer=FLOWPATHS_LAYER, where=where)
-        if n_input < 0:  # driver without fast feature count
-            if where is None:
-                n_input = len(gdf)
-            else:
-                n_input = len(
+        if n_input < 0:  # driver without a fast feature count
+            n_input = (
+                len(gdf)
+                if where is None
+                else len(
                     pyogrio.read_dataframe(
-                        path, layer=FLOWPATHS_LAYER, columns=[], read_geometry=False
+                        path,
+                        layer=FLOWPATHS_LAYER,
+                        columns=[FP_ID_FIELD],
+                        read_geometry=False,
                     )
                 )
+            )
     except DatasetUnavailableError:
         raise
     except Exception as exc:
         raise DatasetUnavailableError(
             f"Cannot read reach network layer '{FLOWPATHS_LAYER}' at {path}: {exc}"
         ) from exc
+
+    missing = [f for f in _REQUIRED_SOURCE_FIELDS if f not in gdf.columns]
+    if stream_order_filter_threshold is not None and STREAM_ORDER_FIELD not in gdf:
+        missing.append(STREAM_ORDER_FIELD)
+    if missing:
+        raise DatasetUnavailableError(
+            f"Reach network layer '{FLOWPATHS_LAYER}' at {path} is missing required "
+            f"field(s): {', '.join(missing)}. Found: {', '.join(gdf.columns)}"
+        )
 
     if gdf.crs is None or not gdf.crs.is_projected:
         raise ValueError(
@@ -132,15 +157,8 @@ def load_reach_network(
     counters.n_reaches_input = n_input
     if stream_order_filter_threshold is not None:
         counters.n_reaches_below_stream_order_removed = n_input - len(gdf)
-        # One id column, no geometry: cheap even on a national hydrofabric.
-        source_ids = pyogrio.read_dataframe(
-            path, layer=FLOWPATHS_LAYER, columns=[FP_ID_FIELD], read_geometry=False
-        )[FP_ID_FIELD]
-        max_source_reach_id = int(source_ids.max()) if len(source_ids) else 0
-    else:
-        max_source_reach_id = int(gdf[FP_ID_FIELD].max()) if len(gdf) else 0
 
-    return _init_columns(gdf), counters, max_source_reach_id
+    return _init_columns(gdf), counters
 
 
 def load_vector_layer(path: str, layer: str, target_crs) -> gpd.GeoDataFrame:
@@ -151,7 +169,7 @@ def load_vector_layer(path: str, layer: str, target_crs) -> gpd.GeoDataFrame:
         raise DatasetUnavailableError(
             f"Cannot read layer '{layer}' at {path}: {exc}"
         ) from exc
-    return gdf.to_crs(target_crs)
+    return gdf.to_crs(target_crs).reset_index(drop=True)
 
 
 def _init_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
@@ -168,15 +186,31 @@ def _init_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
                 int(still.sum()),
             )
 
-    ids = gdf[FP_ID_FIELD].astype("int64")
-    if (ids < 0).any():
-        raise ValueError("fp_id must be non-negative (-1 is the null sentinel)")
-    gdf[REACH_ID_FIELD] = ids
-    gdf[REACH_TO_ID_FIELD] = gdf[FP_TO_ID_FIELD].astype("Int64")
+    gdf[REACH_ID_FIELD] = _as_id(gdf[FP_ID_FIELD])
+    gdf[REACH_TO_ID_FIELD] = _as_id(gdf[FP_TO_ID_FIELD])
+    if gdf[REACH_ID_FIELD].duplicated().any():
+        dupes = gdf.loc[gdf[REACH_ID_FIELD].duplicated(), REACH_ID_FIELD].tolist()
+        raise DatasetUnavailableError(
+            f"{FP_ID_FIELD} must be unique; repeated: {sorted(set(dupes))[:10]}"
+        )
     for field in _FLAG_FIELDS:
         gdf[field] = False
-    gdf[TERMINAL_REASON_FIELD] = pd.Series([None] * len(gdf), dtype=object)
+    gdf[TERMINAL_REASON_FIELD] = pd.Series(pd.NA, index=gdf.index, dtype="string")
+    gdf[LAKE_TO_ID_FIELD] = pd.Series(pd.NA, index=gdf.index, dtype="string")
+    gdf[COAST_TO_ID_FIELD] = pd.Series(pd.NA, index=gdf.index, dtype="string")
     return gdf.reset_index(drop=True)
+
+
+def _as_id(series: pd.Series) -> pd.Series:
+    """Render source ids as text without a float detour.
+
+    A nullable integer column read from GPKG can arrive as float64, where a
+    plain astype(str) would render 12 as '12.0' and silently break every
+    downstream join.
+    """
+    if pd.api.types.is_float_dtype(series):
+        series = series.astype("Int64")
+    return series.astype("string")
 
 
 ### TERMINAL / HEADWATER TAGGING ###
@@ -213,8 +247,8 @@ def prepare_lakes(
 
     Spec order matters: filter FIRST on raw polygon area, then buffer inward
     (DR-034 ALT-A). Polygons that vanish under the negative buffer are
-    dropped. No union across lakes — polygons stay individual, and endpoint
-    tests are 'within any polygon'.
+    dropped. lake_id is carried through so reaches can record which lake they
+    meet; explode() preserves it, so a multipart lake's parts share an id.
     """
     g = lakes_gdf[lakes_gdf.geometry.notna() & ~lakes_gdf.geometry.is_empty]
     g = g[g.geometry.area > lake_area_threshold_sqkm * 1e6]
@@ -228,14 +262,29 @@ def prepare_lakes(
 ### SHARED GEOMETRY HELPERS ###
 
 
+def _waterbody_ids(polys: gpd.GeoDataFrame, id_field: str) -> np.ndarray:
+    """Positional lookup of a waterbody layer's id column, as text.
+
+    Falls back to the positional index when the layer has no id column, so a
+    layer without one still yields a stable, if less meaningful, reference.
+    """
+    if id_field in polys.columns:
+        return _as_id(polys[id_field]).to_numpy(dtype=object)
+    logger.warning(
+        "Waterbody layer has no '%s' column; recording positional index instead",
+        id_field,
+    )
+    return np.array([str(i) for i in range(len(polys))], dtype=object)
+
+
 def _topology(gdf: gpd.GeoDataFrame) -> tuple[np.ndarray, np.ndarray]:
     """(ids, ds_pos): downstream pointer as positional index, -1 for none.
 
     Always derived from the LIVE reach_to_id column — never fp_to_id — so
     waterbody edits (nulled pointers, splits, deletions) are respected.
     """
-    ids = gdf[REACH_ID_FIELD].to_numpy(dtype="int64")
-    ds = gdf[REACH_TO_ID_FIELD].fillna(-1).to_numpy(dtype="int64")
+    ids = gdf[REACH_ID_FIELD].to_numpy(dtype=object)
+    ds = gdf[REACH_TO_ID_FIELD].fillna("").to_numpy(dtype=object)
     ds_pos = pd.Index(ids).get_indexer(ds)
     return ids, ds_pos
 
@@ -255,15 +304,14 @@ def _downstream_closure(ds_pos: np.ndarray, seeds: np.ndarray) -> np.ndarray:
     return visited
 
 
-def _classify_crossings(
-    gdf: gpd.GeoDataFrame, polys: gpd.GeoDataFrame
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[int, list[int]]]:
+def _classify_crossings(gdf: gpd.GeoDataFrame, polys: gpd.GeoDataFrame):
     """Spatially classify reaches against waterbody polygons.
 
-    Returns (within_pos, crossing_pos, upstream_in, downstream_in, poly_map):
-    positions of fully-encompassed reaches, positions of boundary-crossing
-    reaches, per-crossing endpoint containment, and crossing position ->
-    intersecting polygon positions (for boundary construction).
+    Returns (within_pos, crossing_pos, up_poly, dn_poly, poly_map): positions
+    of fully-encompassed reaches, positions of boundary-crossing reaches, the
+    polygon position containing each crossing reach's upstream/downstream
+    endpoint (-1 when outside every polygon), and crossing position ->
+    intersecting polygon positions for boundary construction.
     """
     geom = gdf.geometry.name
     pairs = gpd.sjoin(
@@ -279,34 +327,36 @@ def _classify_crossings(
 
     poly_map: dict[int, list[int]] = {
         int(k): sorted(int(v) for v in grp)
-        for k, grp in pairs.loc[
-            pairs.index.isin(crossing_pos), "index_right"
-        ].groupby(level=0)
+        for k, grp in pairs.loc[pairs.index.isin(crossing_pos), "index_right"].groupby(
+            level=0
+        )
     }
 
     lines = gdf.geometry.to_numpy()[crossing_pos]
-    up_pts = shapely.get_point(lines, 0)
-    dn_pts = shapely.get_point(lines, -1)
+    up_poly = _containing_polygon(shapely.get_point(lines, 0), polys, gdf.crs)
+    dn_poly = _containing_polygon(shapely.get_point(lines, -1), polys, gdf.crs)
+    return within_pos, crossing_pos, up_poly, dn_poly, poly_map
 
-    def within_any(points: np.ndarray) -> np.ndarray:
-        pts = gpd.GeoDataFrame(geometry=points, crs=gdf.crs)
-        hit = gpd.sjoin(
-            pts, polys[[polys.geometry.name]], predicate="within", how="inner"
-        )
-        mask = np.zeros(len(points), dtype=bool)
-        mask[hit.index.unique().to_numpy()] = True
-        return mask
 
-    upstream_in = within_any(up_pts)
-    downstream_in = within_any(dn_pts)
-    return within_pos, crossing_pos, upstream_in, downstream_in, poly_map
+def _containing_polygon(points, polys: gpd.GeoDataFrame, crs) -> np.ndarray:
+    """Position of the polygon containing each point, or -1 if none does."""
+    out = np.full(len(points), -1, dtype=int)
+    pts = gpd.GeoDataFrame(geometry=points, crs=crs)
+    hit = gpd.sjoin(
+        pts, polys[[polys.geometry.name]], predicate="within", how="inner"
+    )
+    # A point inside overlapping polygons keeps the lowest position, so the
+    # choice is deterministic rather than sjoin-order dependent.
+    for pos, poly_pos in hit["index_right"].groupby(level=0).min().items():
+        out[int(pos)] = int(poly_pos)
+    return out
 
 
 def _crossing_distances(line, boundary) -> np.ndarray:
     """Sorted projected distances of every line/boundary crossing.
 
     Robust to degenerate intersections: a collinear overlap contributes its
-    endpoints' distances instead of raising (the prototype crashed here).
+    endpoints' distances instead of raising.
     """
     inter = line.intersection(boundary)
     if inter.is_empty:
@@ -324,22 +374,25 @@ def _boundary_for(polys: gpd.GeoDataFrame, poly_positions: list[int]):
 
 def apply_coastal(
     gdf: gpd.GeoDataFrame, coastal_gdf: gpd.GeoDataFrame, counters: NetworkCounters
-) -> tuple[gpd.GeoDataFrame, set[int]]:
+) -> tuple[gpd.GeoDataFrame, set[str]]:
     """Coastal classification, cascade removal, and the stranded sweep.
 
     Cases (spec step 4): fully inside -> dropped with everything downstream;
     downstream end inside -> trimmed to the upstream portion and made
     terminal ('coast'), everything downstream dropped. Coastal has no
     outlet/pass-through case — such reaches are left untouched (logged).
-    Returns the surviving frame and the reach_ids the coastal pass touched
-    but kept (for the ambiguous-classification check against the lake pass).
+    Trimmed reaches record the polygon they met in coast_to_id; stranded
+    reaches leave it null, since they never touched the coast layer.
     """
     gdf = gdf.reset_index(drop=True)
-    within_pos, crossing_pos, us_in, ds_in, poly_map = _classify_crossings(
+    within_pos, crossing_pos, up_poly, dn_poly, poly_map = _classify_crossings(
         gdf, coastal_gdf
     )
+    coast_ids = _waterbody_ids(coastal_gdf, COAST_ID_FIELD)
 
-    inlet_pos = crossing_pos[ds_in & ~us_in]
+    is_inlet = (dn_poly >= 0) & (up_poly < 0)
+    inlet_pos = crossing_pos[is_inlet]
+    inlet_poly = dn_poly[is_inlet]
     other = int(len(crossing_pos) - len(inlet_pos))
     if other:
         logger.info(
@@ -348,12 +401,12 @@ def apply_coastal(
             other,
         )
 
-    # Trim inlets first so degenerate trims can escalate to encompassed
+    # Trim inlets first so a degenerate trim can escalate to encompassed
     # before any counting happens.
     encompassed = np.zeros(len(gdf), dtype=bool)
     encompassed[within_pos] = True
     trimmed_pos: list[int] = []
-    for p in sorted(int(p) for p in inlet_pos):
+    for p, poly_pos in sorted(zip(inlet_pos.tolist(), inlet_poly.tolist())):
         line = gdf.geometry.iloc[p]
         dists = _crossing_distances(line, _boundary_for(coastal_gdf, poly_map[p]))
         if len(dists) == 0 or dists.min() <= 0 or dists.min() >= line.length:
@@ -363,15 +416,15 @@ def apply_coastal(
         gdf.loc[p, gdf.geometry.name] = substring(line, 0, cut)
         gdf.loc[p, LENGTH_KM_FIELD] = cut / 1000.0
         gdf.loc[p, IS_TRIMMED_FIELD] = True
+        gdf.loc[p, COAST_TO_ID_FIELD] = coast_ids[poly_pos]
         trimmed_pos.append(p)
 
     # Cascade: everything strictly downstream of an encompassed or trimmed
     # reach is removed. Deletion wins over trim if a trimmed reach is itself
     # downstream of another break (counted once, as cascade).
     ids, ds_pos = _topology(gdf)
-    flagged = np.flatnonzero(encompassed)
-    flagged = np.union1d(flagged, np.array(trimmed_pos, dtype=int))
-    seeds = ds_pos[flagged]
+    flagged = np.union1d(np.flatnonzero(encompassed), np.array(trimmed_pos, dtype=int))
+    seeds = ds_pos[flagged.astype(int)] if len(flagged) else np.array([], dtype=int)
     closure = _downstream_closure(ds_pos, seeds[seeds >= 0])
     deletion = encompassed | closure
 
@@ -384,14 +437,15 @@ def apply_coastal(
     gdf.loc[surviving_trims, REACH_TO_ID_FIELD] = pd.NA
     counters.n_reaches_trimmed_inlet_coastal = len(surviving_trims)
 
-    touched = set(int(i) for i in ids[surviving_trims])
+    touched = {str(i) for i in ids[surviving_trims]}
     gdf = gdf.loc[~deletion].reset_index(drop=True)
 
     # Stranded sweep: tributaries that flowed into a cascade-deleted reach
     # without themselves intersecting the coast layer. Made terminal in
-    # place, geometry untouched. Lakes need no equivalent — they have no
-    # cascade, and anything pointing into a lake-encompassed reach has its
-    # own downstream end inside the lake, so the inlet rule nulls it.
+    # place, geometry untouched, coast_to_id left null. Lakes need no
+    # equivalent — they have no cascade, and anything pointing into a
+    # lake-encompassed reach has its own downstream end inside the lake, so
+    # the inlet rule nulls it.
     stranded = gdf[REACH_TO_ID_FIELD].notna() & ~gdf[REACH_TO_ID_FIELD].isin(
         gdf[REACH_ID_FIELD]
     )
@@ -407,39 +461,38 @@ def apply_coastal(
 
 
 def apply_lakes(
-    gdf: gpd.GeoDataFrame,
-    lakes_gdf: gpd.GeoDataFrame,
-    counters: NetworkCounters,
-    max_source_reach_id: int,
-) -> tuple[gpd.GeoDataFrame, set[int]]:
+    gdf: gpd.GeoDataFrame, lakes_gdf: gpd.GeoDataFrame, counters: NetworkCounters
+) -> tuple[gpd.GeoDataFrame, set[str]]:
     """Lake classification: encompassed / inlet / outlet / pass-through split.
 
     Pass-through splits keep the original reach_id on the upstream/inlet
-    piece and mint a new reach_id for the downstream/outlet piece (spec step
-    5). A reach crossing multiple lakes is cut at its first entry and last
-    exit across all of them — still two pieces, per the spec's 'split into
-    two reaches'. Returns the frame and all reach_ids the lake pass touched.
+    piece and name the downstream/outlet piece after it (``8`` -> ``8_1``),
+    so lineage is readable and no source id can be reused. Every reach that
+    meets a lake records it in lake_to_id.
     """
     gdf = gdf.reset_index(drop=True)
-    within_pos, crossing_pos, us_in, ds_in, poly_map = _classify_crossings(
+    within_pos, crossing_pos, up_poly, dn_poly, poly_map = _classify_crossings(
         gdf, lakes_gdf
     )
+    lake_ids = _waterbody_ids(lakes_gdf, LAKE_ID_FIELD)
 
     encompassed = np.zeros(len(gdf), dtype=bool)
     encompassed[within_pos] = True
 
-    inlet_pos = [int(p) for p in crossing_pos[ds_in]]  # both-ends-in -> inlet
-    outlet_pos = [int(p) for p in crossing_pos[us_in & ~ds_in]]
-    passthrough_pos = [int(p) for p in crossing_pos[~us_in & ~ds_in]]
+    # Both ends inside (but not within any single polygon) still reads as an
+    # inlet: the reach ends in a lake.
+    is_inlet = dn_poly >= 0
+    is_outlet = (up_poly >= 0) & (dn_poly < 0)
+    is_pass = (up_poly < 0) & (dn_poly < 0)
+    inlet = sorted(zip(crossing_pos[is_inlet].tolist(), dn_poly[is_inlet].tolist()))
+    outlet = sorted(zip(crossing_pos[is_outlet].tolist(), up_poly[is_outlet].tolist()))
+    passthrough = sorted(crossing_pos[is_pass].tolist())
 
     n_inlet = n_outlet = n_split = 0
     new_rows: list[dict] = []
-    # Clear the SOURCE maximum, not the loaded one: a filtered-out reach
-    # still owns its id in the hydrofabric.
-    next_id = max(int(gdf[REACH_ID_FIELD].max()), max_source_reach_id) + 1
     geom = gdf.geometry.name
 
-    for p in sorted(inlet_pos):
+    for p, poly_pos in inlet:
         line = gdf.geometry.iloc[p]
         dists = _crossing_distances(line, _boundary_for(lakes_gdf, poly_map[p]))
         if len(dists) == 0 or dists.min() <= 0 or dists.min() >= line.length:
@@ -453,9 +506,10 @@ def apply_lakes(
         gdf.loc[p, TERMINAL_REASON_FIELD] = TERMINAL_REASON_LAKE
         gdf.loc[p, REACH_TO_ID_FIELD] = pd.NA
         gdf.loc[p, IS_TRIMMED_FIELD] = True
+        gdf.loc[p, LAKE_TO_ID_FIELD] = lake_ids[poly_pos]
         n_inlet += 1
 
-    for p in sorted(outlet_pos):
+    for p, poly_pos in outlet:
         line = gdf.geometry.iloc[p]
         dists = _crossing_distances(line, _boundary_for(lakes_gdf, poly_map[p]))
         if len(dists) == 0 or dists.max() <= 0 or dists.max() >= line.length:
@@ -467,9 +521,10 @@ def apply_lakes(
         gdf.loc[p, LAKE_OUTLET_FIELD] = True
         gdf.loc[p, IS_HEADWATER_FIELD] = True
         gdf.loc[p, IS_TRIMMED_FIELD] = True
+        gdf.loc[p, LAKE_TO_ID_FIELD] = lake_ids[poly_pos]
         n_outlet += 1
 
-    for p in sorted(passthrough_pos):
+    for p in passthrough:
         line = gdf.geometry.iloc[p]
         dists = _crossing_distances(line, _boundary_for(lakes_gdf, poly_map[p]))
         dists = dists[(dists > 0) & (dists < line.length)]
@@ -480,18 +535,21 @@ def apply_lakes(
             )
             continue
         d_first, d_last = float(dists.min()), float(dists.max())
+        parent = str(gdf[REACH_ID_FIELD].iloc[p])
+        lake_ref = lake_ids[poly_map[p][0]]
 
-        # Downstream/outlet piece: a new reach that inherits the original's
-        # downstream connectivity and its step-2 terminal state.
+        # Downstream/outlet piece: a new reach named after its parent, which
+        # inherits the original's downstream connectivity and terminal state.
         outlet_row = gdf.iloc[p].to_dict()
         outlet_row[geom] = substring(line, d_last, line.length)
-        outlet_row[REACH_ID_FIELD] = next_id
+        outlet_row[REACH_ID_FIELD] = f"{parent}_1"
         outlet_row[LENGTH_KM_FIELD] = (line.length - d_last) / 1000.0
         outlet_row[LAKE_OUTLET_FIELD] = True
+        outlet_row[LAKE_INLET_FIELD] = False
         outlet_row[IS_HEADWATER_FIELD] = True
         outlet_row[IS_TRIMMED_FIELD] = True
+        outlet_row[LAKE_TO_ID_FIELD] = lake_ref
         new_rows.append(outlet_row)
-        next_id += 1
 
         # Upstream/inlet piece keeps the original reach_id, so upstream
         # neighbors' pointers stay valid.
@@ -502,15 +560,17 @@ def apply_lakes(
         gdf.loc[p, TERMINAL_REASON_FIELD] = TERMINAL_REASON_LAKE
         gdf.loc[p, REACH_TO_ID_FIELD] = pd.NA
         gdf.loc[p, IS_TRIMMED_FIELD] = True
+        gdf.loc[p, LAKE_TO_ID_FIELD] = lake_ref
         n_split += 1
 
-    touched = set(int(i) for i in gdf[REACH_ID_FIELD].to_numpy()[encompassed])
+    all_ids = gdf[REACH_ID_FIELD].to_numpy(dtype=object)
+    touched = {str(i) for i in all_ids[encompassed]}
     touched |= {
-        int(gdf[REACH_ID_FIELD].iloc[p])
-        for p in (*inlet_pos, *outlet_pos, *passthrough_pos)
+        str(all_ids[p])
+        for p in (*[i for i, _ in inlet], *[i for i, _ in outlet], *passthrough)
         if not encompassed[p]
     }
-    touched |= {int(r[REACH_ID_FIELD]) for r in new_rows}
+    touched |= {str(r[REACH_ID_FIELD]) for r in new_rows}
 
     counters.n_reaches_encompassed_removed_lake = int(encompassed.sum())
     counters.n_reaches_trimmed_inlet_lake = n_inlet
@@ -536,21 +596,36 @@ def merge_short_reaches(
     """Chain-merge short reaches walking upstream from each chain start.
 
     Spec step 7: starting downstream, absorb the upstream neighbor while (a)
-    its drainage-area difference from the CHAIN START is under the threshold,
-    (b) cumulative chain length stays under the cap, and (c) the current
-    reach has exactly one upstream neighbor (junctions never merge).
+    the chain is still SHORTER than max_length_threshold_km, (b) the
+    neighbor's drainage-area difference from the CHAIN START is under the
+    threshold, and (c) the current reach has exactly one upstream neighbor
+    (junctions never merge).
+
+    The length threshold is a floor, not a ceiling. Short reaches are the
+    problem being solved, so merging continues until the chain is long enough
+    to be worth modeling and then stops. Consequences: no output reach is
+    shorter than the threshold unless topology or drainage area prevented it,
+    and a merged chain cannot exceed the threshold by more than the length of
+    the single reach that crossed it.
+
+    Drainage area means total_da_sqkm, the cumulative accumulation — not
+    area_sqkm, which is the local catchment. The rule asks whether two reaches
+    carry the same flow, which only the cumulative value answers; on local
+    area a 5% threshold would test roughly the opposite and silently merge
+    almost nothing.
 
     Runs on post-waterbody topology (live reach_to_id). O(n) over numpy
     arrays; geometry is only touched once per merged chain at the end.
-    Merged rows take the chain start's attributes (its drainage area is the
-    chain's outlet DA), summed length, the top member's is_headwater /
-    lake_outlet, and any member's is_trimmed. Tributary pointers into
-    absorbed members are re-pointed at the surviving reach_id.
+    Merged rows keep the chain start's attributes — it is the most
+    downstream reach of the chain, so its total_da_sqkm is the merged reach's
+    accumulation and carries through untouched — plus summed length, the top member's is_headwater /
+    lake_outlet / lake_to_id, and any member's is_trimmed. Tributary pointers
+    into absorbed members are re-pointed at the surviving reach_id.
     """
     gdf = gdf.reset_index(drop=True)
     n = len(gdf)
     ids, ds_pos = _topology(gdf)
-    da = gdf[AREA_SQKM_FIELD].to_numpy(dtype=float)
+    da = gdf[DA_FIELD].to_numpy(dtype=float)
     ln = gdf[LENGTH_KM_FIELD].to_numpy(dtype=float)
 
     # Reverse adjacency (CSR) and in-degree over live topology.
@@ -566,7 +641,7 @@ def merge_short_reaches(
 
     # Downstream-first traversal from roots (terminals), deterministic order.
     roots = np.flatnonzero(ds_pos < 0)
-    roots = roots[np.argsort(ids[roots], kind="stable")]
+    roots = roots[np.argsort(ids[roots].astype(str), kind="stable")]
     topo: list[int] = []
     seen = np.zeros(n, dtype=bool)
     seen[roots] = True
@@ -575,16 +650,19 @@ def merge_short_reaches(
         v = int(stack.pop())
         topo.append(v)
         ps = parents(v)
-        ps = ps[np.argsort(ids[ps], kind="stable")][::-1]
+        ps = ps[np.argsort(ids[ps].astype(str), kind="stable")][::-1]
         for u in ps:
             if not seen[u]:
                 seen[u] = True
                 stack.append(int(u))
     if not seen.all():
-        # A cycle in fp topology is data corruption, but don't lose reaches.
         leftovers = np.flatnonzero(~seen)
-        logger.warning("%d reaches unreachable from any terminal (cycle?)", len(leftovers))
-        topo.extend(int(v) for v in leftovers[np.argsort(ids[leftovers])])
+        logger.warning(
+            "%d reaches unreachable from any terminal (cycle?)", len(leftovers)
+        )
+        topo.extend(
+            int(v) for v in leftovers[np.argsort(ids[leftovers].astype(str))]
+        )
 
     chains: dict[int, list[int]] = {}
     assigned = np.zeros(n, dtype=bool)
@@ -597,14 +675,20 @@ def merge_short_reaches(
         start_da = da[v]
         cur = v
         while True:
+            # The threshold is a FLOOR, not a ceiling: keep absorbing until the
+            # chain is long enough to model, then stop. A reach that already
+            # clears it never merges at all.
+            if chain_len >= max_length_threshold_km:
+                break
             if indeg[cur] != 1:
                 break
             u = int(parents(cur)[0])
             if assigned[u] or start_da <= 0:
                 break
-            if abs(da[u] - start_da) / start_da * 100.0 >= drainage_area_threshold_percent:
-                break
-            if chain_len + ln[u] > max_length_threshold_km:
+            if (
+                abs(da[u] - start_da) / start_da * 100.0
+                >= drainage_area_threshold_percent
+            ):
                 break
             assigned[u] = True
             members.append(u)
@@ -619,7 +703,7 @@ def merge_short_reaches(
 
     geom = gdf.geometry.name
     absorbed: list[int] = []
-    remap: dict[int, int] = {}
+    remap: dict[str, str] = {}
     for start, members in chains.items():
         merged_geom = shapely.line_merge(
             shapely.union_all(gdf.geometry.to_numpy()[members])
@@ -629,19 +713,19 @@ def merge_short_reaches(
         gdf.loc[start, LENGTH_KM_FIELD] = float(ln[members].sum())
         gdf.loc[start, IS_HEADWATER_FIELD] = bool(gdf[IS_HEADWATER_FIELD].iloc[top])
         gdf.loc[start, LAKE_OUTLET_FIELD] = bool(gdf[LAKE_OUTLET_FIELD].iloc[top])
+        gdf.loc[start, LAKE_TO_ID_FIELD] = gdf[LAKE_TO_ID_FIELD].iloc[top]
         gdf.loc[start, IS_TRIMMED_FIELD] = bool(
             gdf[IS_TRIMMED_FIELD].iloc[members].any()
         )
         for m in members[1:]:
             absorbed.append(m)
-            remap[int(ids[m])] = int(ids[start])
+            remap[str(ids[m])] = str(ids[start])
 
     gdf = gdf.drop(index=absorbed)
     # Tributaries that pointed into an absorbed member follow it into the
     # surviving reach.
     rt = gdf[REACH_TO_ID_FIELD]
-    mapped = rt.map(remap)
-    gdf[REACH_TO_ID_FIELD] = mapped.combine_first(rt).astype("Int64")
+    gdf[REACH_TO_ID_FIELD] = rt.map(remap).fillna(rt).astype("string")
     return gdf.reset_index(drop=True)
 
 
@@ -651,18 +735,47 @@ def merge_short_reaches(
 def finalize_network(
     gdf: gpd.GeoDataFrame, counters: NetworkCounters
 ) -> gpd.GeoDataFrame:
-    """Canonical ordering + final-artifact counters (headwater/terminal/output)."""
-    gdf = _normalize_dtypes(gdf.sort_values(REACH_ID_FIELD).reset_index(drop=True))
+    """Canonical ordering, output column selection, and final-artifact counters.
+
+    Source columns outside OUTPUT_COLUMNS are dropped here — fp_id/fp_to_id
+    are superseded by reach_id/reach_to_id, and unlisted NHF attributes are
+    not part of the published contract.
+    """
+    gdf = _normalize_dtypes(gdf)
+    gdf = gdf.iloc[_natural_order(gdf[REACH_ID_FIELD])].reset_index(drop=True)
+
+    missing = [c for c in OUTPUT_COLUMNS if c not in gdf.columns]
+    if missing:
+        raise ValueError(f"output is missing contract column(s): {missing}")
+    gdf = gdf[[*OUTPUT_COLUMNS, gdf.geometry.name]]
+
     counters.n_reaches_output = len(gdf)
     counters.n_headwater_reaches = int(gdf[IS_HEADWATER_FIELD].sum())
     counters.n_terminal_reaches = int(gdf[IS_TERMINAL_FIELD].sum())
     return gdf
 
 
+def _natural_order(ids: pd.Series) -> np.ndarray:
+    """Positions sorting '2' before '10', and '8' immediately before '8_1'."""
+    parsed = [
+        (int(m.group(1)), int(m.group(2) or 0), s)
+        if (m := re.fullmatch(r"(\d+)(?:_(\d+))?", s))
+        else (np.iinfo(np.int64).max, 0, s)
+        for s in ids.astype(str)
+    ]
+    return np.array(sorted(range(len(parsed)), key=lambda i: parsed[i]), dtype=int)
+
+
 def _normalize_dtypes(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Concats can widen dtypes; pin the contract columns back down."""
     for field in _FLAG_FIELDS:
         gdf[field] = gdf[field].astype(bool)
-    gdf[REACH_ID_FIELD] = gdf[REACH_ID_FIELD].astype("int64")
-    gdf[REACH_TO_ID_FIELD] = gdf[REACH_TO_ID_FIELD].astype("Int64")
+    for field in (
+        REACH_ID_FIELD,
+        REACH_TO_ID_FIELD,
+        TERMINAL_REASON_FIELD,
+        LAKE_TO_ID_FIELD,
+        COAST_TO_ID_FIELD,
+    ):
+        gdf[field] = gdf[field].astype("string")
     return gdf

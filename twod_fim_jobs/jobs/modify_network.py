@@ -8,11 +8,11 @@ import geopandas as gpd
 
 from twod_fim_jobs.consts import (
     COASTAL_LAYER,
-    FLOWPATHS_LAYER,
     LAKES_FILENAME,
     LAKES_LAYER,
     NETWORK_FILENAME,
     NETWORK_MANIFEST_FILENAME,
+    REACH_TABLE,
     SDR_COMMIT,
 )
 from twod_fim_jobs.exceptions import WriteFailureError
@@ -88,7 +88,7 @@ class ModifyNetworkJob(Job[ModifyNetworkInputs]):
                 warnings=[warning],
             )
 
-        gdf, counters, max_source_reach_id = load_reach_network(
+        gdf, counters = load_reach_network(
             inputs.reach_network_path, inputs.stream_order_filter_threshold
         )
         logger.info(
@@ -105,7 +105,7 @@ class ModifyNetworkJob(Job[ModifyNetworkInputs]):
 
         # Coastal before lakes: the accounting rule attributes an ambiguous
         # reach to coastal precisely because coastal removes it first.
-        coastal_touched: set[int] = set()
+        coastal_touched: set[str] = set()
         if inputs.coastal_influence_layer_path is not None:
             coastal_gdf = load_vector_layer(
                 inputs.coastal_influence_layer_path, COASTAL_LAYER, gdf.crs
@@ -115,7 +115,7 @@ class ModifyNetworkJob(Job[ModifyNetworkInputs]):
         else:
             logger.info("No coastal dataset supplied, skipping coastal processing")
 
-        lake_touched: set[int] = set()
+        lake_touched: set[str] = set()
         prepared_lakes: gpd.GeoDataFrame | None = None
         if inputs.lakes_layer_path is not None:
             lakes_gdf = load_vector_layer(
@@ -126,9 +126,7 @@ class ModifyNetworkJob(Job[ModifyNetworkInputs]):
                 inputs.lake_area_threshold_sqkm,
                 inputs.negative_lake_buffer_meters,
             )
-            gdf, lake_touched = apply_lakes(
-                gdf, prepared_lakes, counters, max_source_reach_id
-            )
+            gdf, lake_touched = apply_lakes(gdf, prepared_lakes, counters)
             logger.info(
                 "Lake pass left %d reaches (%d lake polygons used)",
                 len(gdf),
@@ -156,7 +154,7 @@ class ModifyNetworkJob(Job[ModifyNetworkInputs]):
         # manifest sits beside the files it describes.
         copy_job: dict[str, str] = {}
         network_local = tmp_dir / NETWORK_FILENAME
-        _write_gpkg(gdf, network_local, FLOWPATHS_LAYER)
+        _write_gpkg(gdf, network_local, REACH_TABLE)
         network_asset = _asset_for(network_local, NETWORK_FILENAME)
         copy_job[str(network_local)] = f"{network_dir}{NETWORK_FILENAME}"
 

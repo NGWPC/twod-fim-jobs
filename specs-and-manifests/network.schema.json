@@ -92,7 +92,7 @@
         },
         "drainage_area_threshold_percent": {
           "type": "number",
-          "description": "Max drainage-area difference (%) between reaches eligible for merge. Code default 5 (DR-024)."
+          "description": "Max difference in total_da_sqkm (cumulative drainage area, %) between reaches eligible for merge; measured against the chain start, not the immediate neighbor. Code default 5 (DR-024)."
         },
         "stream_order_filter_threshold": {
           "type": [
@@ -294,7 +294,7 @@
       "properties": {
         "network": {
           "$ref": "#/$defs/asset",
-          "description": "The modified reach network (flowpaths layer) — what build_model's db_uri points at downstream. Carries per-reach columns: is_headwater, is_terminal, terminal_reason (one of 'outlet', 'coast', 'lake', or null when is_terminal is false; coastal breaks persist only as terminal_reason='coast' — no separate coastal inlet/outlet/encompassed columns), lake_inlet/lake_outlet (lake only — encompassed reaches are dropped before persistence, so there is no lake_encompassed column either), is_trimmed (true where the geometry was cut: coastal/lake inlet trims, lake outlet trims, both pieces of a pass-through split; false for stranded reaches, whose geometry is untouched). These are the literal GPKG column names."
+          "description": "The modified reach network, written as the reach_network layer — the table name build_model queries through its db_uri (the input NHF layer is flowpaths; the output deliberately differs). Output columns are a closed set; every source column outside it is dropped, including fp_id/fp_to_id, which reach_id/reach_to_id supersede. Identity: reach_id, reach_to_id — both TEXT, because a pass-through split names its new piece after its parent (8 -> 8 and 8_1), which keeps lineage readable and cannot collide with a source id. Waterbody references: lake_to_id (the lake layer's lake_id), coast_to_id (the coastal layer's id), null where the reach never met one — a stranded reach has terminal_reason coast but a null coast_to_id. Tags: is_headwater, is_terminal, terminal_reason (one of outlet, coast, lake, or null when is_terminal is false; no separate coastal inlet/outlet/encompassed columns), lake_inlet, lake_outlet, is_trimmed (true where geometry was cut, false for stranded). Carried through for build_model: stream_order, total_da_sqkm, length_km. area_sqkm (local catchment) is not carried. These are the literal GPKG column names."
         },
         "lakes": {
           "$ref": "#/$defs/asset",

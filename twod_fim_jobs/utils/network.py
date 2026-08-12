@@ -93,7 +93,7 @@ class NetworkCounters:
     n_reaches_encompassed_removed_coastal: int | None = None
     n_reaches_trimmed_inlet_lake: int | None = None
     n_reaches_trimmed_outlet_lake: int | None = None
-    n_reaches_trimmed_inlet_coastal: int | None = None
+    n_reaches_trimmed_coastal: int | None = None
     n_reaches_dropped_coastal_cascade: int | None = None
     n_reaches_stranded_coastal: int | None = None
     n_reaches_split_passthrough_lake: int | None = None
@@ -388,6 +388,9 @@ def _downstream_closure(ds_pos: np.ndarray, seeds: np.ndarray) -> np.ndarray:
 def _classify_crossings(gdf: gpd.GeoDataFrame, polys: gpd.GeoDataFrame):
     """Spatially classify reaches against waterbody polygons.
 
+    A reach counts as crossing only if it genuinely overlaps a polygon;
+    touching the boundary at a point is not a crossing.
+
     Returns (within_pos, crossing_pos, up_poly, dn_poly, poly_map): positions
     of fully-encompassed reaches, positions of boundary-crossing reaches, the
     polygon position containing each crossing reach's upstream/downstream
@@ -398,6 +401,26 @@ def _classify_crossings(gdf: gpd.GeoDataFrame, polys: gpd.GeoDataFrame):
     pairs = gpd.sjoin(
         gdf[[geom]], polys[[polys.geometry.name]], predicate="intersects", how="inner"
     )
+    # Require real overlap, not mere contact. A reach that only touches the
+    # boundary — most often one whose endpoint was snapped to the coastline —
+    # intersects the polygon at a single point, has no waterbody inside it to
+    # trim against, and must not be classified as a crossing at all.
+    if len(pairs):
+        touching = (
+            shapely.length(
+                shapely.intersection(
+                    gdf.geometry.to_numpy()[pairs.index.to_numpy()],
+                    polys.geometry.to_numpy()[pairs["index_right"].to_numpy()],
+                )
+            )
+            <= 0
+        )
+        if touching.any():
+            logger.debug(
+                "%d reach/polygon pairs touch without overlapping; ignored",
+                int(touching.sum()),
+            )
+            pairs = pairs[~touching]
     within = gpd.sjoin(
         gdf[[geom]], polys[[polys.geometry.name]], predicate="within", how="inner"
     )
@@ -446,6 +469,21 @@ def _crossing_distances(line, boundary) -> np.ndarray:
     return np.unique([line.project(Point(*c)) for c in coords])
 
 
+def _first_contact(line, polys: gpd.GeoDataFrame, poly_positions: list[int]):
+    """(distance, polygon position) where the line first enters any polygon.
+
+    None when there is no usable portion above the contact — the line touches
+    only at its very start, or never leaves the water once it enters.
+    """
+    best = None
+    for poly_pos in poly_positions:
+        dists = _crossing_distances(line, polys.geometry.iloc[poly_pos].boundary)
+        dists = dists[(dists > 0) & (dists < line.length)]
+        if len(dists) and (best is None or dists.min() < best[0]):
+            best = (float(dists.min()), poly_pos)
+    return best
+
+
 def _boundary_for(polys: gpd.GeoDataFrame, poly_positions: list[int]):
     return shapely.union_all(polys.geometry.boundary.to_numpy()[poly_positions])
 
@@ -458,10 +496,13 @@ def apply_coastal(
 ) -> tuple[gpd.GeoDataFrame, set[str]]:
     """Coastal classification, cascade removal, and the stranded sweep.
 
-    Cases (spec step 4): fully inside -> dropped with everything downstream;
-    downstream end inside -> trimmed to the upstream portion and made
-    terminal ('coast'), everything downstream dropped. Coastal has no
-    outlet/pass-through case — such reaches are left untouched (logged).
+    One binary rule (spec step 4): a reach beginning inside coastal coverage
+    is dropped whole; a reach beginning outside is trimmed at its first
+    contact and marked terminal ('coast'). Either way every reach below it is
+    dropped. That covers all five shapes — fully inside, both ends inside
+    across an island, beginning inside and running back out, downstream end
+    inside, and passing through with neither end inside — with no case list.
+    Reaches that merely touch the coverage are not crossings at all.
     Trimmed reaches record the polygon they met in coast_to_id; stranded
     reaches leave it null, since they never touched the coast layer.
     """
@@ -471,29 +512,35 @@ def apply_coastal(
     )
     coast_ids = _waterbody_ids(coastal_gdf, COAST_ID_FIELD, COASTAL_LAYER)
 
-    is_inlet = (dn_poly >= 0) & (up_poly < 0)
-    inlet_pos = crossing_pos[is_inlet]
-    inlet_poly = dn_poly[is_inlet]
-    other = int(len(crossing_pos) - len(inlet_pos))
-    if other:
-        logger.info(
-            "%d coastal-crossing reaches are not inlet-classified (coastal has "
-            "no outlet/pass-through case); left untouched",
-            other,
-        )
+    # One binary rule: a reach that begins inside coastal coverage is dropped
+    # whole; one that begins outside is trimmed at its first contact. Either
+    # way everything below it goes. That covers every shape — fully inside,
+    # both ends inside across an island, beginning inside and running back
+    # out, downstream end inside, and passing through with neither end
+    # inside — without a case list.
+    starts_inside = crossing_pos[up_poly >= 0]
+    trim_candidates = crossing_pos[up_poly < 0]
 
-    # Trim inlets first so a degenerate trim can escalate to encompassed
-    # before any counting happens.
     encompassed = np.zeros(len(gdf), dtype=bool)
     encompassed[within_pos] = True
+    encompassed[starts_inside] = True
+    if len(starts_inside):
+        logger.info(
+            "%d reaches begin inside coastal coverage; dropped whole, with "
+            "everything downstream",
+            len(starts_inside),
+        )
+
+    # Trim first, so a degenerate trim can escalate to dropped before any
+    # counting happens.
     trimmed_pos: list[int] = []
-    for p, poly_pos in sorted(zip(inlet_pos.tolist(), inlet_poly.tolist())):
+    for p in sorted(int(x) for x in trim_candidates):
         line = gdf.geometry.iloc[p]
-        dists = _crossing_distances(line, _boundary_for(coastal_gdf, poly_map[p]))
-        if len(dists) == 0 or dists.min() <= 0 or dists.min() >= line.length:
-            encompassed[p] = True  # effectively fully inside
+        first = _first_contact(line, coastal_gdf, poly_map[p])
+        if first is None:
+            encompassed[p] = True  # no usable portion above the coastline
             continue
-        cut = float(dists.min())
+        cut, poly_pos = first
         gdf.loc[p, gdf.geometry.name] = substring(line, 0, cut)
         gdf.loc[p, IS_TRIMMED_FIELD] = True
         gdf.loc[p, COAST_TO_ID_FIELD] = coast_ids[poly_pos]
@@ -515,7 +562,7 @@ def apply_coastal(
     gdf.loc[surviving_trims, IS_TERMINAL_FIELD] = True
     gdf.loc[surviving_trims, TERMINAL_REASON_FIELD] = TERMINAL_REASON_COAST
     gdf.loc[surviving_trims, REACH_TO_ID_FIELD] = pd.NA
-    counters.n_reaches_trimmed_inlet_coastal = len(surviving_trims)
+    counters.n_reaches_trimmed_coastal = len(surviving_trims)
 
     touched = {str(i) for i in ids[surviving_trims]}
     gdf = gdf.loc[~deletion].reset_index(drop=True)

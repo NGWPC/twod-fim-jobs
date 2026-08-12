@@ -34,8 +34,14 @@ Order of operations
 3. Identify headwater reaches: reaches that are no other reach's `fp_to_id` — nothing in the network flows into them. Evaluated **after** the stream-order filter, so a reach can become an apparent headwater purely because its true upstream neighbor was filtered out, not because it's hydrologically a headwater. With a threshold of 3 that is the common case, not the exception: every order-3 reach loses both its order-2 feeders to the filter, so apparent headwaters dominate the count.
 4. **Coastal waterbodies** (processed before lakes) — **skipped entirely when `coastal_influence_layer_path` is not given**: for reaches intersecting the coast layer
 
-   - fully inside → dropped it and all reaches further downstream.
-   - downstream end inside but upstream not→ trimmed to the upstream portion, `is_terminal=true`, `reach_to_id=null`, `terminal_reason='coast'` and reaches downstream of it are dropped.
+   Every reach overlapping the coast layer is removed from its first coastal contact downstream.
+
+   - **begins inside the polygon** → dropped whole.
+   - **begins outside** → trimmed at its first contact, keeping the portion above it: `is_terminal=true`, `reach_to_id=null`, `terminal_reason='coast'`, and `coast_to_id` naming the polygon met.
+
+   In both cases every reach downstream is dropped. This covers all five shapes without enumerating them — fully inside, both ends inside while crossing an island or a gap, beginning inside and running back out, downstream end inside, and passing straight through with neither end inside.
+
+   Overlap must be real: a reach that only *touches* the coverage at a point — typically an endpoint snapped to the coastline — is not a coastal crossing and is left alone. A reach that begins outside but leaves no usable length above its first contact is dropped rather than trimmed to nothing.
    - after the cascade, any surviving reach whose `reach_to_id` points at a deleted reach — a tributary that flowed into the cascade zone without itself intersecting the coast layer — → `is_terminal=true`, `reach_to_id=null`, `terminal_reason='coast'`, geometry untouched. Counted by `n_reaches_stranded_coastal`; not removed, so it does not enter the accounting identity.
 
    Trimmed reaches record the coastal polygon's `id` in `coast_to_id`. If the layer has no `id` column the reference is recorded as null and a warning names the layer.
@@ -102,7 +108,7 @@ Recorded in `network.json` under `properties` (see `network.schema.json`) — on
 - `n_reaches_below_stream_order_removed`
 - `n_reaches_encompassed_removed_lake`, `n_reaches_encompassed_removed_coastal`
 - `n_reaches_trimmed_inlet_lake`, `n_reaches_trimmed_outlet_lake`
-- `n_reaches_trimmed_inlet_coastal` — downstream end inside coastal coverage, upstream not (step 4's second case)
+- `n_reaches_trimmed_coastal` — began outside coastal coverage and was trimmed at first contact (step 4's second case), whether its downstream end was inside or it passed straight through
 - `n_reaches_dropped_coastal_cascade` — reaches removed for being downstream of a coastal encompassed/trimmed reach, not for their own classification
 - `n_reaches_stranded_coastal` — tributaries left pointing at a cascade-deleted reach without themselves intersecting the coast layer; made terminal (`terminal_reason='coast'`) with geometry untouched. Not removed — absent from the accounting identity
 - `n_reaches_split_passthrough_lake`
@@ -135,5 +141,6 @@ The three trim counters are absent by design — trimming reshapes a reach's geo
 Runs over the entire network in one call, not per reach — expect the longest-running job in the system and infrequent (once per hydrofabric release or methodology/threshold change).
 
 ## Open Questions
+
 
 - A reach kept as a channel between two lakes records only the downstream lake in `lake_to_id`, since that is what the column name means. The upstream lake it emerges from is not captured anywhere. If a consumer needs it — the lake-outlet inflow BC offset in DR-007 is the likely case — a `lake_from_id` column would be the addition.

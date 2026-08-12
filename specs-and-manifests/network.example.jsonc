@@ -34,7 +34,7 @@
     "n_reaches_encompassed_removed_coastal": 3184,
     "n_reaches_trimmed_inlet_lake": 812,
     "n_reaches_trimmed_outlet_lake": 799,
-    "n_reaches_trimmed_inlet_coastal": 421,
+    "n_reaches_trimmed_coastal": 421,
     "n_reaches_dropped_coastal_cascade": 1907, // reaches removed downstream of a coastal encompassed/trimmed reach
     "n_reaches_stranded_coastal": 37, // tributaries into the cascade zone, made terminal in place — not removed
     "n_reaches_split_passthrough_lake": 133,

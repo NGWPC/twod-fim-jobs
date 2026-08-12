@@ -189,7 +189,7 @@ class Properties(BaseModel):
         description="Upstream end inside a lake — trimmed to downstream "
         "portion, is_headwater set. Row kept; not in the reconciliation."
     )
-    n_reaches_trimmed_inlet_coastal: Count | None = Field(
+    n_reaches_trimmed_coastal: Count | None = Field(
         description="Downstream end inside coastal coverage, upstream not — "
         "trimmed, terminal_reason='coast'. Row kept; not in the reconciliation."
     )
@@ -243,7 +243,7 @@ class Properties(BaseModel):
     )
     _COASTAL_COUNTERS: ClassVar[tuple[str, ...]] = (
         "n_reaches_encompassed_removed_coastal",
-        "n_reaches_trimmed_inlet_coastal",
+        "n_reaches_trimmed_coastal",
         "n_reaches_dropped_coastal_cascade",
         "n_reaches_stranded_coastal",
     )

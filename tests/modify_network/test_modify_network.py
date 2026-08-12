@@ -285,11 +285,13 @@ EXPECTED_COUNTERS = {
     "n_reaches_input": 14,
     "n_reaches_below_stream_order_removed": 2,
     "n_reaches_encompassed_removed_lake": 1,
-    "n_reaches_encompassed_removed_coastal": 0,
+    # Reach 10 begins inside the coastal box, so it is dropped on its own
+    # account rather than as collateral from reach 9's cascade.
+    "n_reaches_encompassed_removed_coastal": 1,
     "n_reaches_trimmed_inlet_lake": 1,
     "n_reaches_trimmed_outlet_lake": 1,
-    "n_reaches_trimmed_inlet_coastal": 1,
-    "n_reaches_dropped_coastal_cascade": 2,
+    "n_reaches_trimmed_coastal": 1,
+    "n_reaches_dropped_coastal_cascade": 1,
     "n_reaches_stranded_coastal": 1,
     "n_reaches_split_passthrough_lake": 1,
     "n_reaches_merged": 1,
@@ -1476,7 +1478,7 @@ def test_missing_coastal_id_records_null_not_a_row_number(tmp_path, caplog):
         gdf, _ = nw.apply_coastal(gdf, gpd.read_file(coast).to_crs(gdf.crs), counters)
 
     row = gdf.set_index(REACH_ID_FIELD).loc["A"]
-    assert counters.n_reaches_trimmed_inlet_coastal == 1
+    assert counters.n_reaches_trimmed_coastal == 1
     assert row[TERMINAL_REASON_FIELD] == "coast", "tagging is unaffected"
     assert pd.isna(row[COAST_TO_ID_FIELD]), "no fabricated reference"
     assert any("coastal_influence" in m for m in caplog.messages), (
@@ -1508,3 +1510,213 @@ def test_unidentified_lakes_do_not_compare_as_one_lake(tmp_path):
     )
     assert counters.n_reaches_encompassed_removed_lake == 0
     assert pd.isna(gdf.set_index(REACH_ID_FIELD).loc["M", LAKE_TO_ID_FIELD])
+
+
+### CONTACT IS NOT A CROSSING ###
+
+
+def _coastal_run(tmp_path, reach_coords, coast_geom, label):
+    net = tmp_path / f"{label}_n.gpkg"
+    gpd.GeoDataFrame(
+        {"fp_id": ["A"], "fp_to_id": [None], "total_da_sqkm": [10.0],
+         "stream_order": [3]},
+        geometry=[LineString(reach_coords)], crs=CRS,
+    ).to_file(net, layer="flowpaths", driver="GPKG")
+    coast = tmp_path / f"{label}_c.gpkg"
+    gpd.GeoDataFrame({"id": [1]}, geometry=[coast_geom], crs=CRS).to_file(
+        coast, layer="coastal_influence", driver="GPKG"
+    )
+    gdf, counters = nw.load_reach_network(str(net), None)
+    gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
+    gdf, _ = nw.apply_coastal(
+        gdf, gpd.read_file(coast).to_crs(gdf.crs), counters
+    )
+    return gdf, counters
+
+
+def test_endpoint_snapped_to_the_coastline_is_not_a_crossing(tmp_path, caplog):
+    """A reach clipped to the shoreline ends ON the boundary, not inside it.
+
+    That is contact, not overlap: there is no coastal water inside the reach
+    to trim against, so it must not be reported as an unhandled shape.
+    """
+    import logging
+
+    with caplog.at_level(logging.INFO, logger="twod_fim_jobs.utils.network"):
+        gdf, counters = _coastal_run(
+            tmp_path, [(0, 0), (400, 0)], box(400, -100, 900, 100), "snapped"
+        )
+    assert set(gdf[REACH_ID_FIELD]) == {"A"}
+    assert counters.n_reaches_trimmed_coastal == 0
+    assert counters.n_reaches_encompassed_removed_coastal == 0
+    assert not [m for m in caplog.messages if "left untouched" in m], caplog.messages
+
+
+def test_reach_touching_a_corner_is_not_a_crossing(tmp_path, caplog):
+    """Single-point contact at a corner is contact, not overlap."""
+    import logging
+
+    with caplog.at_level(logging.INFO, logger="twod_fim_jobs.utils.network"):
+        gdf, counters = _coastal_run(
+            tmp_path, [(0, 300), (400, 100)], box(400, -100, 900, 100), "corner"
+        )
+    assert set(gdf[REACH_ID_FIELD]) == {"A"}
+    assert counters.n_reaches_trimmed_coastal == 0
+    assert not [m for m in caplog.messages if "left untouched" in m], caplog.messages
+
+
+def test_reach_collinear_with_the_boundary_is_trimmed_at_first_contact(tmp_path):
+    """A reach lying along the shoreline shares real length with the polygon.
+
+    It begins outside, so the rule trims it where it meets the coast rather
+    than treating collinearity as a special case.
+    """
+    gdf, counters = _coastal_run(
+        tmp_path, [(0, 100), (900, 100)], box(400, -100, 900, 100), "collinear"
+    )
+    assert counters.n_reaches_trimmed_coastal == 1
+    assert counters.n_reaches_encompassed_removed_coastal == 0
+    np.testing.assert_allclose(
+        gdf.set_index(REACH_ID_FIELD).loc["A"].geometry.length, 400.0
+    )
+
+
+def test_reach_passing_straight_through_is_trimmed_at_entry(tmp_path):
+    """Neither end inside, but it begins outside — so it trims like any other.
+
+    The shape that used to be left untouched as a "pass-through case".
+    """
+    rows = [("A", "D", [(0, 0), (900, 0)]), ("D", None, [(900, 0), (1200, 0)])]
+    net = tmp_path / "through_n.gpkg"
+    geoms = [LineString(c) for *_, c in rows]
+    gpd.GeoDataFrame(
+        {"fp_id": [r[0] for r in rows], "fp_to_id": [r[1] for r in rows],
+         "total_da_sqkm": [10.0, 11.0], "stream_order": [3, 3]},
+        geometry=geoms, crs=CRS,
+    ).to_file(net, layer="flowpaths", driver="GPKG")
+    coast = tmp_path / "through_c.gpkg"
+    gpd.GeoDataFrame({"id": [1]}, geometry=[box(300, -50, 500, 50)], crs=CRS).to_file(
+        coast, layer="coastal_influence", driver="GPKG"
+    )
+
+    gdf, counters = nw.load_reach_network(str(net), None)
+    gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
+    gdf, _ = nw.apply_coastal(gdf, gpd.read_file(coast).to_crs(gdf.crs), counters)
+
+    assert counters.n_reaches_trimmed_coastal == 1
+    assert counters.n_reaches_dropped_coastal_cascade == 1, "D goes with it"
+    row = gdf.set_index(REACH_ID_FIELD).loc["A"]
+    np.testing.assert_allclose(row.geometry.length, 300.0)
+    assert row[TERMINAL_REASON_FIELD] == "coast"
+    assert row[COAST_TO_ID_FIELD] == "1"
+
+
+def test_genuine_overlap_is_still_a_crossing(tmp_path):
+    """Contact is excluded; actually entering the water is not."""
+    gdf, counters = _coastal_run(
+        tmp_path, [(0, 0), (600, 0)], box(400, -100, 900, 100), "real"
+    )
+    assert counters.n_reaches_trimmed_coastal == 1
+    np.testing.assert_allclose(
+        gdf.set_index(REACH_ID_FIELD).loc["A"].geometry.length, 400.0
+    )
+
+
+def test_touching_a_lake_boundary_is_not_a_crossing(tmp_path):
+    """Same rule on the lake side."""
+    net = tmp_path / "touch_n.gpkg"
+    gpd.GeoDataFrame(
+        {"fp_id": ["A"], "fp_to_id": [None], "total_da_sqkm": [10.0],
+         "stream_order": [3]},
+        geometry=[LineString([(0, 0), (400, 0)])], crs=CRS,
+    ).to_file(net, layer="flowpaths", driver="GPKG")
+    lake = tmp_path / "touch_l.gpkg"
+    gpd.GeoDataFrame(
+        {"lake_id": [5]}, geometry=[box(400, -100, 900, 100)], crs=CRS
+    ).to_file(lake, layer="lakes_polygons", driver="GPKG")
+
+    gdf, counters = _run_lakes(net, lake)
+    assert counters.n_reaches_trimmed_inlet_lake == 0
+    assert counters.n_reaches_encompassed_removed_lake == 0
+    assert pd.isna(gdf.set_index(REACH_ID_FIELD).loc["A", LAKE_TO_ID_FIELD])
+
+
+### A REACH BEGINNING INSIDE COASTAL COVERAGE ###
+
+
+def test_reach_beginning_inside_coastal_is_dropped_with_its_downstream(tmp_path):
+    """First contact at distance zero, so nothing of it survives the coastline.
+
+    X starts inside the coastal box and runs back out inland; D is below it.
+    Both go, because the network is not modelled below coastal influence.
+    """
+    rows = [
+        ("X", "D", [(450, 0), (900, 0)]),   # begins inside coverage
+        ("D", None, [(900, 0), (1400, 0)]),  # purely inland, below X
+    ]
+    net = tmp_path / "starts_inside.gpkg"
+    geoms = [LineString(c) for *_, c in rows]
+    gpd.GeoDataFrame(
+        {"fp_id": [r[0] for r in rows], "fp_to_id": [r[1] for r in rows],
+         "total_da_sqkm": [10.0, 11.0], "stream_order": [3, 3]},
+        geometry=geoms, crs=CRS,
+    ).to_file(net, layer="flowpaths", driver="GPKG")
+    coast = tmp_path / "starts_inside_c.gpkg"
+    gpd.GeoDataFrame({"id": [1]}, geometry=[box(0, -100, 500, 100)], crs=CRS).to_file(
+        coast, layer="coastal_influence", driver="GPKG"
+    )
+
+    gdf, counters = nw.load_reach_network(str(net), None)
+    gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
+    gdf, _ = nw.apply_coastal(gdf, gpd.read_file(coast).to_crs(gdf.crs), counters)
+
+    assert counters.n_reaches_encompassed_removed_coastal == 1, "X dropped whole"
+    assert counters.n_reaches_dropped_coastal_cascade == 1, "D taken by the cascade"
+    assert counters.n_reaches_trimmed_coastal == 0, "nothing above the coast"
+    assert set(gdf[REACH_ID_FIELD]) == set()
+
+
+def test_reach_with_both_ends_inside_coastal_is_dropped(tmp_path):
+    """Crossing an island in the coverage still means it begins inside."""
+    coast = box(0, -100, 900, 100).difference(box(400, -50, 500, 50))
+    net = tmp_path / "island_coast_n.gpkg"
+    gpd.GeoDataFrame(
+        {"fp_id": ["X"], "fp_to_id": [None], "total_da_sqkm": [10.0],
+         "stream_order": [3]},
+        geometry=[LineString([(300, 0), (600, 0)])], crs=CRS,
+    ).to_file(net, layer="flowpaths", driver="GPKG")
+    cpath = tmp_path / "island_coast_c.gpkg"
+    gpd.GeoDataFrame({"id": [1]}, geometry=[coast], crs=CRS).to_file(
+        cpath, layer="coastal_influence", driver="GPKG"
+    )
+
+    gdf, counters = nw.load_reach_network(str(net), None)
+    gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
+    gdf, _ = nw.apply_coastal(gdf, gpd.read_file(cpath).to_crs(gdf.crs), counters)
+
+    assert counters.n_reaches_encompassed_removed_coastal == 1
+    assert set(gdf[REACH_ID_FIELD]) == set()
+
+
+def test_first_contact_partway_still_trims_rather_than_drops(tmp_path):
+    """The distinguishing case: contact at distance > 0 keeps the part above."""
+    net = tmp_path / "partway_n.gpkg"
+    gpd.GeoDataFrame(
+        {"fp_id": ["A"], "fp_to_id": [None], "total_da_sqkm": [10.0],
+         "stream_order": [3]},
+        geometry=[LineString([(0, 0), (600, 0)])], crs=CRS,
+    ).to_file(net, layer="flowpaths", driver="GPKG")
+    cpath = tmp_path / "partway_c.gpkg"
+    gpd.GeoDataFrame({"id": [1]}, geometry=[box(400, -100, 900, 100)], crs=CRS).to_file(
+        cpath, layer="coastal_influence", driver="GPKG"
+    )
+
+    gdf, counters = nw.load_reach_network(str(net), None)
+    gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
+    gdf, _ = nw.apply_coastal(gdf, gpd.read_file(cpath).to_crs(gdf.crs), counters)
+
+    assert counters.n_reaches_encompassed_removed_coastal == 0
+    assert counters.n_reaches_trimmed_coastal == 1
+    np.testing.assert_allclose(
+        gdf.set_index(REACH_ID_FIELD).loc["A"].geometry.length, 400.0
+    )

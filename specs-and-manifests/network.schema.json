@@ -210,7 +210,7 @@
             "integer",
             "null"
           ],
-          "description": "Fully inside coastal coverage — classified as encompassed and dropped, as is everything downstream of it (counted separately under n_reaches_dropped_coastal_cascade). The classification is intermediate: every reach it applies to is removed, so it leaves no column in network.gpkg."
+          "description": "Made first contact with coastal coverage at its upstream end — fully inside, or beginning inside and running back out, or both ends inside while crossing an island. Nothing of the reach lies above the coastline, so it is dropped whole, as is everything downstream of it (counted separately under n_reaches_dropped_coastal_cascade). The classification is intermediate: every reach it applies to is removed, so it leaves no column in network.gpkg."
         },
         "n_reaches_trimmed_inlet_lake": {
           "type": [
@@ -226,12 +226,12 @@
           ],
           "description": "Upstream end inside a lake — trimmed to downstream portion, is_headwater set."
         },
-        "n_reaches_trimmed_inlet_coastal": {
+        "n_reaches_trimmed_coastal": {
           "type": [
             "integer",
             "null"
           ],
-          "description": "Downstream end inside coastal coverage but upstream not — trimmed to upstream portion, terminal_reason='coast'. Coastal has no outlet/pass-through case."
+          "description": "Began outside coastal coverage and was trimmed at its first contact, keeping the portion above it, terminal_reason='coast'. Covers both a reach whose downstream end is inside and one that passes through with neither end inside. Row kept, so absent from the reconciliation identity."
         },
         "n_reaches_dropped_coastal_cascade": {
           "type": [
@@ -294,7 +294,7 @@
             "integer",
             "null"
           ],
-          "description": "Rows in the written network.gpkg with is_terminal true — a state of the final artifact, NOT a count of any one step. Measured after all trimming, splitting, and merging. Three steps set this flag: step 2 (outlets), step 4 (coastal inlets, counted by n_reaches_trimmed_inlet_coastal, plus stranded tributaries, counted by n_reaches_stranded_coastal) and step 5 (lake inlets, counted by n_reaches_trimmed_inlet_lake), so this exceeds step 2's own tally. Can overlap n_headwater_reaches — an isolated reach with neither an upstream nor a downstream neighbor is both — so the two are not additive and neither appears in the reconciliation identity. The overlap is incidental, not systematic: headwater and terminal are independent topological ends."
+          "description": "Rows in the written network.gpkg with is_terminal true — a state of the final artifact, NOT a count of any one step. Measured after all trimming, splitting, and merging. Three steps set this flag: step 2 (outlets), step 4 (coastal inlets, counted by n_reaches_trimmed_coastal, plus stranded tributaries, counted by n_reaches_stranded_coastal) and step 5 (lake inlets, counted by n_reaches_trimmed_inlet_lake), so this exceeds step 2's own tally. Can overlap n_headwater_reaches — an isolated reach with neither an upstream nor a downstream neighbor is both — so the two are not additive and neither appears in the reconciliation identity. The overlap is incidental, not systematic: headwater and terminal are independent topological ends."
         }
       }
     },

@@ -72,11 +72,12 @@ _FLAG_FIELDS = (
     LAKE_OUTLET_FIELD,
     IS_TRIMMED_FIELD,
 )
+# length_km is not required from the source: it is computed from geometry at
+# finalize, so a source that lacks it or disagrees with it is still usable.
 _REQUIRED_SOURCE_FIELDS = (
     FP_ID_FIELD,
     FP_TO_ID_FIELD,
     DA_FIELD,
-    LENGTH_KM_FIELD,
 )
 
 
@@ -416,7 +417,6 @@ def apply_coastal(
             continue
         cut = float(dists.min())
         gdf.loc[p, gdf.geometry.name] = substring(line, 0, cut)
-        gdf.loc[p, LENGTH_KM_FIELD] = cut / 1000.0
         gdf.loc[p, IS_TRIMMED_FIELD] = True
         gdf.loc[p, COAST_TO_ID_FIELD] = coast_ids[poly_pos]
         trimmed_pos.append(p)
@@ -532,7 +532,6 @@ def apply_lakes(
             continue
         cut = float(dists.min())
         gdf.loc[p, geom] = substring(line, 0, cut)
-        gdf.loc[p, LENGTH_KM_FIELD] = cut / 1000.0
         gdf.loc[p, LAKE_INLET_FIELD] = True
         gdf.loc[p, IS_TERMINAL_FIELD] = True
         gdf.loc[p, TERMINAL_REASON_FIELD] = TERMINAL_REASON_LAKE
@@ -549,7 +548,6 @@ def apply_lakes(
             continue
         cut = float(dists.max())
         gdf.loc[p, geom] = substring(line, cut, line.length)
-        gdf.loc[p, LENGTH_KM_FIELD] = (line.length - cut) / 1000.0
         gdf.loc[p, LAKE_OUTLET_FIELD] = True
         gdf.loc[p, IS_HEADWATER_FIELD] = True
         gdf.loc[p, IS_TRIMMED_FIELD] = True
@@ -569,7 +567,6 @@ def apply_lakes(
             continue
         d_exit, d_enter = float(dists.min()), float(dists.max())
         gdf.loc[p, geom] = substring(line, d_exit, d_enter)
-        gdf.loc[p, LENGTH_KM_FIELD] = (d_enter - d_exit) / 1000.0
         gdf.loc[p, LAKE_OUTLET_FIELD] = True
         gdf.loc[p, LAKE_INLET_FIELD] = True
         gdf.loc[p, IS_HEADWATER_FIELD] = True
@@ -601,7 +598,6 @@ def apply_lakes(
         outlet_row = gdf.iloc[p].to_dict()
         outlet_row[geom] = substring(line, d_last, line.length)
         outlet_row[REACH_ID_FIELD] = f"{parent}_1"
-        outlet_row[LENGTH_KM_FIELD] = (line.length - d_last) / 1000.0
         outlet_row[LAKE_OUTLET_FIELD] = True
         outlet_row[LAKE_INLET_FIELD] = False
         outlet_row[IS_HEADWATER_FIELD] = True
@@ -612,7 +608,6 @@ def apply_lakes(
         # Upstream/inlet piece keeps the original reach_id, so upstream
         # neighbors' pointers stay valid.
         gdf.loc[p, geom] = substring(line, 0, d_first)
-        gdf.loc[p, LENGTH_KM_FIELD] = d_first / 1000.0
         gdf.loc[p, LAKE_INLET_FIELD] = True
         gdf.loc[p, IS_TERMINAL_FIELD] = True
         gdf.loc[p, TERMINAL_REASON_FIELD] = TERMINAL_REASON_LAKE
@@ -710,10 +705,11 @@ def merge_short_reaches(
 
     Runs on post-waterbody topology (live reach_to_id). O(n) over numpy
     arrays; geometry is only touched once per merged chain at the end.
-    Merged rows keep the chain start's attributes — it is the most
+    Chain length comes from geometry, since length_km is written only at
+    finalize. Merged rows keep the chain start's attributes — it is the most
     downstream reach of the chain, so its total_da_sqkm, lake_inlet,
-    terminal state and lake_to_id all carry through untouched — plus summed
-    length, the top member's is_headwater /
+    terminal state and lake_to_id all carry through untouched — plus the
+    unioned geometry, the top member's is_headwater /
     lake_outlet (both describe the upstream end), and any member's
     is_trimmed. Tributary pointers into absorbed members are re-pointed at
     the surviving reach_id.
@@ -726,7 +722,9 @@ def merge_short_reaches(
     n = len(gdf)
     ids, ds_pos = _topology(gdf)
     da = gdf[DA_FIELD].to_numpy(dtype=float)
-    ln = gdf[LENGTH_KM_FIELD].to_numpy(dtype=float)
+    # Derived from geometry, not from the column: trims have already
+    # reshaped these reaches and length_km is only written at finalize.
+    ln = gdf.geometry.length.to_numpy(dtype=float) / 1000.0
 
     # Reverse adjacency (CSR) and in-degree over live topology.
     src = np.flatnonzero(ds_pos >= 0)
@@ -810,7 +808,6 @@ def merge_short_reaches(
         )
         top = members[-1]
         gdf.loc[start, geom] = merged_geom
-        gdf.loc[start, LENGTH_KM_FIELD] = float(ln[members].sum())
         gdf.loc[start, IS_HEADWATER_FIELD] = bool(gdf[IS_HEADWATER_FIELD].iloc[top])
         gdf.loc[start, LAKE_OUTLET_FIELD] = bool(gdf[LAKE_OUTLET_FIELD].iloc[top])
         # lake_to_id describes the DOWNSTREAM end — the lake the reach flows
@@ -851,6 +848,12 @@ def finalize_network(
     """
     gdf = _normalize_dtypes(gdf)
     gdf = gdf.iloc[_natural_order(gdf[REACH_ID_FIELD])].reset_index(drop=True)
+
+    # Single definition of length, applied to every row: trimmed, split,
+    # merged and untouched alike. Computing it in each branch let geometry
+    # and length drift apart, and left the column mixing NHF's own measure
+    # with ours. A consumer can now verify any row against its geometry.
+    gdf[LENGTH_KM_FIELD] = gdf.geometry.length / 1000.0
 
     missing = [c for c in OUTPUT_COLUMNS if c not in gdf.columns]
     if missing:

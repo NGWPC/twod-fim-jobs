@@ -1099,10 +1099,15 @@ def test_channel_between_two_lakes_keeps_its_middle(two_lake_channel):
     gdf, counters = _run_lakes(*two_lake_channel)
     assert counters.n_reaches_trimmed_between_lakes == 1
     assert counters.n_reaches_encompassed_removed_lake == 0
-    row = gdf.set_index(REACH_ID_FIELD).loc["M"]
     # 300..700 survives; the two submerged ends do not.
-    np.testing.assert_allclose(row.geometry.length, 400.0)
-    np.testing.assert_allclose(row[LENGTH_KM_FIELD], 0.4)
+    np.testing.assert_allclose(
+        gdf.set_index(REACH_ID_FIELD).loc["M"].geometry.length, 400.0
+    )
+    # length_km is written once, at finalize.
+    final = nw.finalize_network(gdf, counters)
+    np.testing.assert_allclose(
+        final.set_index(REACH_ID_FIELD).loc["M", LENGTH_KM_FIELD], 0.4
+    )
 
 
 def test_channel_between_two_lakes_is_both_outlet_and_inlet(two_lake_channel):
@@ -1221,3 +1226,82 @@ def test_no_reach_claims_a_waterbody_without_naming_it(pipeline):
     assert not trimmed_coastal[COAST_TO_ID_FIELD].isna().any(), (
         "a coastal trim must name the polygon it met"
     )
+
+
+def test_trimmed_reaches_report_their_new_length(pipeline):
+    """Every reach whose geometry was cut carries the cut length, not the old one."""
+    gdf, *_ = pipeline
+    trimmed = gdf[gdf[IS_TRIMMED_FIELD]]
+    assert len(trimmed) > 0
+    np.testing.assert_allclose(
+        trimmed[LENGTH_KM_FIELD].to_numpy(dtype=float),
+        trimmed.geometry.length.to_numpy() / 1000.0,
+        rtol=1e-9,
+    )
+
+
+def test_merged_length_is_the_sum_of_post_trim_lengths(inlet_with_upstream):
+    """A chain containing a trimmed inlet sums the trimmed length, not the raw one."""
+    gdf, counters = _run_lakes(*inlet_with_upstream)
+    by_id = gdf.set_index(REACH_ID_FIELD)
+    trimmed_inlet = by_id.loc["M"].geometry.length / 1000
+    upstream = by_id.loc["U"].geometry.length / 1000
+    np.testing.assert_allclose(trimmed_inlet, 0.3)  # 300..600, not 300..700
+
+    gdf = nw.merge_short_reaches(gdf, 5.0, 5.0, counters)
+    gdf = nw.finalize_network(gdf, counters)
+    merged = gdf.set_index(REACH_ID_FIELD).loc["M"]
+    np.testing.assert_allclose(merged[LENGTH_KM_FIELD], trimmed_inlet + upstream)
+    np.testing.assert_allclose(merged[LENGTH_KM_FIELD], merged.geometry.length / 1000)
+
+
+def test_stranded_reach_keeps_its_original_length(pipeline):
+    """Stranded reaches lose a pointer, not geometry, so length is untouched."""
+    gdf, *_ = pipeline
+    r12 = gdf.set_index(REACH_ID_FIELD).loc["12"]
+    assert not r12[IS_TRIMMED_FIELD]
+    np.testing.assert_allclose(r12[LENGTH_KM_FIELD], np.hypot(4, 20) / 1000.0)
+
+
+def test_length_km_matches_geometry_for_every_reach(output_network):
+    """One definition, applied uniformly — verifiable against the artifact.
+
+    Previously trimmed reaches carried a length we computed while untouched
+    reaches carried NHF's own, so two rows were not strictly comparable and
+    the merge floor summed across both bases.
+    """
+    np.testing.assert_allclose(
+        output_network[LENGTH_KM_FIELD].to_numpy(dtype=float),
+        output_network.geometry.length.to_numpy() / 1000.0,
+        rtol=1e-9,
+    )
+
+
+def test_source_length_column_is_not_required(tmp_path):
+    """It is computed, so a source without it still loads."""
+    geom = [LineString([(0, 0), (1000, 0)])]
+    path = tmp_path / "no_length.gpkg"
+    gpd.GeoDataFrame(
+        {"fp_id": [1], "fp_to_id": [None], "total_da_sqkm": [5.0],
+         "stream_order": [3]},
+        geometry=geom, crs=CRS,
+    ).to_file(path, layer="flowpaths", driver="GPKG")
+
+    gdf, counters = nw.load_reach_network(str(path), None)
+    gdf = nw.finalize_network(nw.tag_terminal_reaches(gdf), counters)
+    np.testing.assert_allclose(gdf.iloc[0][LENGTH_KM_FIELD], 1.0)
+
+
+def test_source_length_disagreeing_with_geometry_is_overridden(tmp_path):
+    """NHF's own value does not survive into the output."""
+    geom = [LineString([(0, 0), (1000, 0)])]
+    path = tmp_path / "wrong_length.gpkg"
+    gpd.GeoDataFrame(
+        {"fp_id": [1], "fp_to_id": [None], "total_da_sqkm": [5.0],
+         "stream_order": [3], "length_km": [99.0]},
+        geometry=geom, crs=CRS,
+    ).to_file(path, layer="flowpaths", driver="GPKG")
+
+    gdf, counters = nw.load_reach_network(str(path), None)
+    gdf = nw.finalize_network(nw.tag_terminal_reaches(gdf), counters)
+    np.testing.assert_allclose(gdf.iloc[0][LENGTH_KM_FIELD], 1.0)

@@ -8,6 +8,7 @@ import geopandas as gpd
 
 from twod_fim_jobs.consts import (
     COASTAL_LAYER,
+    LAKE_ID_FIELD,
     LAKES_FILENAME,
     LAKES_LAYER,
     NETWORK_FILENAME,
@@ -128,8 +129,12 @@ class ModifyNetworkJob(Job[ModifyNetworkInputs]):
             )
             gdf, lake_touched = apply_lakes(gdf, prepared_lakes, counters)
             logger.info(
-                "Lake pass left %d reaches (%d lake polygons used)",
+                "Lake pass left %d reaches (%s lakes, %d polygon parts after "
+                "the negative buffer)",
                 len(gdf),
+                prepared_lakes[LAKE_ID_FIELD].nunique()
+                if LAKE_ID_FIELD in prepared_lakes.columns
+                else "unknown",
                 len(prepared_lakes),
             )
         else:

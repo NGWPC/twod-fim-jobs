@@ -19,6 +19,7 @@ from shapely.geometry import LineString, box
 from twod_fim_jobs.consts import (
     COAST_TO_ID_FIELD,
     DA_FIELD,
+    LAKE_ID_FIELD,
     IS_HEADWATER_FIELD,
     IS_TERMINAL_FIELD,
     IS_TRIMMED_FIELD,
@@ -1417,3 +1418,35 @@ def test_nested_ids_sort_beside_their_parent(tmp_path):
         ["3434_10", "3434_2_2", "10", "2", "3434_1", "3434_2_1"]
     ).iloc[order].tolist()
     assert ranked == ["2", "10", "3434_1", "3434_2_1", "3434_2_2", "3434_10"]
+
+
+def test_lake_count_reported_is_lakes_not_parts(caplog, payload, lakes_layer):
+    """The negative buffer can split one lake into several polygons.
+
+    Reporting len(prepared_lakes) counted parts, so a single lake broken in
+    two read as two lakes.
+    """
+    import logging
+
+    with caplog.at_level(logging.INFO, logger="twod_fim_jobs.jobs.modify_network"):
+        ModifyNetworkJob().run(payload)
+    line = next(m for m in caplog.messages if m.startswith("Lake pass left"))
+    # Fixture has two lakes; the tiny one is buffered away, leaving one.
+    assert "1 lakes" in line, line
+
+
+def test_one_lake_split_into_parts_counts_once(tmp_path):
+    """A dumbbell lake pinched in two by the buffer is still one lake."""
+    from shapely.geometry import Polygon
+
+    dumbbell = Polygon(
+        [(0, 0), (400, 0), (400, 190), (600, 190), (600, 0), (1000, 0),
+         (1000, 400), (600, 400), (600, 210), (400, 210), (400, 400), (0, 400)]
+    )
+    path = tmp_path / "dumbbell.gpkg"
+    gpd.GeoDataFrame({"lake_id": [55]}, geometry=[dumbbell], crs=CRS).to_file(
+        path, layer="lakes_polygons", driver="GPKG"
+    )
+    parts = nw.prepare_lakes(gpd.read_file(path), 0.0, 20.0)
+    assert len(parts) > 1, "buffer must actually pinch it apart"
+    assert parts[LAKE_ID_FIELD].nunique() == 1

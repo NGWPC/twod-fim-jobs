@@ -23,6 +23,10 @@ FROM two-dim-fim-base AS build_model
 
 ENTRYPOINT ["twod_fim_jobs", "build_model"]
 
+FROM two-dim-fim-base AS modify_network
+
+ENTRYPOINT ["twod_fim_jobs", "modify_network"]
+
 FROM deltares/sfincs-cpu:sfincs-v2.4.0-Galibier-Release AS run_kwse_scenarios-sfincs
 
 COPY --from=builder /app/.pixi/envs/prod /app/.pixi/envs/prod

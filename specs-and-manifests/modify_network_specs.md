@@ -17,7 +17,7 @@ Modify NGWPC Hydrofabric (NHF) to prepare for hydraulic modeling. The job trim, 
 
 | Name                            | Type  | Description                                                                                          |
 | ------------------------------- | ----- | ---------------------------------------------------------------------------------------------------- |
-| lakes_layer_path                | str   | Lakes/waterbody dataset. Current column/layer names compliance is with NHF v1.2.3 `lakes_polygon` layer schema by default. It must be GPKG file. **Omit to skip lake processing entirely** — step 5 is not run, no `lakes.gpkg` is written, and every lake metric is null. |
+| lakes_layer_path                | str   | Lakes/waterbody dataset. Current column/layer names compliance is with NHF v1.2.3 `lakes_polygons` layer schema by default. It must be GPKG file. **Omit to skip lake processing entirely** — step 5 is not run, no `lakes.gpkg` is written, and every lake metric is null. |
 | coastal_influence_layer_path    | str   | Coastal/tidal influence surface boundary as a vector dataset . It must be GPKG file. Default layer name is `coastal_influence`. **Omit to skip coastal processing entirely** — step 4 is not run and every coastal metric is null. |
 | drainage_area_threshold_percent | float | Max drainage-area difference (%) between reaches eligible for merge. Default 5 (DR-024)              |
 | stream_order_filter_threshold   | int   | Minimum Strahler stream order kept in the network at all. No default — **omit to skip stream-order filtering entirely**: every reach in `reach_network_path` enters processing and `n_reaches_below_stream_order_removed` is null. |
@@ -36,6 +36,7 @@ Order of operations
 
    - fully inside → dropped it and all reaches further downstream.
    - downstream end inside but upstream not→ trimmed to the upstream portion, `is_terminal=true`, `reach_to_id=null`, `terminal_reason='coast'` and reaches downstream of it are dropped.
+   - after the cascade, any surviving reach whose `reach_to_id` points at a deleted reach — a tributary that flowed into the cascade zone without itself intersecting the coast layer — → `is_terminal=true`, `reach_to_id=null`, `terminal_reason='coast'`, geometry untouched. Counted by `n_reaches_stranded_coastal`; not removed, so it does not enter the accounting identity.
 5. **Lakes** — **skipped entirely when `lakes_layer_path` is not given**:
 
    - fully inside → `lake_encompassed=true`, dropped.
@@ -55,7 +56,7 @@ Skipping a waterbody step is a no-op on the network, not a degraded pass: no rea
 
 | Artifact                                        | Description                                                                                          |
 | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `base_output_path/<identity_hash>/network.gpkg` | Modified reach network (flowpaths layer) — what `build_model`'s `db_uri` points at. Carries the literal GPKG columns `is_headwater`, `is_terminal`, `terminal_reason` (one of `outlet`, `coast`, `lake`, or null when `is_terminal` is false; coastal breaks persist only as `terminal_reason='coast'` — no separate coastal inlet/outlet/encompassed columns), `lake_inlet`, `lake_outlet`.|
+| `base_output_path/<identity_hash>/network.gpkg` | Modified reach network (flowpaths layer) — what `build_model`'s `db_uri` points at. Carries the literal GPKG columns `is_headwater`, `is_terminal`, `terminal_reason` (one of `outlet`, `coast`, `lake`, or null when `is_terminal` is false; coastal breaks persist only as `terminal_reason='coast'` — no separate coastal inlet/outlet/encompassed columns), `lake_inlet`, `lake_outlet`, `is_trimmed` (true where the geometry was cut; false for stranded reaches).|
 | `base_output_path/<identity_hash>/lakes.gpkg`   | Filtered + buffered lake polygons actually used for classification (QC/reference only — not inserted as network reaches, per DR-037 ALT-B). Written only when `lakes_layer_path` was given; absent otherwise |
 | `base_output_path/<identity_hash>/network.json` | Network definition and artifact inventory — see `network.schema.json`                                |
 
@@ -95,6 +96,7 @@ Recorded in `network.json` under `properties` (see `network.schema.json`) — on
 - `n_reaches_trimmed_inlet_lake`, `n_reaches_trimmed_outlet_lake`
 - `n_reaches_trimmed_inlet_coastal` — downstream end inside coastal coverage, upstream not (step 4's second case)
 - `n_reaches_dropped_coastal_cascade` — reaches removed for being downstream of a coastal encompassed/trimmed reach, not for their own classification
+- `n_reaches_stranded_coastal` — tributaries left pointing at a cascade-deleted reach without themselves intersecting the coast layer; made terminal (`terminal_reason='coast'`) with geometry untouched. Not removed — absent from the accounting identity
 - `n_reaches_split_passthrough_lake`
 - `n_reaches_merged`
 - `n_headwater_reaches`, `n_terminal_reaches` — **states of the final artifact, not counts of any one step**: rows in the written `network.gpkg` with the flag set, measured after all trimming, splitting, and merging. Both flags are written by more than one step — `is_terminal` at steps 2, 4 and 5, `is_headwater` at steps 3 and 5 — so each exceeds the tally of the step that first sets it. The two overlap (a reach can be both), so they are not additive and neither appears in the accounting identity below

@@ -17,15 +17,28 @@
     "assets"
   ],
   "properties": {
-    "type": { "type": "string", "const": "network", "description": "Discriminator vs. model/run records." },
-    "hash_algo": { "type": "string", "const": "sha256" },
-    "twod_fim_version": { "type": "string", "description": "Producer software version (provenance)." },
+    "type": {
+      "type": "string",
+      "const": "network",
+      "description": "Discriminator vs. model/run records."
+    },
+    "hash_algo": {
+      "type": "string",
+      "const": "sha256"
+    },
+    "twod_fim_version": {
+      "type": "string",
+      "description": "Producer software version (provenance)."
+    },
     "created_at": {
       "type": "string",
       "format": "date-time",
       "description": "Write completion time (UTC). network.json is written last, after network.gpkg/lakes.gpkg."
     },
-    "identity_hash": { "$ref": "#/$defs/hash8", "description": "Hash of the identity object." },
+    "identity_hash": {
+      "$ref": "#/$defs/hash8",
+      "description": "Hash of the identity object."
+    },
     "id": {
       "type": "string",
       "pattern": "^[0-9a-f]{8}$",
@@ -47,17 +60,34 @@
         "negative_lake_buffer_meters"
       ],
       "properties": {
-        "sdr_commit": { "type": "string", "description": "Methodology version pin (output-determining)." },
+        "sdr_commit": {
+          "type": "string",
+          "description": "Methodology version pin (output-determining)."
+        },
         "reach_network_hash": {
           "$ref": "#/$defs/hash8",
           "description": "Hash of the raw hydrofabric network source + version read from inputs.reach_network_path (NHFNetworkModifier.reach_network_path connection params)."
         },
         "lakes_layer_hash": {
-          "anyOf": [{ "$ref": "#/$defs/hash8" }, { "type": "null" }],
-          "description": "Hash of the lakes/waterbody source + version read from inputs.lakes_layer_path (NHF v1.2.3 lakes_polygon layer — not a pre-built dead-pool dataset; the dead-pool extent is derived at runtime via negative_lake_buffer_meters, see DR-034). Null when no lakes dataset was supplied and lake processing was skipped — required-but-nullable so 'no lakes' is stated explicitly rather than by omission, which would otherwise hash differently."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/hash8"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Hash of the lakes/waterbody source + version read from inputs.lakes_layer_path (NHF v1.2.3 lakes_polygons layer — not a pre-built dead-pool dataset; the dead-pool extent is derived at runtime via negative_lake_buffer_meters, see DR-034). Null when no lakes dataset was supplied and lake processing was skipped — required-but-nullable so 'no lakes' is stated explicitly rather than by omission, which would otherwise hash differently."
         },
         "coastal_influence_layer_hash": {
-          "anyOf": [{ "$ref": "#/$defs/hash8" }, { "type": "null" }],
+          "anyOf": [
+            {
+              "$ref": "#/$defs/hash8"
+            },
+            {
+              "type": "null"
+            }
+          ],
           "description": "Hash of the coastal/tidal-influence surface vector source + version read from inputs.coastal_influence_layer_path (DR-038). Null when no coastal dataset was supplied and coastal processing was skipped."
         },
         "drainage_area_threshold_percent": {
@@ -65,7 +95,10 @@
           "description": "Max drainage-area difference (%) between reaches eligible for merge. Code default 5 (DR-024)."
         },
         "stream_order_filter_threshold": {
-          "type": ["integer", "null"],
+          "type": [
+            "integer",
+            "null"
+          ],
           "description": "Minimum Strahler stream order kept in the network at all — reaches below this are filtered out entirely, at load time, before lake/coastal/merge processing. No default: when omitted the filter is not applied at all and every reach in reach_network_path enters processing, recorded here as null. Required-but-nullable so 'unfiltered' is stated explicitly rather than by omission, which would otherwise hash differently."
         },
         "max_length_threshold_km": {
@@ -86,29 +119,64 @@
       "type": "object",
       "description": "The modify_network call arguments, recorded verbatim. This is Network's provenance — not part of identity_hash.",
       "additionalProperties": false,
-      "required": ["reach_network_path", "base_output_path"],
+      "required": [
+        "reach_network_path",
+        "base_output_path"
+      ],
       "properties": {
         "reach_network_path": {
           "type": "string",
           "description": "Path to the raw input hydrofabric reach network. Must be a GPKG file; column/layer names follow the NHF v1.2.3 flowpaths layer schema by default. Maps to NHFNetworkModifier.reach_network_path."
         },
         "lakes_layer_path": {
-          "type": ["string", "null"],
-          "description": "Path to the lakes/waterbody dataset. Must be a GPKG file; column/layer names follow the NHF v1.2.3 lakes_polygon layer schema by default. Optional — when absent, lake processing is skipped entirely (no reaches encompassed, trimmed, or split on lakes) and no lakes asset is written. Maps to NHFNetworkModifier.lakes_layer_path."
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Path to the lakes/waterbody dataset. Must be a GPKG file; column/layer names follow the NHF v1.2.3 lakes_polygons layer schema by default. Optional — when absent, lake processing is skipped entirely (no reaches encompassed, trimmed, or split on lakes) and no lakes asset is written. Maps to NHFNetworkModifier.lakes_layer_path."
         },
         "coastal_influence_layer_path": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Path to the coastal/tidal-influence surface boundary as a vector dataset. Must be a GPKG file; default layer name is coastal_influence. Optional — when absent, coastal processing is skipped entirely (no reaches dropped, trimmed, or cascade-dropped on coasts). Maps to NHFNetworkModifier.coastal_influence_layer_path."
         },
         "base_output_path": {
           "type": "string",
           "description": "Path where the modified network and manifest are written."
         },
-        "drainage_area_threshold_percent": { "type": ["number", "null"] },
-        "stream_order_filter_threshold": { "type": ["integer", "null"], "description": "Minimum Strahler stream order to keep. Optional — when absent or null, no stream-order filtering is applied and every reach enters processing." },
-        "max_length_threshold_km": { "type": ["number", "null"] },
-        "lake_area_threshold_sqkm": { "type": ["number", "null"] },
-        "negative_lake_buffer_meters": { "type": ["number", "null"] }
+        "drainage_area_threshold_percent": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "stream_order_filter_threshold": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Minimum Strahler stream order to keep. Optional — when absent or null, no stream-order filtering is applied and every reach enters processing."
+        },
+        "max_length_threshold_km": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "lake_area_threshold_sqkm": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "negative_lake_buffer_meters": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
       }
     },
     "properties": {
@@ -116,30 +184,117 @@
       "description": "Computed/diagnostic values; informational, not part of identity. One counter per real processing branch, so a run is auditable against the code path it took. Null and 0 are distinct: 0 means the branch ran and matched nothing, null means the branch did not run — so every lake counter is null when lakes_layer_path was absent, and every coastal counter is null when coastal_influence_layer_path was absent. The removal counters are disjoint — every reach is counted in exactly one, the branch that removed it, and a reach flagged by both coastal and lake logic (the ambiguous_reach_classification case) is attributed to coastal because step 4 runs before step 5. That disjointness is what lets the counters reconcile: n_reaches_output = n_reaches_input - n_reaches_below_stream_order_removed - n_reaches_encompassed_removed_lake - n_reaches_encompassed_removed_coastal - n_reaches_dropped_coastal_cascade - n_reaches_merged + n_reaches_split_passthrough_lake. The trim counters are absent from that identity by design (trimming reshapes a reach and keeps its row); splits add a row each. JSON Schema cannot express this constraint, so it must be enforced by the producer.",
       "additionalProperties": false,
       "properties": {
-        "n_reaches_input": { "type": ["integer", "null"], "description": "Rows in reach_network_path as read, before the stream-order filter and before any other processing." },
-        "n_reaches_below_stream_order_removed": { "type": ["integer", "null"], "description": "Dropped by the stream_order_filter_threshold filter before any waterbody/merge processing. Null when no threshold was given and the filter did not run, in which case the term drops out of the reconciliation identity above." },
-        "n_reaches_encompassed_removed_lake": { "type": ["integer", "null"], "description": "Fully inside a lake polygon — classified as encompassed and dropped. The classification is intermediate: every reach it applies to is removed, so it leaves no column in network.gpkg. See assets.network for the columns that do persist." },
-        "n_reaches_encompassed_removed_coastal": { "type": ["integer", "null"], "description": "Fully inside coastal coverage — classified as encompassed and dropped, as is everything downstream of it (counted separately under n_reaches_dropped_coastal_cascade). The classification is intermediate: every reach it applies to is removed, so it leaves no column in network.gpkg." },
-        "n_reaches_trimmed_inlet_lake": { "type": ["integer", "null"], "description": "Downstream end inside a lake — trimmed to upstream portion, is_terminal set." },
-        "n_reaches_trimmed_outlet_lake": { "type": ["integer", "null"], "description": "Upstream end inside a lake — trimmed to downstream portion, is_headwater set." },
-        "n_reaches_trimmed_inlet_coastal": { "type": ["integer", "null"], "description": "Downstream end inside coastal coverage but upstream not — trimmed to upstream portion, terminal_reason='coast'. Coastal has no outlet/pass-through case." },
-        "n_reaches_dropped_coastal_cascade": { "type": ["integer", "null"], "description": "Removed for being downstream of a coastal encompassed/trimmed reach, not for their own classification." },
-        "n_reaches_split_passthrough_lake": { "type": ["integer", "null"], "description": "Passed through a lake at both ends outside it — split into a new inlet/outlet reach pair, minting a new reach_id." },
-        "n_reaches_merged": { "type": ["integer", "null"], "description": "Consumed by a drainage-area-difference merge into a downstream neighbor." },
-        "n_reaches_output": { "type": ["integer", "null"], "description": "Rows in the written network.gpkg, after every step including merge. The left-hand side of the reconciliation identity above." },
-        "n_headwater_reaches": { "type": ["integer", "null"], "description": "Rows in the written network.gpkg with is_headwater true — a state of the final artifact, NOT a count of any one step. Measured after all trimming, splitting, and merging. A headwater is a reach that is no other reach's fp_to_id, i.e. nothing flows into it. Two steps set this flag: step 3 (topological headwaters) and step 5 (lake outlets, also counted by n_reaches_trimmed_outlet_lake), so this exceeds step 3's own tally. Expect this to be large relative to n_reaches_output whenever stream_order_filter_threshold is set — the filter strands every reach whose feeders were below the threshold, making them apparent headwaters. A consumer can verify it by opening network.gpkg and counting; that is the definition." },
-        "n_terminal_reaches": { "type": ["integer", "null"], "description": "Rows in the written network.gpkg with is_terminal true — a state of the final artifact, NOT a count of any one step. Measured after all trimming, splitting, and merging. Three steps set this flag: step 2 (outlets), step 4 (coastal inlets, also counted by n_reaches_trimmed_inlet_coastal) and step 5 (lake inlets, also counted by n_reaches_trimmed_inlet_lake), so this exceeds step 2's own tally. Can overlap n_headwater_reaches — an isolated reach with neither an upstream nor a downstream neighbor is both — so the two are not additive and neither appears in the reconciliation identity. The overlap is incidental, not systematic: headwater and terminal are independent topological ends." }
+        "n_reaches_input": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Rows in reach_network_path as read, before the stream-order filter and before any other processing."
+        },
+        "n_reaches_below_stream_order_removed": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Dropped by the stream_order_filter_threshold filter before any waterbody/merge processing. Null when no threshold was given and the filter did not run, in which case the term drops out of the reconciliation identity above."
+        },
+        "n_reaches_encompassed_removed_lake": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Fully inside a lake polygon — classified as encompassed and dropped. The classification is intermediate: every reach it applies to is removed, so it leaves no column in network.gpkg. See assets.network for the columns that do persist."
+        },
+        "n_reaches_encompassed_removed_coastal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Fully inside coastal coverage — classified as encompassed and dropped, as is everything downstream of it (counted separately under n_reaches_dropped_coastal_cascade). The classification is intermediate: every reach it applies to is removed, so it leaves no column in network.gpkg."
+        },
+        "n_reaches_trimmed_inlet_lake": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Downstream end inside a lake — trimmed to upstream portion, is_terminal set."
+        },
+        "n_reaches_trimmed_outlet_lake": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Upstream end inside a lake — trimmed to downstream portion, is_headwater set."
+        },
+        "n_reaches_trimmed_inlet_coastal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Downstream end inside coastal coverage but upstream not — trimmed to upstream portion, terminal_reason='coast'. Coastal has no outlet/pass-through case."
+        },
+        "n_reaches_dropped_coastal_cascade": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Removed for being downstream of a coastal encompassed/trimmed reach, not for their own classification."
+        },
+        "n_reaches_stranded_coastal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Tributaries left pointing at a cascade-deleted reach without themselves intersecting the coast layer — made terminal (terminal_reason='coast', reach_to_id nulled), geometry untouched. Not removed, so absent from the reconciliation identity."
+        },
+        "n_reaches_split_passthrough_lake": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Passed through a lake at both ends outside it — split into a new inlet/outlet reach pair, minting a new reach_id."
+        },
+        "n_reaches_merged": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Consumed by a drainage-area-difference merge into a downstream neighbor."
+        },
+        "n_reaches_output": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Rows in the written network.gpkg, after every step including merge. The left-hand side of the reconciliation identity above."
+        },
+        "n_headwater_reaches": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Rows in the written network.gpkg with is_headwater true — a state of the final artifact, NOT a count of any one step. Measured after all trimming, splitting, and merging. A headwater is a reach that is no other reach's fp_to_id, i.e. nothing flows into it. Two steps set this flag: step 3 (topological headwaters) and step 5 (lake outlets, also counted by n_reaches_trimmed_outlet_lake), so this exceeds step 3's own tally. Expect this to be large relative to n_reaches_output whenever stream_order_filter_threshold is set — the filter strands every reach whose feeders were below the threshold, making them apparent headwaters. A consumer can verify it by opening network.gpkg and counting; that is the definition."
+        },
+        "n_terminal_reaches": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Rows in the written network.gpkg with is_terminal true — a state of the final artifact, NOT a count of any one step. Measured after all trimming, splitting, and merging. Three steps set this flag: step 2 (outlets), step 4 (coastal inlets, counted by n_reaches_trimmed_inlet_coastal, plus stranded tributaries, counted by n_reaches_stranded_coastal) and step 5 (lake inlets, counted by n_reaches_trimmed_inlet_lake), so this exceeds step 2's own tally. Can overlap n_headwater_reaches — an isolated reach with neither an upstream nor a downstream neighbor is both — so the two are not additive and neither appears in the reconciliation identity. The overlap is incidental, not systematic: headwater and terminal are independent topological ends."
+        }
       }
     },
     "assets": {
       "type": "object",
       "description": "This job's own outputs, written as separate GeoPackage files under base_output_path. network.gpkg is always present; lakes.gpkg only when lake processing ran, which is why only 'network' is required.",
       "additionalProperties": false,
-      "required": ["network"],
+      "required": [
+        "network"
+      ],
       "properties": {
         "network": {
           "$ref": "#/$defs/asset",
-          "description": "The modified reach network (flowpaths layer) — what build_model's db_uri points at downstream. Carries per-reach columns: is_headwater, is_terminal, terminal_reason (one of 'outlet', 'coast', 'lake', or null when is_terminal is false; coastal breaks persist only as terminal_reason='coast' — no separate coastal inlet/outlet/encompassed columns), lake_inlet/lake_outlet (lake only — encompassed reaches are dropped before persistence, so there is no lake_encompassed column either), is_trimmed (initialized but not currently set by any code path). These are the literal GPKG column names."
+          "description": "The modified reach network (flowpaths layer) — what build_model's db_uri points at downstream. Carries per-reach columns: is_headwater, is_terminal, terminal_reason (one of 'outlet', 'coast', 'lake', or null when is_terminal is false; coastal breaks persist only as terminal_reason='coast' — no separate coastal inlet/outlet/encompassed columns), lake_inlet/lake_outlet (lake only — encompassed reaches are dropped before persistence, so there is no lake_encompassed column either), is_trimmed (true where the geometry was cut: coastal/lake inlet trims, lake outlet trims, both pieces of a pass-through split; false for stranded reaches, whose geometry is untouched). These are the literal GPKG column names."
         },
         "lakes": {
           "$ref": "#/$defs/asset",
@@ -153,30 +308,72 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["code", "message"],
+        "required": [
+          "code",
+          "message"
+        ],
         "properties": {
           "code": {
             "type": "string",
-            "enum": ["network_exists", "ambiguous_reach_classification"]
+            "enum": [
+              "network_exists",
+              "ambiguous_reach_classification"
+            ]
           },
-          "message": { "type": "string" }
+          "message": {
+            "type": "string"
+          }
         }
       }
     }
   },
   "$defs": {
-    "hash8": { "type": "string", "pattern": "^[0-9a-f]{8}$", "description": "First 8 hex of SHA-256 (32-bit)." },
-    "checksum16": { "type": "string", "pattern": "^[0-9a-f]{16}$", "description": "First 16 hex of SHA-256 (64-bit)." },
+    "hash8": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}$",
+      "description": "First 8 hex of SHA-256 (32-bit)."
+    },
+    "checksum16": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "First 16 hex of SHA-256 (64-bit)."
+    },
     "asset": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["href", "checksum"],
+      "required": [
+        "href",
+        "checksum"
+      ],
       "properties": {
-        "href": { "type": "string", "description": "Path to the file, e.g. network.gpkg, lakes.gpkg, or a full s3:// URI." },
-        "checksum": { "$ref": "#/$defs/checksum16", "description": "File-integrity checksum; longer than identity hashes to allow cross-corpus content comparison." },
-        "source_url": { "type": ["string", "null"], "description": "External provenance URL, if applicable. Null for purely computed assets — both of this job's assets are computed, so both are null." },
-        "retrieved": { "type": ["string", "null"], "format": "date-time", "description": "When the source was fetched, if applicable. Never set for this job's assets, which are computed rather than fetched." },
-        "derived": { "type": "boolean", "default": false, "description": "True for outputs regenerable from sources; subject to S3 lifecycle deletion. Always false for this job — nothing it writes is disposable. Both assets are regenerable in principle, but network.gpkg is what build_model's db_uri points at and lakes.gpkg is retained for QC, so neither is lifecycle-eligible. State it explicitly on every asset rather than relying on this default, so retention is a recorded decision." }
+        "href": {
+          "type": "string",
+          "description": "Path to the file, e.g. network.gpkg, lakes.gpkg, or a full s3:// URI."
+        },
+        "checksum": {
+          "$ref": "#/$defs/checksum16",
+          "description": "File-integrity checksum; longer than identity hashes to allow cross-corpus content comparison."
+        },
+        "source_url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "External provenance URL, if applicable. Null for purely computed assets — both of this job's assets are computed, so both are null."
+        },
+        "retrieved": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "When the source was fetched, if applicable. Never set for this job's assets, which are computed rather than fetched."
+        },
+        "derived": {
+          "type": "boolean",
+          "default": false,
+          "description": "True for outputs regenerable from sources; subject to S3 lifecycle deletion. Always false for this job — nothing it writes is disposable. Both assets are regenerable in principle, but network.gpkg is what build_model's db_uri points at and lakes.gpkg is retained for QC, so neither is lifecycle-eligible. State it explicitly on every asset rather than relying on this default, so retention is a recorded decision."
+        }
       }
     }
   }

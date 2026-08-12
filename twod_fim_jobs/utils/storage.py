@@ -108,6 +108,20 @@ def check_model_exists(model_uri: str) -> bool:
     return False
 
 
+def check_path_exists(uri: str) -> bool:
+    """Whether a local path or S3 URI exists.
+
+    An unreachable backend is reported as "does not exist" so a transient
+    storage failure cannot be mistaken for an existing artifact — the caller
+    would otherwise skip a rebuild it should have performed.
+    """
+    try:
+        fs, path = fsspec.core.url_to_fs(uri)
+        return bool(fs.exists(path))
+    except Exception:
+        return False
+
+
 def copy_file(src: str, dst: str) -> None:
     """Copy a file from src to dst.
 

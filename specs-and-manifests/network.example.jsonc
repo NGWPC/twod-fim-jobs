@@ -8,7 +8,7 @@
   "identity": {
     "sdr_commit": "826a602d",
     "reach_network_hash": "3ba1c0e2", // raw NHF network source + version
-    "lakes_layer_hash": "d4e9f1a0", // NHF v1.2.3 lakes_polygon layer, not a pre-built dead-pool dataset
+    "lakes_layer_hash": "d4e9f1a0", // NHF v1.2.3 lakes_polygons layer, not a pre-built dead-pool dataset
     "coastal_influence_layer_hash": "91bb2c3d", // coastal/tidal-influence vector source + version (DR-038)
     "drainage_area_threshold_percent": 5.0, // DR-024
     "stream_order_filter_threshold": 3, // hard filter, not just merge gate
@@ -18,7 +18,7 @@
   },
   "inputs": { // call args, verbatim — this is Network's provenance
     "reach_network_path": "s3://bucket/pre/nhf_network_raw.gpkg",
-    "lakes_layer_path": "s3://bucket/reference/nhf_lakes_polygon.gpkg", // optional; omit to skip lake processing
+    "lakes_layer_path": "s3://bucket/reference/nhf_lakes_polygons.gpkg", // optional; omit to skip lake processing
     "coastal_influence_layer_path": "s3://bucket/reference/coastal_boundary.gpkg", // optional; omit to skip coastal processing
     "base_output_path": "s3://twod-fim/version=v1/network",
     "drainage_area_threshold_percent": 5.0,
@@ -36,6 +36,7 @@
     "n_reaches_trimmed_outlet_lake": 799,
     "n_reaches_trimmed_inlet_coastal": 421,
     "n_reaches_dropped_coastal_cascade": 1907, // reaches removed downstream of a coastal encompassed/trimmed reach
+    "n_reaches_stranded_coastal": 37, // tributaries into the cascade zone, made terminal in place — not removed
     "n_reaches_split_passthrough_lake": 133,
     "n_reaches_merged": 41209,
     "n_reaches_output": 820238, // reconciles: 2483911 -1611402 -6104 -3184 -1907 -41209 +133

@@ -13,12 +13,8 @@ def bieger_bankfull_width(da_sqkm: float) -> float:
 ### BUILD_MODEL ###
 
 # Inputs
-DEFAULT_DEM_SOURCE: str = (
-    "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt"
-)
-DEFAULT_LULC_SOURCE: str = (
-    "/vsis3/usgs-landcover/annual-nlcd/c1/v0/cu/mosaic/Annual_NLCD_LndCov_2023_CU_C1V0.tif"
-)
+DEFAULT_DEM_SOURCE: str = "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt"
+DEFAULT_LULC_SOURCE: str = "/vsis3/usgs-landcover/annual-nlcd/c1/v0/cu/mosaic/Annual_NLCD_LndCov_2023_CU_C1V0.tif"
 DEFAULT_DOMAIN_BUFFER: float = 0.0
 DEFAULT_GRID_RESOLUTION: int = 10
 DEFAULT_WALK_US_DIST_PCT: float = 0.1
@@ -71,30 +67,42 @@ LARGE_DOMAIN_AREA_THRESHOLD: float = 1e9  # TODO: tune (sq CRS units)
 SIMILAR_ROUGHNESS_STD_THRESHOLD: float = 0.005  # TODO: tune (Manning's n)
 
 
-NHF_NETWORK_MODIFIER = {
-    "area_sqkm": "area_sqkm",
-    "stream_order": "stream_order",
-    "length_km": "length_km",
-    "flowpaths_layer": "flowpaths",
-    "lakes_layer": "NHDWaterbody",
-    "lake_area_sqkm": "areasqkm",
-    "fp_to_id": "fp_to_id",
-    "fp_id": "fp_id",
-    "geometry_field": "geometry",
-    "is_headwater": "is_headwater",
-    "is_terminal": "is_terminal",
-    "terminal_reason": "terminal_reason",
-    "waterbody_inlet": {"lake": "lake_inlet", "coastal": "coastal_inlet"},
-    "waterbody_outlet": {
-        "lake": "lake_outlet",
-        "coastal": "coastal_outlet",
-    },
-    "waterbody_encompassed": {
-        "lake": "lake_encompassed",
-        "coastal": "coastal_encompassed",
-    },
-    "is_trimmed": "is_trimmed",
-    "reach_id": "reach_id",
-    "reach_to_id": "reach_to_id",
-    "stream_order_field": "stream_order",
-}
+### MODIFY_NETWORK ###
+
+# Inputs. stream_order_filter_threshold deliberately has no default:
+# omitted means no stream-order filtering at all (see modify_network_specs.md).
+DEFAULT_DRAINAGE_AREA_THRESHOLD_PERCENT: float = 5.0  # DR-024
+DEFAULT_MAX_LENGTH_THRESHOLD_KM: float = 3.0  # DR-024
+DEFAULT_LAKE_AREA_THRESHOLD_SQKM: float = 5.0
+DEFAULT_NEGATIVE_LAKE_BUFFER_METERS: float = 50.0  # DR-034 ALT-A "shrink"
+
+# Artifact names (written under base_output_path/<identity_hash>/)
+NETWORK_FILENAME = "network.gpkg"
+LAKES_FILENAME = "lakes.gpkg"
+NETWORK_MANIFEST_FILENAME = "network.json"
+
+
+# NHF v1.2.3 input layer/field names. STREAM_ORDER_FIELD (above) is shared:
+# modify_network's output network is build_model's input reach db.
+FLOWPATHS_LAYER = "flowpaths"
+LAKES_LAYER = "lakes_polygons"
+COASTAL_LAYER = "coastal_influence"
+FP_ID_FIELD = "fp_id"
+FP_TO_ID_FIELD = "fp_to_id"
+AREA_SQKM_FIELD = "area_sqkm"
+LENGTH_KM_FIELD = "length_km"
+
+# Output tag columns - the literal GPKG column names in network.gpkg
+# (contract: specs-and-manifests/network.schema.json assets.network).
+# REACH_ID_FIELD / REACH_TO_ID_FIELD (above) name the working topology columns.
+IS_HEADWATER_FIELD = "is_headwater"
+IS_TERMINAL_FIELD = "is_terminal"
+TERMINAL_REASON_FIELD = "terminal_reason"
+LAKE_INLET_FIELD = "lake_inlet"
+LAKE_OUTLET_FIELD = "lake_outlet"
+IS_TRIMMED_FIELD = "is_trimmed"
+
+# terminal_reason vocabulary (null when is_terminal is false)
+TERMINAL_REASON_OUTLET = "outlet"
+TERMINAL_REASON_COAST = "coast"
+TERMINAL_REASON_LAKE = "lake"

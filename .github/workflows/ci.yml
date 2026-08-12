@@ -36,3 +36,24 @@ jobs:
 
       - name: Run health check
         run: docker run --rm twod-fim-jobs:ci '{}'
+
+  docker-build-job-targets:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [build_model, modify_network]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build ${{ matrix.target }} image
+        run: docker build --target ${{ matrix.target }} -t twod-fim-jobs:${{ matrix.target }} .
+
+      # An empty payload must fail input validation cleanly rather than crash,
+      # which proves the entrypoint reaches the job's Inputs model.
+      - name: Reject empty payload
+        run: |
+          if docker run --rm twod-fim-jobs:${{ matrix.target }} '{}'; then
+            echo "::error::empty payload was accepted by ${{ matrix.target }}"
+            exit 1
+          fi

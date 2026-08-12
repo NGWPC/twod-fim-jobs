@@ -181,13 +181,6 @@ def _init_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     if multi.any():
         merged = shapely.line_merge(gdf.geometry.to_numpy()[multi.to_numpy()])
         gdf.loc[multi, gdf.geometry.name] = merged
-        still = gdf.geom_type == "MultiLineString"
-        if still.any():
-            logger.warning(
-                "%d reaches remain MultiLineString after line_merge; endpoint "
-                "classification will skip them",
-                int(still.sum()),
-            )
 
     gdf[REACH_ID_FIELD] = _as_id(gdf[FP_ID_FIELD])
     gdf[REACH_TO_ID_FIELD] = _as_id(gdf[FP_TO_ID_FIELD])
@@ -196,12 +189,72 @@ def _init_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         raise DatasetUnavailableError(
             f"{FP_ID_FIELD} must be unique; repeated: {sorted(set(dupes))[:10]}"
         )
+    gdf = _explode_multipart(gdf)
     for field in _FLAG_FIELDS:
         gdf[field] = False
     gdf[TERMINAL_REASON_FIELD] = pd.Series(pd.NA, index=gdf.index, dtype="string")
     gdf[LAKE_TO_ID_FIELD] = pd.Series(pd.NA, index=gdf.index, dtype="string")
     gdf[COAST_TO_ID_FIELD] = pd.Series(pd.NA, index=gdf.index, dtype="string")
     return gdf.reset_index(drop=True)
+
+
+def _explode_multipart(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Split any remaining MultiLineString into one row per part.
+
+    line_merge has already fused contiguous parts, so what is left is
+    genuinely disjoint — a reach with a gap in it. The output contract is
+    LineString only, and endpoint classification is meaningless on a
+    multipart geometry anyway (which end is "the" upstream end?).
+
+    Parts are numbered in the order the source stored them, which for
+    upstream-to-downstream digitisation is flow order, and every part is
+    suffixed: 3434 with three parts becomes 3434_1, 3434_2, 3434_3. The
+    original id does not survive, so the parts are chained to each other and
+    anything that pointed at the original is repointed at the first part.
+    """
+    multi = (gdf.geom_type == "MultiLineString").to_numpy()
+    if not multi.any():
+        return gdf
+
+    exploded = gdf.explode(index_parts=True)
+    orig = exploded.index.get_level_values(0).to_numpy()
+    part = exploded.index.get_level_values(1).to_numpy()
+    exploded = exploded.reset_index(drop=True)
+
+    was_multi = multi[orig]
+    ids = exploded[REACH_ID_FIELD].to_numpy(dtype=object)
+    downstream = exploded[REACH_TO_ID_FIELD].to_numpy(dtype=object)
+
+    new_ids = ids.copy()
+    new_ids[was_multi] = [
+        f"{i}_{p + 1}" for i, p in zip(ids[was_multi], part[was_multi])
+    ]
+
+    # Chain part k to part k+1; the last part keeps the original downstream.
+    same_next = np.zeros(len(exploded), dtype=bool)
+    same_next[:-1] = orig[1:] == orig[:-1]
+    internal = np.flatnonzero(was_multi & same_next)
+    downstream[internal] = new_ids[internal + 1]
+
+    # Anything that pointed at an exploded reach now points at its first part.
+    same_prev = np.zeros(len(exploded), dtype=bool)
+    same_prev[1:] = orig[:-1] == orig[1:]
+    first_part = {
+        str(ids[i]): new_ids[i] for i in np.flatnonzero(was_multi & ~same_prev)
+    }
+    downstream = np.array(
+        [first_part.get(d, d) if d is not None else d for d in downstream],
+        dtype=object,
+    )
+
+    exploded[REACH_ID_FIELD] = pd.array(new_ids, dtype="string")
+    exploded[REACH_TO_ID_FIELD] = pd.array(downstream, dtype="string")
+    logger.info(
+        "Exploded %d multipart reaches into %d LineString parts",
+        int(multi.sum()),
+        int(was_multi.sum()),
+    )
+    return exploded.reset_index(drop=True)
 
 
 def _as_id(series: pd.Series) -> pd.Series:
@@ -467,9 +520,10 @@ def apply_lakes(
 ) -> tuple[gpd.GeoDataFrame, set[str]]:
     """Lake classification: encompassed / inlet / outlet / pass-through split.
 
-    Pass-through splits keep the original reach_id on the upstream/inlet
-    piece and name the downstream/outlet piece after it (``8`` -> ``8_1``),
-    so lineage is readable and no source id can be reused. Every reach that
+    A pass-through split retires the parent id and suffixes both pieces
+    (``8`` -> ``8_1`` upstream, ``8_2`` downstream), matching how multipart
+    reaches are exploded; tributaries that pointed at the parent are
+    repointed at the upstream piece. Every reach that
     meets a lake records it in lake_to_id.
 
     Finishes with an orphan sweep — see the comment at the end — which drops
@@ -522,6 +576,7 @@ def apply_lakes(
 
     n_inlet = n_outlet = n_split = n_between = 0
     new_rows: list[dict] = []
+    split_remap: dict[str, str] = {}
     geom = gdf.geometry.name
 
     for p, poly_pos in inlet:
@@ -592,12 +647,16 @@ def apply_lakes(
         d_first, d_last = float(dists.min()), float(dists.max())
         parent = str(gdf[REACH_ID_FIELD].iloc[p])
         lake_ref = lake_ids[poly_map[p][0]]
+        # Both pieces are suffixed and the parent id is retired, matching the
+        # explode convention. Upstream reaches pointed at the parent, so they
+        # are repointed at the upstream piece below.
+        split_remap[parent] = f"{parent}_1"
 
         # Downstream/outlet piece: a new reach named after its parent, which
         # inherits the original's downstream connectivity and terminal state.
         outlet_row = gdf.iloc[p].to_dict()
         outlet_row[geom] = substring(line, d_last, line.length)
-        outlet_row[REACH_ID_FIELD] = f"{parent}_1"
+        outlet_row[REACH_ID_FIELD] = f"{parent}_2"
         outlet_row[LAKE_OUTLET_FIELD] = True
         outlet_row[LAKE_INLET_FIELD] = False
         outlet_row[IS_HEADWATER_FIELD] = True
@@ -607,6 +666,7 @@ def apply_lakes(
 
         # Upstream/inlet piece keeps the original reach_id, so upstream
         # neighbors' pointers stay valid.
+        gdf.loc[p, REACH_ID_FIELD] = f"{parent}_1"
         gdf.loc[p, geom] = substring(line, 0, d_first)
         gdf.loc[p, LAKE_INLET_FIELD] = True
         gdf.loc[p, IS_TERMINAL_FIELD] = True
@@ -640,6 +700,11 @@ def apply_lakes(
     if new_rows:
         additions = gpd.GeoDataFrame(new_rows, geometry=geom, crs=gdf.crs)
         gdf = pd.concat([gdf, additions], ignore_index=True)
+    if split_remap:
+        # Flow enters a split reach at its upstream piece, so tributaries
+        # follow the parent id there.
+        rt = gdf[REACH_TO_ID_FIELD]
+        gdf[REACH_TO_ID_FIELD] = rt.map(split_remap).fillna(rt).astype("string")
     gdf = _normalize_dtypes(gdf.reset_index(drop=True))
 
     # Orphan sweep. A reach can pass all four cases above and still be left
@@ -867,13 +932,22 @@ def finalize_network(
 
 
 def _natural_order(ids: pd.Series) -> np.ndarray:
-    """Positions sorting '2' before '10', and '8' immediately before '8_1'."""
-    parsed = [
-        (int(m.group(1)), int(m.group(2) or 0), s)
-        if (m := re.fullmatch(r"(\d+)(?:_(\d+))?", s))
-        else (np.iinfo(np.int64).max, 0, s)
-        for s in ids.astype(str)
-    ]
+    """Positions sorting '2' before '10', and parts beside their parent.
+
+    Ids are dot-free integer paths — 3434, 3434_2, 3434_2_1 — so each is
+    sorted as a tuple of integers. That keeps 8_1 next to 8_2 and both under
+    8, at any suffix depth. Anything non-numeric sorts last, by text, rather
+    than raising.
+    """
+
+    def key(raw: str):
+        parts = raw.split("_")
+        try:
+            return (0, tuple(int(part) for part in parts), "")
+        except ValueError:
+            return (1, (), raw)
+
+    parsed = [key(s) for s in ids.astype(str)]
     return np.array(sorted(range(len(parsed)), key=lambda i: parsed[i]), dtype=int)
 
 

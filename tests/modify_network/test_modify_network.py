@@ -319,7 +319,7 @@ def test_counters_reconcile(pipeline):
 
 def test_surviving_reach_ids(pipeline):
     gdf, *_ = pipeline
-    assert list(gdf[REACH_ID_FIELD]) == ["2", "3", "4", "5", "7", "8", "8_1", "9", "12"]
+    assert list(gdf[REACH_ID_FIELD]) == ["2", "3", "4", "5", "7", "8_1", "8_2", "9", "12"]
 
 
 def test_junction_blocks_merge(pipeline):
@@ -375,11 +375,12 @@ def test_lake_outlet_trimmed_and_headwatered(pipeline):
     np.testing.assert_allclose(r7.geometry.length, 32.0)  # 158->190
 
 
-def test_lake_passthrough_split_keeps_original_id_upstream(pipeline):
-    """Spec step 5: original reach_id is the inlet piece, new id the outlet."""
+def test_lake_passthrough_split_suffixes_both_pieces(pipeline):
+    """The parent id is retired; _1 is upstream/inlet, _2 downstream/outlet."""
     gdf, *_ = pipeline
     by_id = gdf.set_index(REACH_ID_FIELD)
-    inlet, outlet = by_id.loc["8"], by_id.loc["8_1"]
+    assert "8" not in by_id.index, "the parent id must not survive a split"
+    inlet, outlet = by_id.loc["8_1"], by_id.loc["8_2"]
     assert inlet[LAKE_INLET_FIELD] and inlet[TERMINAL_REASON_FIELD] == "lake"
     assert outlet[LAKE_OUTLET_FIELD] and outlet[IS_HEADWATER_FIELD]
     np.testing.assert_allclose(inlet.geometry.length, 12.0)
@@ -642,7 +643,7 @@ def test_split_id_derives_from_its_parent(pipeline):
     """A split piece is named after the reach it came from, not renumbered."""
     gdf, *_ = pipeline
     ids = set(gdf[REACH_ID_FIELD])
-    assert "8" in ids and "8_1" in ids
+    assert "8_1" in ids and "8_2" in ids
     # 13 and 14 exist in the source but were filtered out; a numeric
     # high-water mark would have reused one of them here.
     assert not ids & {"13", "14", "15"}
@@ -652,7 +653,7 @@ def test_split_ids_sort_beside_their_parent(pipeline):
     """Output order is natural, not lexicographic: 2 < 8 < 8_1 < 9 < 12."""
     gdf, *_ = pipeline
     assert list(gdf[REACH_ID_FIELD]) == [
-        "2", "3", "4", "5", "7", "8", "8_1", "9", "12",
+        "2", "3", "4", "5", "7", "8_1", "8_2", "9", "12",
     ]
 
 
@@ -660,7 +661,7 @@ def test_lake_reaches_record_which_lake(pipeline):
     """Inlet, outlet, and both split pieces carry the lake's own id."""
     gdf, *_ = pipeline
     by_id = gdf.set_index(REACH_ID_FIELD)
-    for rid in ("5", "7", "8", "8_1"):
+    for rid in ("5", "7", "8_1", "8_2"):
         assert by_id.loc[rid, LAKE_TO_ID_FIELD] == "77", rid
     # A reach that never met a lake leaves it null.
     assert pd.isna(by_id.loc["3", LAKE_TO_ID_FIELD])
@@ -1305,3 +1306,114 @@ def test_source_length_disagreeing_with_geometry_is_overridden(tmp_path):
     gdf, counters = nw.load_reach_network(str(path), None)
     gdf = nw.finalize_network(nw.tag_terminal_reaches(gdf), counters)
     np.testing.assert_allclose(gdf.iloc[0][LENGTH_KM_FIELD], 1.0)
+
+
+### MULTIPART EXPLODE ###
+
+
+@pytest.fixture
+def multipart_network(tmp_path):
+    """Reach 3434 is a MultiLineString of three disjoint parts.
+
+        T --> 3434 (3 parts) --> D
+
+    The gaps are real, so line_merge cannot fuse them. T points at 3434 and
+    must end up pointing at the first part.
+    """
+    from shapely.geometry import MultiLineString
+
+    rows = [
+        ("10", "3434", MultiLineString([[(0, 500), (0, 0)]])),
+        (
+            "3434",
+            "20",
+            MultiLineString(
+                [
+                    [(0, 0), (100, 0)],
+                    [(110, 0), (200, 0)],
+                    [(210, 0), (300, 0)],
+                ]
+            ),
+        ),
+        ("20", None, MultiLineString([[(300, 0), (400, 0)]])),
+    ]
+    path = tmp_path / "multipart.gpkg"
+    gpd.GeoDataFrame(
+        {
+            "fp_id": [r[0] for r in rows],
+            "fp_to_id": [r[1] for r in rows],
+            "total_da_sqkm": [100.0, 101.0, 102.0],
+            "stream_order": [3, 3, 3],
+        },
+        geometry=[r[2] for r in rows],
+        crs=CRS,
+    ).to_file(path, layer="flowpaths", driver="GPKG")
+    return path
+
+
+def test_output_contains_no_multipart_geometry(multipart_network):
+    gdf, counters = nw.load_reach_network(str(multipart_network), None)
+    assert set(gdf.geom_type) == {"LineString"}
+
+
+def test_multipart_reach_becomes_numbered_parts(multipart_network):
+    """3434 with three parts becomes 3434_1, 3434_2, 3434_3."""
+    gdf, _ = nw.load_reach_network(str(multipart_network), None)
+    ids = set(gdf[REACH_ID_FIELD])
+    assert {"3434_1", "3434_2", "3434_3"} <= ids
+    assert "3434" not in ids, "the parent id must not survive an explode"
+    # Single-part reaches are untouched by line_merge and keep their id.
+    assert {"10", "20"} <= ids
+
+
+def test_exploded_parts_are_chained_in_flow_order(multipart_network):
+    """Part k drains to part k+1; the last keeps the original downstream."""
+    gdf, _ = nw.load_reach_network(str(multipart_network), None)
+    by_id = gdf.set_index(REACH_ID_FIELD)
+    assert by_id.loc["3434_1", REACH_TO_ID_FIELD] == "3434_2"
+    assert by_id.loc["3434_2", REACH_TO_ID_FIELD] == "3434_3"
+    assert by_id.loc["3434_3", REACH_TO_ID_FIELD] == "20"
+
+
+def test_tributary_follows_an_exploded_reach_to_its_first_part(multipart_network):
+    """Flow enters at part 1, so the pointer must land there, not dangle."""
+    gdf, _ = nw.load_reach_network(str(multipart_network), None)
+    by_id = gdf.set_index(REACH_ID_FIELD)
+    assert by_id.loc["10", REACH_TO_ID_FIELD] == "3434_1"
+    live = set(gdf[REACH_ID_FIELD])
+    assert set(gdf[REACH_TO_ID_FIELD].dropna()) <= live, "no dangling pointers"
+
+
+def test_exploded_part_split_by_a_lake_nests_its_suffix(tmp_path):
+    """3434_3 split by a lake becomes 3434_3_1 and 3434_3_2."""
+    from shapely.geometry import MultiLineString
+
+    net = tmp_path / "nested.gpkg"
+    gpd.GeoDataFrame(
+        {"fp_id": ["3434"], "fp_to_id": [None], "total_da_sqkm": [100.0],
+         "stream_order": [3]},
+        geometry=[MultiLineString([[(0, 0), (100, 0)], [(200, 0), (900, 0)]])],
+        crs=CRS,
+    ).to_file(net, layer="flowpaths", driver="GPKG")
+
+    lake = tmp_path / "nested_lake.gpkg"
+    gpd.GeoDataFrame(
+        {"lake_id": [7]}, geometry=[box(400, -50, 600, 50)], crs=CRS
+    ).to_file(lake, layer="lakes_polygons", driver="GPKG")
+
+    gdf, counters = _run_lakes(net, lake)
+    gdf = nw.finalize_network(gdf, counters)
+    ids = set(gdf[REACH_ID_FIELD])
+    assert counters.n_reaches_split_passthrough_lake == 1
+    assert {"3434_1", "3434_2_1", "3434_2_2"} == ids
+
+
+def test_nested_ids_sort_beside_their_parent(tmp_path):
+    """Ordering is by integer path, so 3434_2_1 follows 3434_1 not 3434_10."""
+    order = nw._natural_order(
+        pd.Series(["3434_10", "3434_2_2", "10", "2", "3434_1", "3434_2_1"])
+    )
+    ranked = pd.Series(
+        ["3434_10", "3434_2_2", "10", "2", "3434_1", "3434_2_1"]
+    ).iloc[order].tolist()
+    assert ranked == ["2", "10", "3434_1", "3434_2_1", "3434_2_2", "3434_10"]

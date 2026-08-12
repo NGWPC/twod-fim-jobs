@@ -15,7 +15,7 @@ import twod_fim_jobs
 from twod_fim_jobs.consts import (
     DEFAULT_DRAINAGE_AREA_THRESHOLD_PERCENT,
     DEFAULT_LAKE_AREA_THRESHOLD_SQKM,
-    DEFAULT_MAX_LENGTH_THRESHOLD_KM,
+    DEFAULT_MIN_LENGTH_THRESHOLD_KM,
     DEFAULT_NEGATIVE_LAKE_BUFFER_METERS,
 )
 from twod_fim_jobs.models.common import Asset, JobWarning
@@ -126,9 +126,10 @@ class Identity(BaseModel):
         description="Minimum Strahler stream order kept in the network at all. "
         "Null when no threshold was given and the filter did not run."
     )
-    max_length_threshold_km: float = Field(
+    min_length_threshold_km: float = Field(
         gt=0,
-        description="Max combined length (km) of a merged reach chain (DR-024).",
+        description="Minimum length (km) a reach should reach by merging — a floor, not a ceiling: merging continues until the chain clears it "
+        "(DR-024).",
     )
     lake_area_threshold_sqkm: float = Field(
         ge=0,
@@ -349,10 +350,11 @@ class ModifyNetworkInputs(BaseModel):
         "Omit to skip stream-order filtering entirely — every reach enters "
         "processing.",
     )
-    max_length_threshold_km: float = Field(
-        default=DEFAULT_MAX_LENGTH_THRESHOLD_KM,
+    min_length_threshold_km: float = Field(
+        default=DEFAULT_MIN_LENGTH_THRESHOLD_KM,
         gt=0,
-        description="Max combined length (km) of a merged reach chain (DR-024).",
+        description="Minimum length (km) a reach should reach by merging — a floor, not a ceiling: merging continues until the chain clears it "
+        "(DR-024).",
     )
     lake_area_threshold_sqkm: float = Field(
         default=DEFAULT_LAKE_AREA_THRESHOLD_SQKM,

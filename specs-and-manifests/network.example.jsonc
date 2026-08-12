@@ -12,7 +12,7 @@
     "coastal_influence_layer_hash": "91bb2c3d", // coastal/tidal-influence vector source + version (DR-038)
     "drainage_area_threshold_percent": 5.0, // DR-024
     "stream_order_filter_threshold": 3, // hard filter, not just merge gate
-    "max_length_threshold_km": 3.0, // DR-024
+    "min_length_threshold_km": 5.0, // DR-024, floor not ceiling
     "lake_area_threshold_sqkm": 5.0, // code-only, not in DR-007/034 text
     "negative_lake_buffer_meters": 50.0 // the actual DR-034 ALT-A "shrink" mechanism
   },
@@ -23,7 +23,7 @@
     "base_output_path": "s3://twod-fim/version=v1/network",
     "drainage_area_threshold_percent": 5.0,
     "stream_order_filter_threshold": 3,
-    "max_length_threshold_km": 3.0,
+    "min_length_threshold_km": 5.0,
     "lake_area_threshold_sqkm": 5.0,
     "negative_lake_buffer_meters": 50.0
   },

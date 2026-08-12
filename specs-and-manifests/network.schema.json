@@ -55,7 +55,7 @@
         "coastal_influence_layer_hash",
         "drainage_area_threshold_percent",
         "stream_order_filter_threshold",
-        "max_length_threshold_km",
+        "min_length_threshold_km",
         "lake_area_threshold_sqkm",
         "negative_lake_buffer_meters"
       ],
@@ -101,9 +101,9 @@
           ],
           "description": "Minimum Strahler stream order kept in the network at all — reaches below this are filtered out entirely, at load time, before lake/coastal/merge processing. No default: when omitted the filter is not applied at all and every reach in reach_network_path enters processing, recorded here as null. Required-but-nullable so 'unfiltered' is stated explicitly rather than by omission, which would otherwise hash differently."
         },
-        "max_length_threshold_km": {
+        "min_length_threshold_km": {
           "type": "number",
-          "description": "Max combined length (km) of a merged reach chain. Default 3 (DR-024)."
+          "description": "Minimum length (km) a reach should reach by merging — a floor, not a ceiling. Merging continues until the chain clears it, then stops, so a merged reach is bounded at this value plus the single reach that crossed it. A reach already at or above it never merges. Default 5 (DR-024, revised from 3 when the rule changed from ceiling to floor)."
         },
         "lake_area_threshold_sqkm": {
           "type": "number",
@@ -159,7 +159,7 @@
           ],
           "description": "Minimum Strahler stream order to keep. Optional — when absent or null, no stream-order filtering is applied and every reach enters processing."
         },
-        "max_length_threshold_km": {
+        "min_length_threshold_km": {
           "type": [
             "number",
             "null"

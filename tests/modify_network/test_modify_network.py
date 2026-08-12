@@ -25,6 +25,7 @@ from twod_fim_jobs.consts import (
     LAKE_INLET_FIELD,
     LAKE_OUTLET_FIELD,
     LAKE_TO_ID_FIELD,
+    LENGTH_KM_FIELD,
     OUTPUT_COLUMNS,
     REACH_ID_FIELD,
     REACH_TABLE,
@@ -341,11 +342,12 @@ def test_merge_sums_length_and_rewires_tributaries(pipeline):
     assert by_id.loc["2", IS_HEADWATER_FIELD]
 
 
-def test_merged_chain_respects_length_cap(synthetic_network):
-    """A cap below the combined length blocks an otherwise-eligible merge."""
+def test_reach_already_long_enough_never_merges(synthetic_network):
+    """The length threshold is a floor: clear it and you are left alone."""
     gdf, counters = nw.load_reach_network(str(synthetic_network), 3)
     gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
-    gdf = nw.merge_short_reaches(gdf, 5.0, 0.015, counters)
+    # Every fixture reach is 0.01 km; a 0.005 km floor is already satisfied.
+    nw.merge_short_reaches(gdf, 5.0, 0.005, counters)
     assert counters.n_reaches_merged == 0
 
 
@@ -585,7 +587,7 @@ def test_assets_are_retained_not_lifecycle_eligible(manifest):
 
 
 def test_defaults_resolved_into_identity(manifest):
-    assert manifest["identity"]["max_length_threshold_km"] == 3.0
+    assert manifest["identity"]["min_length_threshold_km"] == 5.0
     assert manifest["identity"]["stream_order_filter_threshold"] == 3
 
 
@@ -626,7 +628,7 @@ def test_changing_a_threshold_forks_identity(payload):
     second = ModifyNetworkJob().run(
         {
             **payload,
-            "max_length_threshold_km": 99.0,
+            "min_length_threshold_km": 99.0,
             "base_output_path": payload["base_output_path"] + "-b",
         }
     )
@@ -826,3 +828,69 @@ def test_drainage_area_still_blocks_merging_through_a_real_confluence(
     gdf, counters = _merge_run(path, 3)
     assert counters.n_reaches_merged == 1
     assert "A" in set(gdf[REACH_ID_FIELD]), "A must survive the confluence"
+
+
+### LENGTH THRESHOLD AS A FLOOR ###
+
+
+@pytest.fixture
+def linear_chain(tmp_path):
+    """A single-thread chain, downstream first, with equal drainage areas."""
+
+    def _build(lengths_km: list[float]) -> Path:
+        ids = [chr(65 + i) for i in range(len(lengths_km))]
+        rows, x = [], 0.0
+        for i, length in enumerate(lengths_km):
+            rows.append(
+                (ids[i], ids[i - 1] if i else None, [(x, 0), (x + length * 1000, 0)])
+            )
+            x += length * 1000
+        geoms = [LineString(c) for *_, c in rows]
+        path = tmp_path / f"chain_{'_'.join(str(L) for L in lengths_km)}.gpkg"
+        gpd.GeoDataFrame(
+            {
+                "fp_id": [r[0] for r in rows],
+                "fp_to_id": [r[1] for r in rows],
+                "total_da_sqkm": [100.0] * len(rows),
+                "stream_order": [3] * len(rows),
+                "length_km": [g.length / 1000 for g in geoms],
+            },
+            geometry=geoms,
+            crs=CRS,
+        ).to_file(path, layer="flowpaths", driver="GPKG")
+        return path
+
+    return _build
+
+
+def _merged_lengths(path, floor_km):
+    gdf, counters = nw.load_reach_network(str(path), None)
+    gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
+    gdf = nw.merge_short_reaches(gdf, 5.0, floor_km, counters)
+    gdf = nw.finalize_network(gdf, counters)
+    return {r[REACH_ID_FIELD]: round(r[LENGTH_KM_FIELD], 1) for _, r in gdf.iterrows()}
+
+
+def test_chain_merges_past_the_floor_rather_than_stopping_short(linear_chain):
+    """A=2, B=2, C=3 with a 5 km floor merges all three, not just A and B.
+
+    Under a ceiling reading the walk would stop at 4 km and strand C at 3 km,
+    leaving two reaches both shorter than the threshold.
+    """
+    assert _merged_lengths(linear_chain([2, 2, 3]), 5.0) == {"A": 7.0}
+
+
+def test_merged_length_cannot_exceed_the_floor_by_more_than_one_reach(linear_chain):
+    """The walk stops the moment the chain clears the floor, so it is bounded."""
+    result = _merged_lengths(linear_chain([1] * 12), 5.0)
+    assert result == {"A": 5.0, "F": 5.0, "K": 2.0}
+    assert max(result.values()) <= 5.0 + 1.0
+
+
+def test_upstream_tail_can_remain_below_the_floor(linear_chain):
+    """The most upstream remnant has nothing left to absorb.
+
+    Documented limitation: 'no reach shorter than the floor' holds only where
+    topology allows it.
+    """
+    assert _merged_lengths(linear_chain([1] * 12), 5.0)["K"] == 2.0

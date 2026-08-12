@@ -590,13 +590,13 @@ def apply_lakes(
 def merge_short_reaches(
     gdf: gpd.GeoDataFrame,
     drainage_area_threshold_percent: float,
-    max_length_threshold_km: float,
+    min_length_threshold_km: float,
     counters: NetworkCounters,
 ) -> gpd.GeoDataFrame:
     """Chain-merge short reaches walking upstream from each chain start.
 
     Spec step 7: starting downstream, absorb the upstream neighbor while (a)
-    the chain is still SHORTER than max_length_threshold_km, (b) the
+    the chain is still SHORTER than min_length_threshold_km, (b) the
     neighbor's drainage-area difference from the CHAIN START is under the
     threshold, and (c) the current reach has exactly one upstream neighbor
     (junctions never merge).
@@ -678,7 +678,7 @@ def merge_short_reaches(
             # The threshold is a FLOOR, not a ceiling: keep absorbing until the
             # chain is long enough to model, then stop. A reach that already
             # clears it never merges at all.
-            if chain_len >= max_length_threshold_km:
+            if chain_len >= min_length_threshold_km:
                 break
             if indeg[cur] != 1:
                 break

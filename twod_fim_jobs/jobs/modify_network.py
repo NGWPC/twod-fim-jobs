@@ -70,7 +70,7 @@ class ModifyNetworkJob(Job[ModifyNetworkInputs]):
             ),
             drainage_area_threshold_percent=inputs.drainage_area_threshold_percent,
             stream_order_filter_threshold=inputs.stream_order_filter_threshold,
-            max_length_threshold_km=inputs.max_length_threshold_km,
+            min_length_threshold_km=inputs.min_length_threshold_km,
             lake_area_threshold_sqkm=inputs.lake_area_threshold_sqkm,
             negative_lake_buffer_meters=inputs.negative_lake_buffer_meters,
         )
@@ -138,7 +138,7 @@ class ModifyNetworkJob(Job[ModifyNetworkInputs]):
         gdf = merge_short_reaches(
             gdf,
             inputs.drainage_area_threshold_percent,
-            inputs.max_length_threshold_km,
+            inputs.min_length_threshold_km,
             counters,
         )
         gdf = finalize_network(gdf, counters)

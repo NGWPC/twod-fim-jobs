@@ -72,7 +72,7 @@ SIMILAR_ROUGHNESS_STD_THRESHOLD: float = 0.005  # TODO: tune (Manning's n)
 # Inputs. stream_order_filter_threshold deliberately has no default:
 # omitted means no stream-order filtering at all (see modify_network_specs.md).
 DEFAULT_DRAINAGE_AREA_THRESHOLD_PERCENT: float = 5.0  # DR-024
-DEFAULT_MAX_LENGTH_THRESHOLD_KM: float = 3.0  # DR-024
+DEFAULT_MIN_LENGTH_THRESHOLD_KM: float = 5.0  # DR-024, revised from 3
 DEFAULT_LAKE_AREA_THRESHOLD_SQKM: float = 5.0
 DEFAULT_NEGATIVE_LAKE_BUFFER_METERS: float = 50.0  # DR-034 ALT-A "shrink"
 

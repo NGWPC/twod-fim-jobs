@@ -155,6 +155,7 @@ class Properties(BaseModel):
                          - n_reaches_encompassed_removed_lake
                          - n_reaches_encompassed_removed_coastal
                          - n_reaches_dropped_coastal_cascade
+                         - n_reaches_orphaned_lake
                          - n_reaches_merged
                          + n_reaches_split_passthrough_lake
 
@@ -205,6 +206,16 @@ class Properties(BaseModel):
         description="Passed through a lake with both ends outside it — split "
         "into an inlet/outlet pair, minting a new reach_id (adds one row)."
     )
+    n_reaches_trimmed_between_lakes: Count | None = Field(
+        description="Started inside one lake and ended inside another — "
+        "trimmed at both ends, keeping the dry middle as a channel between "
+        "the two. Row kept; not in the reconciliation."
+    )
+    n_reaches_orphaned_lake: Count | None = Field(
+        description="Left with no upstream and no downstream once lake "
+        "removal took both neighbors, and not an original headwater — the "
+        "island-stub case. Dropped, so it enters the reconciliation."
+    )
     n_reaches_merged: Count | None = Field(
         description="Consumed by a drainage-area-difference merge into a "
         "downstream neighbor."
@@ -227,6 +238,8 @@ class Properties(BaseModel):
         "n_reaches_trimmed_inlet_lake",
         "n_reaches_trimmed_outlet_lake",
         "n_reaches_split_passthrough_lake",
+        "n_reaches_trimmed_between_lakes",
+        "n_reaches_orphaned_lake",
     )
     _COASTAL_COUNTERS: ClassVar[tuple[str, ...]] = (
         "n_reaches_encompassed_removed_coastal",
@@ -260,6 +273,7 @@ class Properties(BaseModel):
             self.n_reaches_encompassed_removed_lake,
             self.n_reaches_encompassed_removed_coastal,
             self.n_reaches_dropped_coastal_cascade,
+            self.n_reaches_orphaned_lake,
             self.n_reaches_merged,
         )
         added = (self.n_reaches_split_passthrough_lake,)

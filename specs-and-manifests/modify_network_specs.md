@@ -42,11 +42,15 @@ Order of operations
 5. **Lakes** — **skipped entirely when `lakes_layer_path` is not given**:
 
    - fully inside → `lake_encompassed=true`, dropped.
+   - **both ends inside the same `lake_id`** → `lake_encompassed=true`, dropped. The reach lies in the lake and is only excluded from "fully inside" because it crosses an island, or a gap between the lake's parts. Comparison is on `lake_id`, not polygon, since a multipart lake is exploded into several polygons that share one id. A reach starting in one lake and ending in a *different* one is handled by the next case instead.
    - downstream end inside, upstream not → `lake_inlet=true`, trimmed to the upstream portion, `is_terminal=true`, `reach_to_id=null`, `terminal_reason='lake'`.
    - upstream end inside, downstream not → `lake_outlet=true`, trimmed to the downstream portion, `is_headwater=true`.
+   - **both ends inside different `lake_id`s** → a real channel running between two waterbodies: trimmed at *both* ends, keeping the dry middle. The inverse of the pass-through case below, which keeps the ends and drops the middle. The survivor is `lake_outlet=true` and `lake_inlet=true`, `is_headwater=true` and `is_terminal=true` with `terminal_reason='lake'`, `reach_to_id=null`. `lake_to_id` names the lake it flows *into*. If the two lakes touch and leave no dry middle, it is encompassed instead. Counted by `n_reaches_trimmed_between_lakes`; the row is kept, so it does not enter the accounting identity.
    - passes through (neither end inside, crosses the boundary twice) → split into two reaches: the original `reach_id` becomes the upstream/inlet piece, and the downstream/outlet piece is named after it by suffix — `8` splits into `8` and `8_1`, a second split into `8_2`, and so on. Deriving the id from the parent makes lineage readable and makes collision with a source id impossible, including with reaches the stream-order filter removed.
 
    Every reach that meets a lake records that lake's `lake_id` in `lake_to_id`; both split pieces record the lake between them.
+
+   After the four cases above, any reach left with **no upstream and no downstream** in the surviving network is dropped as an orphan, counted by `n_reaches_orphaned_lake`. Lake removal can strip both of a reach's neighbours and leave it attached to nothing. `is_headwater` is the discriminator and needs no special case: it is false only for reaches that had an upstream neighbour at step 3, so a genuine one-reach watershed draining into a lake is kept, and so is a lake outlet whose downstream was encompassed (the outlet rule marks it headwater).
 
    Lakes are first filtered to `lake_area_threshold_sqkm` and shrunk by `negative_lake_buffer_meters` before this step runs.
 6. **Flat reaches**: no-op by design (a deliberate pass-through) — matches DR-027 ALT-A ("Do Nothing"), not a gap.
@@ -102,6 +106,8 @@ Recorded in `network.json` under `properties` (see `network.schema.json`) — on
 - `n_reaches_dropped_coastal_cascade` — reaches removed for being downstream of a coastal encompassed/trimmed reach, not for their own classification
 - `n_reaches_stranded_coastal` — tributaries left pointing at a cascade-deleted reach without themselves intersecting the coast layer; made terminal (`terminal_reason='coast'`) with geometry untouched. Not removed — absent from the accounting identity
 - `n_reaches_split_passthrough_lake`
+- `n_reaches_trimmed_between_lakes` — started in one lake, ended in another; trimmed at both ends, dry middle kept. Row kept, so absent from the identity
+- `n_reaches_orphaned_lake` — left with no upstream and no downstream once lake removal took both neighbours, and not an original headwater. A removal, so it enters the identity below
 - `n_reaches_merged`
 - `n_headwater_reaches`, `n_terminal_reaches` — **states of the final artifact, not counts of any one step**: rows in the written `network.gpkg` with the flag set, measured after all trimming, splitting, and merging. Both flags are written by more than one step — `is_terminal` at steps 2, 4 and 5, `is_headwater` at steps 3 and 5 — so each exceeds the tally of the step that first sets it. The two overlap (a reach can be both), so they are not additive and neither appears in the accounting identity below
 
@@ -117,6 +123,7 @@ n_reaches_output = n_reaches_input
                  - n_reaches_encompassed_removed_lake
                  - n_reaches_encompassed_removed_coastal
                  - n_reaches_dropped_coastal_cascade
+                 - n_reaches_orphaned_lake
                  - n_reaches_merged
                  + n_reaches_split_passthrough_lake
 ```
@@ -126,3 +133,7 @@ The three trim counters are absent by design — trimming reshapes a reach's geo
 ## Performance
 
 Runs over the entire network in one call, not per reach — expect the longest-running job in the system and infrequent (once per hydrofabric release or methodology/threshold change).
+
+## Open Questions
+
+- A reach kept as a channel between two lakes records only the downstream lake in `lake_to_id`, since that is what the column name means. The upstream lake it emerges from is not captured anywhere. If a consumer needs it — the lake-outlet inflow BC offset in DR-007 is the likely case — a `lake_from_id` column would be the addition.

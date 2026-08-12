@@ -894,3 +894,258 @@ def test_upstream_tail_can_remain_below_the_floor(linear_chain):
     topology allows it.
     """
     assert _merged_lengths(linear_chain([1] * 12), 5.0)["K"] == 2.0
+
+
+### ORPHANS LEFT BY LAKE REMOVAL ###
+
+
+@pytest.fixture
+def island_lake(tmp_path):
+    """A reach crossing an island inside ONE lake — the reported failure.
+
+        U --> M --> D      lake 900 covers x<300 and x>600; island 300..600
+
+    Both halves carry lake_id 900, so M starts and ends in the same lake and
+    is only excluded from `within` by the island. U and D lie in water.
+    """
+    rows = [
+        ("U", "M", 100.0, [(50, 0), (250, 0)]),
+        ("M", "D", 101.0, [(250, 0), (700, 0)]),
+        ("D", None, 102.0, [(700, 0), (950, 0)]),
+    ]
+    geoms = [LineString(c) for *_, c in rows]
+    net = tmp_path / "island_net.gpkg"
+    gpd.GeoDataFrame(
+        {
+            "fp_id": [r[0] for r in rows],
+            "fp_to_id": [r[1] for r in rows],
+            "total_da_sqkm": [r[2] for r in rows],
+            "stream_order": [7] * 3,
+            "length_km": [g.length / 1000 for g in geoms],
+        },
+        geometry=geoms,
+        crs=CRS,
+    ).to_file(net, layer="flowpaths", driver="GPKG")
+
+    # One lake, two parts, one lake_id - explode() keeps the id on both.
+    lake = tmp_path / "island_lake.gpkg"
+    gpd.GeoDataFrame(
+        {"lake_id": [900]},
+        geometry=[box(0, -100, 300, 100).union(box(600, -100, 1000, 100))],
+        crs=CRS,
+    ).to_file(lake, layer="lakes_polygons", driver="GPKG")
+    return net, lake
+
+
+def _run_lakes(net, lake):
+    gdf, counters = nw.load_reach_network(str(net), None)
+    gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
+    lakes = nw.prepare_lakes(gpd.read_file(lake).to_crs(gdf.crs), 0.0, 0.0)
+    gdf, _ = nw.apply_lakes(gdf, lakes, counters)
+    return gdf, counters
+
+
+def test_both_ends_in_the_same_lake_is_encompassed_not_trimmed(island_lake):
+    """The reported failure: an island crossing must not become an inlet stub.
+
+    Trimming it as an inlet left a stub the width of the island, terminal at
+    the lake, attached to nothing once the water either side was dropped.
+    The comparison is on lake_id, not polygon position, because explode()
+    splits this one lake into two parts.
+    """
+    gdf, counters = _run_lakes(*island_lake)
+    assert counters.n_reaches_trimmed_inlet_lake == 0, "M must not be trimmed"
+    assert counters.n_reaches_encompassed_removed_lake == 3
+    assert set(gdf[REACH_ID_FIELD]) == set()
+
+
+def test_exploded_lake_parts_share_one_lake_id(island_lake):
+    """Guards the reason the comparison must be on lake_id."""
+    _, lake = island_lake
+    parts = nw.prepare_lakes(gpd.read_file(lake), 0.0, 0.0)
+    assert len(parts) == 2
+    assert set(parts["lake_id"]) == {900}
+
+
+@pytest.fixture
+def orphaning_lake(tmp_path):
+    """A lake inlet whose only upstream reach is encompassed.
+
+    Topology and geometry are decoupled on purpose: connectivity comes from
+    fp_to_id, so U can sit inside lake 900 while M approaches lake 901 from
+    dry land. That is the minimal shape leaving a survivor with no upstream
+    and no downstream.
+    """
+    rows = [
+        ("U", "M", 100.0, [(50, 0), (250, 0)]),
+        ("M", None, 101.0, [(700, 0), (950, 0)]),
+    ]
+    geoms = [LineString(c) for *_, c in rows]
+    net = tmp_path / "orphan_net.gpkg"
+    gpd.GeoDataFrame(
+        {
+            "fp_id": [r[0] for r in rows],
+            "fp_to_id": [r[1] for r in rows],
+            "total_da_sqkm": [r[2] for r in rows],
+            "stream_order": [7] * 2,
+            "length_km": [g.length / 1000 for g in geoms],
+        },
+        geometry=geoms,
+        crs=CRS,
+    ).to_file(net, layer="flowpaths", driver="GPKG")
+
+    lake = tmp_path / "orphan_lake.gpkg"
+    gpd.GeoDataFrame(
+        {"lake_id": [900, 901]},
+        geometry=[box(0, -100, 300, 100), box(800, -100, 1200, 100)],
+        crs=CRS,
+    ).to_file(lake, layer="lakes_polygons", driver="GPKG")
+    return net, lake
+
+
+def test_orphan_left_by_lake_removal_is_dropped(orphaning_lake):
+    """M is a legitimate inlet, but loses its only upstream to the lake."""
+    gdf, counters = _run_lakes(*orphaning_lake)
+    assert counters.n_reaches_encompassed_removed_lake == 1  # U
+    assert counters.n_reaches_orphaned_lake == 1  # M, attached to nothing
+    assert set(gdf[REACH_ID_FIELD]) == set()
+
+
+def test_original_headwater_draining_into_a_lake_is_kept(tmp_path):
+    """A one-reach watershed has no upstream by nature, not by removal."""
+    net = tmp_path / "hw.gpkg"
+    geom = [LineString([(100, 0), (500, 0)])]
+    gpd.GeoDataFrame(
+        {"fp_id": ["H"], "fp_to_id": [None], "total_da_sqkm": [10.0],
+         "stream_order": [3], "length_km": [0.4]},
+        geometry=geom, crs=CRS,
+    ).to_file(net, layer="flowpaths", driver="GPKG")
+    lake = tmp_path / "hw_lake.gpkg"
+    gpd.GeoDataFrame({"lake_id": [1]}, geometry=[box(300, -100, 900, 100)],
+                     crs=CRS).to_file(lake, layer="lakes_polygons", driver="GPKG")
+
+    gdf, counters = _run_lakes(net, lake)
+    assert counters.n_reaches_orphaned_lake == 0
+    assert "H" in set(gdf[REACH_ID_FIELD])
+
+
+def test_lake_outlet_with_no_downstream_is_kept(tmp_path):
+    """Row 3: a real reach at a real lake, kept even though isolated."""
+    rows = [
+        ("O", None, 50.0, [(300, 0), (900, 0)]),   # emerges from the lake
+    ]
+    net = tmp_path / "outlet.gpkg"
+    geoms = [LineString(c) for *_, c in rows]
+    gpd.GeoDataFrame(
+        {"fp_id": ["O"], "fp_to_id": [None], "total_da_sqkm": [50.0],
+         "stream_order": [5], "length_km": [g.length / 1000 for g in geoms]},
+        geometry=geoms, crs=CRS,
+    ).to_file(net, layer="flowpaths", driver="GPKG")
+    lake = tmp_path / "outlet_lake.gpkg"
+    gpd.GeoDataFrame({"lake_id": [2]}, geometry=[box(0, -100, 500, 100)],
+                     crs=CRS).to_file(lake, layer="lakes_polygons", driver="GPKG")
+
+    gdf, counters = _run_lakes(net, lake)
+    assert counters.n_reaches_orphaned_lake == 0
+    row = gdf.set_index(REACH_ID_FIELD).loc["O"]
+    assert row[LAKE_OUTLET_FIELD] and row[IS_HEADWATER_FIELD]
+
+
+def test_orphan_removal_enters_the_reconciliation(orphaning_lake):
+    """Orphans are a removal, so the accounting identity must include them."""
+    gdf, counters = _run_lakes(*orphaning_lake)
+    gdf = nw.merge_short_reaches(gdf, 5.0, 5.0, counters)
+    gdf = nw.finalize_network(gdf, counters)
+    assert counters.n_reaches_output == (
+        counters.n_reaches_input
+        - counters.n_reaches_encompassed_removed_lake
+        - counters.n_reaches_orphaned_lake
+        - counters.n_reaches_merged
+        + counters.n_reaches_split_passthrough_lake
+    )
+
+
+### CHANNELS BETWEEN TWO LAKES ###
+
+
+@pytest.fixture
+def two_lake_channel(tmp_path):
+    """One reach running from lake 900, across dry land, into lake 901.
+
+        M: (100,0) -> (900,0)     lake 900: x<300     lake 901: x>700
+
+    Both endpoints are in water but in DIFFERENT lakes, so the 300..700 dry
+    middle is a real channel and must survive.
+    """
+    geom = [LineString([(100, 0), (900, 0)])]
+    net = tmp_path / "two_lake_net.gpkg"
+    gpd.GeoDataFrame(
+        {"fp_id": ["M"], "fp_to_id": [None], "total_da_sqkm": [100.0],
+         "stream_order": [6], "length_km": [0.8]},
+        geometry=geom, crs=CRS,
+    ).to_file(net, layer="flowpaths", driver="GPKG")
+
+    lake = tmp_path / "two_lake_lakes.gpkg"
+    gpd.GeoDataFrame(
+        {"lake_id": [900, 901]},
+        geometry=[box(0, -100, 300, 100), box(700, -100, 1200, 100)],
+        crs=CRS,
+    ).to_file(lake, layer="lakes_polygons", driver="GPKG")
+    return net, lake
+
+
+def test_channel_between_two_lakes_keeps_its_middle(two_lake_channel):
+    """The inverse of a pass-through split: drop the ends, keep the middle."""
+    gdf, counters = _run_lakes(*two_lake_channel)
+    assert counters.n_reaches_trimmed_between_lakes == 1
+    assert counters.n_reaches_encompassed_removed_lake == 0
+    row = gdf.set_index(REACH_ID_FIELD).loc["M"]
+    # 300..700 survives; the two submerged ends do not.
+    np.testing.assert_allclose(row.geometry.length, 400.0)
+    np.testing.assert_allclose(row[LENGTH_KM_FIELD], 0.4)
+
+
+def test_channel_between_two_lakes_is_both_outlet_and_inlet(two_lake_channel):
+    """It emerges from one lake and enters the other, so it is both."""
+    gdf, _ = _run_lakes(*two_lake_channel)
+    row = gdf.set_index(REACH_ID_FIELD).loc["M"]
+    assert row[LAKE_OUTLET_FIELD] and row[LAKE_INLET_FIELD]
+    assert row[IS_HEADWATER_FIELD] and row[IS_TERMINAL_FIELD]
+    assert row[TERMINAL_REASON_FIELD] == "lake"
+    assert row[IS_TRIMMED_FIELD]
+    assert pd.isna(row[REACH_TO_ID_FIELD])
+
+
+def test_channel_between_two_lakes_records_the_downstream_lake(two_lake_channel):
+    """lake_to_id names the lake it flows INTO, matching the column name."""
+    gdf, _ = _run_lakes(*two_lake_channel)
+    assert gdf.set_index(REACH_ID_FIELD).loc["M", LAKE_TO_ID_FIELD] == "901"
+
+
+def test_channel_between_two_lakes_survives_the_orphan_sweep(two_lake_channel):
+    """Being isolated is correct here — it is a real reach between two lakes."""
+    gdf, counters = _run_lakes(*two_lake_channel)
+    assert counters.n_reaches_orphaned_lake == 0
+    assert "M" in set(gdf[REACH_ID_FIELD])
+
+
+def test_no_dry_middle_between_lakes_is_encompassed(tmp_path):
+    """Touching lakes leave nothing to keep, so the reach is dropped."""
+    geom = [LineString([(100, 0), (900, 0)])]
+    net = tmp_path / "touching_net.gpkg"
+    gpd.GeoDataFrame(
+        {"fp_id": ["M"], "fp_to_id": [None], "total_da_sqkm": [100.0],
+         "stream_order": [6], "length_km": [0.8]},
+        geometry=geom, crs=CRS,
+    ).to_file(net, layer="flowpaths", driver="GPKG")
+    lake = tmp_path / "touching_lakes.gpkg"
+    gpd.GeoDataFrame(
+        {"lake_id": [900, 901]},
+        geometry=[box(0, -100, 500, 100), box(500, -100, 1200, 100)],
+        crs=CRS,
+    ).to_file(lake, layer="lakes_polygons", driver="GPKG")
+
+    gdf, counters = _run_lakes(net, lake)
+    assert counters.n_reaches_encompassed_removed_lake == 1
+    assert counters.n_reaches_trimmed_between_lakes == 0
+    assert set(gdf[REACH_ID_FIELD]) == set()

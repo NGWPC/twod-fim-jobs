@@ -94,6 +94,8 @@ class NetworkCounters:
     n_reaches_dropped_coastal_cascade: int | None = None
     n_reaches_stranded_coastal: int | None = None
     n_reaches_split_passthrough_lake: int | None = None
+    n_reaches_trimmed_between_lakes: int | None = None
+    n_reaches_orphaned_lake: int | None = None
     n_reaches_merged: int | None = None
     n_reaches_output: int | None = None
     n_headwater_reaches: int | None = None
@@ -469,6 +471,9 @@ def apply_lakes(
     piece and name the downstream/outlet piece after it (``8`` -> ``8_1``),
     so lineage is readable and no source id can be reused. Every reach that
     meets a lake records it in lake_to_id.
+
+    Finishes with an orphan sweep — see the comment at the end — which drops
+    reaches left connected to nothing once their neighbors were removed.
     """
     gdf = gdf.reset_index(drop=True)
     within_pos, crossing_pos, up_poly, dn_poly, poly_map = _classify_crossings(
@@ -479,16 +484,43 @@ def apply_lakes(
     encompassed = np.zeros(len(gdf), dtype=bool)
     encompassed[within_pos] = True
 
-    # Both ends inside (but not within any single polygon) still reads as an
-    # inlet: the reach ends in a lake.
-    is_inlet = dn_poly >= 0
+    # Both ends inside the water is NOT an inlet. A reach that starts and
+    # ends in the same lake lies in that lake; it is only excluded from
+    # `within` because it crosses an island, or a gap between the lake's
+    # exploded parts. Treating it as an inlet trimmed it to the stub between
+    # its start and the island shore, and left that stub attached to nothing
+    # once the water either side was encompassed. Classify it as encompassed,
+    # which is what it is.
+    both_ends_in = (up_poly >= 0) & (dn_poly >= 0)
+    is_inlet = (dn_poly >= 0) & (up_poly < 0)
     is_outlet = (up_poly >= 0) & (dn_poly < 0)
     is_pass = (up_poly < 0) & (dn_poly < 0)
+    # Same lake at both ends means the reach lies in that lake. Different
+    # lakes at each end means a real channel running between two waterbodies,
+    # with dry land in the middle: keep that middle. Compare lake_id, not
+    # polygon position — prepare_lakes explodes multipart lakes, so one lake
+    # can be several polygons and an island crossing lands in two of them.
+    same_lake_mask = np.zeros(len(crossing_pos), dtype=bool)
+    if both_ends_in.any():
+        idx = np.flatnonzero(both_ends_in)
+        same = lake_ids[up_poly[idx]] == lake_ids[dn_poly[idx]]
+        same_lake_mask[idx[same]] = True
+        encompassed[crossing_pos[idx[same]]] = True
+        if int(same.sum()):
+            logger.info(
+                "%d reaches start and end in the same lake (crossing an "
+                "island or a gap between its parts); dropped as encompassed",
+                int(same.sum()),
+            )
+    between_lakes = sorted(
+        (int(crossing_pos[i]), int(up_poly[i]), int(dn_poly[i]))
+        for i in np.flatnonzero(both_ends_in & ~same_lake_mask)
+    )
     inlet = sorted(zip(crossing_pos[is_inlet].tolist(), dn_poly[is_inlet].tolist()))
     outlet = sorted(zip(crossing_pos[is_outlet].tolist(), up_poly[is_outlet].tolist()))
     passthrough = sorted(crossing_pos[is_pass].tolist())
 
-    n_inlet = n_outlet = n_split = 0
+    n_inlet = n_outlet = n_split = n_between = 0
     new_rows: list[dict] = []
     geom = gdf.geometry.name
 
@@ -523,6 +555,32 @@ def apply_lakes(
         gdf.loc[p, IS_TRIMMED_FIELD] = True
         gdf.loc[p, LAKE_TO_ID_FIELD] = lake_ids[poly_pos]
         n_outlet += 1
+
+    # Between two lakes: the inverse of a pass-through split. Both ends are
+    # inside water, so the pieces to discard are the two ends and the piece to
+    # keep is the middle. The survivor emerges from one lake and enters the
+    # other, so it is a headwater and a terminal at once.
+    for p, up_pos, dn_pos in between_lakes:
+        line = gdf.geometry.iloc[p]
+        dists = _crossing_distances(line, _boundary_for(lakes_gdf, poly_map[p]))
+        dists = dists[(dists > 0) & (dists < line.length)]
+        if len(dists) < 2:
+            encompassed[p] = True  # no dry middle to keep
+            continue
+        d_exit, d_enter = float(dists.min()), float(dists.max())
+        gdf.loc[p, geom] = substring(line, d_exit, d_enter)
+        gdf.loc[p, LENGTH_KM_FIELD] = (d_enter - d_exit) / 1000.0
+        gdf.loc[p, LAKE_OUTLET_FIELD] = True
+        gdf.loc[p, LAKE_INLET_FIELD] = True
+        gdf.loc[p, IS_HEADWATER_FIELD] = True
+        gdf.loc[p, IS_TERMINAL_FIELD] = True
+        gdf.loc[p, TERMINAL_REASON_FIELD] = TERMINAL_REASON_LAKE
+        gdf.loc[p, REACH_TO_ID_FIELD] = pd.NA
+        gdf.loc[p, IS_TRIMMED_FIELD] = True
+        # lake_to_id names the lake the reach flows INTO, matching the column.
+        # The upstream lake is not recorded; see the spec's Open Questions.
+        gdf.loc[p, LAKE_TO_ID_FIELD] = lake_ids[dn_pos]
+        n_between += 1
 
     for p in passthrough:
         line = gdf.geometry.iloc[p]
@@ -567,7 +625,12 @@ def apply_lakes(
     touched = {str(i) for i in all_ids[encompassed]}
     touched |= {
         str(all_ids[p])
-        for p in (*[i for i, _ in inlet], *[i for i, _ in outlet], *passthrough)
+        for p in (
+            *[i for i, _ in inlet],
+            *[i for i, _ in outlet],
+            *[i for i, _, _ in between_lakes],
+            *passthrough,
+        )
         if not encompassed[p]
     }
     touched |= {str(r[REACH_ID_FIELD]) for r in new_rows}
@@ -576,12 +639,43 @@ def apply_lakes(
     counters.n_reaches_trimmed_inlet_lake = n_inlet
     counters.n_reaches_trimmed_outlet_lake = n_outlet
     counters.n_reaches_split_passthrough_lake = n_split
+    counters.n_reaches_trimmed_between_lakes = n_between
 
     gdf = gdf.loc[~encompassed]
     if new_rows:
         additions = gpd.GeoDataFrame(new_rows, geometry=geom, crs=gdf.crs)
         gdf = pd.concat([gdf, additions], ignore_index=True)
-    return _normalize_dtypes(gdf.reset_index(drop=True)), touched
+    gdf = _normalize_dtypes(gdf.reset_index(drop=True))
+
+    # Orphan sweep. A reach can pass all four cases above and still be left
+    # connected to nothing, when lake removal takes its upstream AND its
+    # downstream neighbor. The shape that produces it is a reach crossing an
+    # island inside a lake: the upstream end sits outside the polygon (on the
+    # island) so the reach classifies as an inlet and is trimmed to the island
+    # width, while the water on both sides is encompassed and dropped. What
+    # survives is a stub the width of the island, attached to nothing.
+    #
+    # is_headwater is the discriminator, and needs no special-casing: it is
+    # False only for reaches that HAD an upstream neighbor at step 3. Genuine
+    # one-reach watersheds draining into a lake are headwaters from step 3,
+    # and lake outlets are marked headwater by the outlet rule above, so
+    # neither is ever swept.
+    #
+    # One pass suffices: an orphan has nothing pointing at it and points at
+    # nothing, so removing it cannot orphan anything else.
+    has_upstream = gdf[REACH_ID_FIELD].isin(gdf[REACH_TO_ID_FIELD].dropna())
+    orphaned = (
+        ~has_upstream & gdf[REACH_TO_ID_FIELD].isna() & ~gdf[IS_HEADWATER_FIELD]
+    )
+    counters.n_reaches_orphaned_lake = int(orphaned.sum())
+    if orphaned.any():
+        logger.info(
+            "Dropped %d reaches orphaned by lake removal (no upstream, no "
+            "downstream, not an original headwater)",
+            int(orphaned.sum()),
+        )
+    gdf = gdf.loc[~orphaned].reset_index(drop=True)
+    return gdf, touched
 
 
 ### MERGE (spec step 7) ###

@@ -181,7 +181,7 @@
     },
     "properties": {
       "type": "object",
-      "description": "Computed/diagnostic values; informational, not part of identity. One counter per real processing branch, so a run is auditable against the code path it took. Null and 0 are distinct: 0 means the branch ran and matched nothing, null means the branch did not run — so every lake counter is null when lakes_layer_path was absent, and every coastal counter is null when coastal_influence_layer_path was absent. The removal counters are disjoint — every reach is counted in exactly one, the branch that removed it, and a reach flagged by both coastal and lake logic (the ambiguous_reach_classification case) is attributed to coastal because step 4 runs before step 5. That disjointness is what lets the counters reconcile: n_reaches_output = n_reaches_input - n_reaches_below_stream_order_removed - n_reaches_encompassed_removed_lake - n_reaches_encompassed_removed_coastal - n_reaches_dropped_coastal_cascade - n_reaches_merged + n_reaches_split_passthrough_lake. The trim counters are absent from that identity by design (trimming reshapes a reach and keeps its row); splits add a row each. JSON Schema cannot express this constraint, so it must be enforced by the producer.",
+      "description": "Computed/diagnostic values; informational, not part of identity. One counter per real processing branch, so a run is auditable against the code path it took. Null and 0 are distinct: 0 means the branch ran and matched nothing, null means the branch did not run — so every lake counter is null when lakes_layer_path was absent, and every coastal counter is null when coastal_influence_layer_path was absent. The removal counters are disjoint — every reach is counted in exactly one, the branch that removed it, and a reach flagged by both coastal and lake logic (the ambiguous_reach_classification case) is attributed to coastal because step 4 runs before step 5. That disjointness is what lets the counters reconcile: n_reaches_output = n_reaches_input - n_reaches_below_stream_order_removed - n_reaches_encompassed_removed_lake - n_reaches_encompassed_removed_coastal - n_reaches_dropped_coastal_cascade - n_reaches_orphaned_lake - n_reaches_merged + n_reaches_split_passthrough_lake. The trim counters are absent from that identity by design (trimming reshapes a reach and keeps its row); splits add a row each. JSON Schema cannot express this constraint, so it must be enforced by the producer.",
       "additionalProperties": false,
       "properties": {
         "n_reaches_input": {
@@ -253,6 +253,20 @@
             "null"
           ],
           "description": "Passed through a lake at both ends outside it — split into a new inlet/outlet reach pair, minting a new reach_id."
+        },
+        "n_reaches_trimmed_between_lakes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Started inside one lake and ended inside another — trimmed at both ends, keeping the dry middle as a channel between the two. The inverse of a pass-through split, which keeps the ends and drops the middle. The survivor is both lake_outlet and lake_inlet, and both headwater and terminal. Row kept, so it is absent from the reconciliation identity. lake_to_id names the downstream lake."
+        },
+        "n_reaches_orphaned_lake": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Left with no upstream and no downstream once lake removal took both neighbors, and not an original headwater. The shape is a reach crossing an island inside a lake: trimmed to the island width as an inlet, with the water on both sides encompassed and dropped. Removed, so it enters the reconciliation identity. Lake outlets and genuine one-reach watersheds are never swept, because both are headwaters."
         },
         "n_reaches_merged": {
           "type": [

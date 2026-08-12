@@ -1149,3 +1149,75 @@ def test_no_dry_middle_between_lakes_is_encompassed(tmp_path):
     assert counters.n_reaches_encompassed_removed_lake == 1
     assert counters.n_reaches_trimmed_between_lakes == 0
     assert set(gdf[REACH_ID_FIELD]) == set()
+
+
+### MERGE MUST NOT DESTROY WATERBODY REFERENCES ###
+
+
+@pytest.fixture
+def inlet_with_upstream(tmp_path):
+    """U -> M, where M runs into a lake and is trimmed as an inlet.
+
+    M is short enough that the merge walk absorbs U into it, which is where
+    the reported lake_inlet-without-lake_to_id row came from.
+    """
+    rows = [
+        ("U", "M", 150.0, [(0, 0), (300, 0)]),
+        ("M", None, 156.0, [(300, 0), (700, 0)]),
+    ]
+    geoms = [LineString(c) for *_, c in rows]
+    net = tmp_path / "inlet_net.gpkg"
+    gpd.GeoDataFrame(
+        {
+            "fp_id": [r[0] for r in rows],
+            "fp_to_id": [r[1] for r in rows],
+            "total_da_sqkm": [r[2] for r in rows],
+            "stream_order": [3, 3],
+            "length_km": [g.length / 1000 for g in geoms],
+        },
+        geometry=geoms,
+        crs=CRS,
+    ).to_file(net, layer="flowpaths", driver="GPKG")
+
+    lake = tmp_path / "inlet_lake.gpkg"
+    gpd.GeoDataFrame(
+        {"lake_id": [900]}, geometry=[box(600, -200, 1200, 200)], crs=CRS
+    ).to_file(lake, layer="lakes_polygons", driver="GPKG")
+    return net, lake
+
+
+def test_merge_preserves_the_inlet_lake_reference(inlet_with_upstream):
+    """Regression: lake_inlet true beside a null lake_to_id was impossible.
+
+    lake_to_id describes the downstream end, so it belongs to the chain
+    start. Copying it from the chain's top member — as lake_outlet and
+    is_headwater correctly are — overwrote it with the upstream reach's null.
+    """
+    gdf, counters = _run_lakes(*inlet_with_upstream)
+    before = gdf.set_index(REACH_ID_FIELD).loc["M", LAKE_TO_ID_FIELD]
+    assert before == "900"
+
+    gdf = nw.merge_short_reaches(gdf, 5.0, 5.0, counters)
+    gdf = nw.finalize_network(gdf, counters)
+    row = gdf.set_index(REACH_ID_FIELD).loc["M"]
+
+    assert counters.n_reaches_merged == 1, "U must be absorbed for this to bite"
+    assert row[LAKE_INLET_FIELD]
+    assert row[LAKE_TO_ID_FIELD] == "900", "lake reference survives the merge"
+    assert row[TERMINAL_REASON_FIELD] == "lake"
+    # Upstream-end attributes still come from the top member.
+    assert row[IS_HEADWATER_FIELD]
+
+
+def test_no_reach_claims_a_waterbody_without_naming_it(pipeline):
+    """A tag and its reference must agree across the whole output."""
+    gdf, *_ = pipeline
+    inlets = gdf[gdf[LAKE_INLET_FIELD] | gdf[LAKE_OUTLET_FIELD]]
+    assert not inlets[LAKE_TO_ID_FIELD].isna().any(), (
+        "lake_inlet/lake_outlet set without a lake_to_id"
+    )
+    coastal = gdf[gdf[TERMINAL_REASON_FIELD] == "coast"]
+    trimmed_coastal = coastal[coastal[IS_TRIMMED_FIELD]]
+    assert not trimmed_coastal[COAST_TO_ID_FIELD].isna().any(), (
+        "a coastal trim must name the polygon it met"
+    )

@@ -711,10 +711,16 @@ def merge_short_reaches(
     Runs on post-waterbody topology (live reach_to_id). O(n) over numpy
     arrays; geometry is only touched once per merged chain at the end.
     Merged rows keep the chain start's attributes — it is the most
-    downstream reach of the chain, so its total_da_sqkm is the merged reach's
-    accumulation and carries through untouched — plus summed length, the top member's is_headwater /
-    lake_outlet / lake_to_id, and any member's is_trimmed. Tributary pointers
-    into absorbed members are re-pointed at the surviving reach_id.
+    downstream reach of the chain, so its total_da_sqkm, lake_inlet,
+    terminal state and lake_to_id all carry through untouched — plus summed
+    length, the top member's is_headwater /
+    lake_outlet (both describe the upstream end), and any member's
+    is_trimmed. Tributary pointers into absorbed members are re-pointed at
+    the surviving reach_id.
+
+    Note that lake inlets and coastal trims have a null reach_to_id, so they
+    can never be a parent and are therefore always chain starts, never
+    absorbed members.
     """
     gdf = gdf.reset_index(drop=True)
     n = len(gdf)
@@ -807,7 +813,15 @@ def merge_short_reaches(
         gdf.loc[start, LENGTH_KM_FIELD] = float(ln[members].sum())
         gdf.loc[start, IS_HEADWATER_FIELD] = bool(gdf[IS_HEADWATER_FIELD].iloc[top])
         gdf.loc[start, LAKE_OUTLET_FIELD] = bool(gdf[LAKE_OUTLET_FIELD].iloc[top])
-        gdf.loc[start, LAKE_TO_ID_FIELD] = gdf[LAKE_TO_ID_FIELD].iloc[top]
+        # lake_to_id describes the DOWNSTREAM end — the lake the reach flows
+        # into — so it belongs to the chain start, not the top. Copying it
+        # from the top (as lake_outlet and is_headwater correctly are) wiped
+        # a trimmed inlet's lake reference with the upstream reach's null,
+        # leaving lake_inlet true beside a null lake_to_id. Fall back to the
+        # top only when the start has none, which preserves an absorbed lake
+        # outlet's reference rather than losing it.
+        if pd.isna(gdf[LAKE_TO_ID_FIELD].iloc[start]):
+            gdf.loc[start, LAKE_TO_ID_FIELD] = gdf[LAKE_TO_ID_FIELD].iloc[top]
         gdf.loc[start, IS_TRIMMED_FIELD] = bool(
             gdf[IS_TRIMMED_FIELD].iloc[members].any()
         )

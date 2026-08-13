@@ -40,6 +40,7 @@ def build_model_input():
         base_output_path="/tmp/test-output",
     )
 
+
 @pytest.fixture
 def build_model_input_headwater():
     return BuildModelInputs(
@@ -47,6 +48,7 @@ def build_model_input_headwater():
         db_uri=f"sqlite:///{SMALL_NETWORK.resolve()}",
         base_output_path="/tmp/test-output",
     )
+
 
 @pytest.fixture
 def build_model_input_bad_connection():
@@ -119,11 +121,13 @@ def test_end_to_end_w_other_geom(build_model_input_w_extra_geometries):
     workflow = BuildModelJob()
     workflow.run(build_model_input_w_extra_geometries)
 
+
 def test_end_to_end_headwater(build_model_input_headwater):
     """End to end test that should run without failure and produce no warnings."""
     workflow = BuildModelJob()
     result = workflow.run(build_model_input_headwater)
     assert result.warnings == [], f"Unexpected warnings: {result.warnings}"
+
 
 def test_inputs_missing_required_arg_raises():
     """Build_model input validation fails when required args are omitted."""

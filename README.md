@@ -283,3 +283,23 @@ python -m twod_fim_jobs.models.generate_docs
 
 pixi run generate_docs
 ```
+
+### Build Docker Images from Source Code
+
+The Dockerfile defines several named stages. Build the stage that matches the job you want to run:
+
+```bash
+git clone https://github.com/NGWPC/twod-fim-jobs.git
+cd twod-fim-jobs
+
+# Base image (includes all jobs via the generic entrypoint)
+docker build --target two-dim-fim-base -t twod-fim-jobs:base .
+
+# Job-specific images
+docker build --target health -t twod-fim-jobs:health .
+docker build --target build_model -t twod-fim-jobs:build_model .
+docker build --target run_kwse_scenarios-sfincs -t twod-fim-jobs:run_kwse_scenarios . # (not yet implemented)
+docker build --target run_nd_scenarios-lisflood-gpu -t twod-fim-jobs:run_nd_scenarios .
+
+```
+

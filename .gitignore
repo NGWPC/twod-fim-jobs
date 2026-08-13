@@ -50,3 +50,6 @@ ENV/
 
 # schema
 schemas/
+
+# development
+dev/

@@ -12,6 +12,7 @@ from twod_fim_jobs.consts import (
     DA_FIELD,
     DEM_FILENAME,
     DOMAIN_FILENAME,
+    INFLOW_FILENAME,
     LARGE_DOMAIN_AREA_THRESHOLD,
     MANIFEST_FILENAME,
     REACH_FILENAME,
@@ -33,16 +34,17 @@ from twod_fim_jobs.models.build_model import (
     ModelManifest,
     Properties,
 )
-from twod_fim_jobs.models.common import (
-    Asset,
+from twod_fim_jobs.models.warnings import (
     CenterlineInflowMultiIntersectionWarning,
     JobWarning,
     LargeDomainAreaWarning,
 )
+from twod_fim_jobs.models.common import Asset
 from twod_fim_jobs.utils.geospatial import (
     build_model_domain,
     download_dem,
     download_roughness,
+    ensure_linestring,
     export_domain_gdfs,
     get_line_intersections,
     make_inflow_line,
@@ -63,8 +65,16 @@ class BuildModelJob(Job[BuildModelInputs]):
         job_warnings: list[JobWarning] = []
 
         # Query database for relevant geometries
-        reach = query_reach(inputs.reach_id, inputs.db_uri)
-        us_reaches, us_mainstem = query_upstream_reach(inputs.reach_id, inputs.db_uri)
+        reach = query_reach(inputs.reach_id, inputs.db_uri, inputs.epsg_code)
+        reach = ensure_linestring(reach)
+        us_reaches, us_mainstem = query_upstream_reach(
+            inputs.reach_id, inputs.db_uri, inputs.epsg_code
+        )
+        if not us_mainstem.empty:
+            us_mainstem_id = us_mainstem[REACH_ID_FIELD].iloc[0]
+            us_mainstem = ensure_linestring(us_mainstem)
+        else:
+            us_mainstem_id = None
 
         # Make inflow line and validate
         inflow_line = make_inflow_line(
@@ -132,6 +142,9 @@ class BuildModelJob(Job[BuildModelInputs]):
 
         # Write vector artifacts
         cl_asset = write_gdf_asset(reach, tmp_dir / REACH_FILENAME, inputs.db_uri)
+        inflow_asset = write_gdf_asset(
+            inflow_line, tmp_dir / INFLOW_FILENAME, inputs.db_uri
+        )
         anchor_gdf, domain_gdf = export_domain_gdfs(domain, inputs.authority_str)
         anchor_asset = write_gdf_asset(
             anchor_gdf, tmp_dir / ANCHOR_FILENAME, inputs.db_uri
@@ -145,6 +158,7 @@ class BuildModelJob(Job[BuildModelInputs]):
             terrain=dem_asset,
             roughness=roughness_asset,
             centerline=cl_asset,
+            inflow_line=inflow_asset,
             reach_centroid=anchor_asset,
             domain=domain_asset,
         )
@@ -160,7 +174,7 @@ class BuildModelJob(Job[BuildModelInputs]):
             length_m=round(reach.length.iloc[0], 2),
             slope=round(reach[SLOPE_FIELD].iloc[0], 7),
             downstream_reach_id=reach[REACH_ID_FIELD].iloc[0],
-            upstream_mainstem_reach_id=us_mainstem[REACH_ID_FIELD].iloc[0],
+            upstream_mainstem_reach_id=us_mainstem_id,
         )
 
         # Write model manifest json

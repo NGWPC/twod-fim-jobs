@@ -56,9 +56,7 @@ class ModifyNetworkJob(Job[ModifyNetworkInputs]):
 
     Inputs = ModifyNetworkInputs
 
-    def _run(
-        self, inputs: ModifyNetworkInputs, tmp_dir: Path
-    ) -> ModifyNetworkResult:
+    def _run(self, inputs: ModifyNetworkInputs, tmp_dir: Path) -> ModifyNetworkResult:
         # Identity hashes cover connection params, not file contents, so the
         # output location is known before any dataset is opened. That is what
         # lets network_exists short-circuit without loading the network.
@@ -119,9 +117,7 @@ class ModifyNetworkJob(Job[ModifyNetworkInputs]):
         lake_touched: set[str] = set()
         prepared_lakes: gpd.GeoDataFrame | None = None
         if inputs.lakes_layer_path is not None:
-            lakes_gdf = load_vector_layer(
-                inputs.lakes_layer_path, LAKES_LAYER, gdf.crs
-            )
+            lakes_gdf = load_vector_layer(inputs.lakes_layer_path, LAKES_LAYER, gdf.crs)
             prepared_lakes = prepare_lakes(
                 lakes_gdf,
                 inputs.lake_area_threshold_sqkm,

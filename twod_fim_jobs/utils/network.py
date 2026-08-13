@@ -26,7 +26,6 @@ holds by construction. Trims, strands, and splits keep their rows.
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 
 import geopandas as gpd
@@ -320,9 +319,7 @@ def prepare_lakes(
 ### SHARED GEOMETRY HELPERS ###
 
 
-def _waterbody_ids(
-    polys: gpd.GeoDataFrame, id_field: str, layer: str
-) -> np.ndarray:
+def _waterbody_ids(polys: gpd.GeoDataFrame, id_field: str, layer: str) -> np.ndarray:
     """A waterbody layer's id column as text, or nulls when it has none.
 
     Nulls rather than a fabricated positional index: this array is written
@@ -446,9 +443,7 @@ def _containing_polygon(points, polys: gpd.GeoDataFrame, crs) -> np.ndarray:
     """Position of the polygon containing each point, or -1 if none does."""
     out = np.full(len(points), -1, dtype=int)
     pts = gpd.GeoDataFrame(geometry=points, crs=crs)
-    hit = gpd.sjoin(
-        pts, polys[[polys.geometry.name]], predicate="within", how="inner"
-    )
+    hit = gpd.sjoin(pts, polys[[polys.geometry.name]], predicate="within", how="inner")
     # A point inside overlapping polygons keeps the lowest position, so the
     # choice is deterministic rather than sjoin-order dependent.
     for pos, poly_pos in hit["index_right"].groupby(level=0).min().items():
@@ -797,9 +792,7 @@ def apply_lakes(
     # One pass suffices: an orphan has nothing pointing at it and points at
     # nothing, so removing it cannot orphan anything else.
     has_upstream = gdf[REACH_ID_FIELD].isin(gdf[REACH_TO_ID_FIELD].dropna())
-    orphaned = (
-        ~has_upstream & gdf[REACH_TO_ID_FIELD].isna() & ~gdf[IS_HEADWATER_FIELD]
-    )
+    orphaned = ~has_upstream & gdf[REACH_TO_ID_FIELD].isna() & ~gdf[IS_HEADWATER_FIELD]
     counters.n_reaches_orphaned_lake = int(orphaned.sum())
     if orphaned.any():
         logger.info(
@@ -896,9 +889,7 @@ def merge_short_reaches(
         logger.warning(
             "%d reaches unreachable from any terminal (cycle?)", len(leftovers)
         )
-        topo.extend(
-            int(v) for v in leftovers[np.argsort(ids[leftovers].astype(str))]
-        )
+        topo.extend(int(v) for v in leftovers[np.argsort(ids[leftovers].astype(str))])
 
     chains: dict[int, list[int]] = {}
     assigned = np.zeros(n, dtype=bool)

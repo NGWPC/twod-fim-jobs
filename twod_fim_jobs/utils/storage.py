@@ -128,13 +128,6 @@ def check_path_exists(uri: str) -> bool:
         return False
 
 
-def copy_file(src: str, dst: str) -> None:
-    """Copy a file from src to dst.
-
-    Supports local paths and S3 URIs (s3://bucket/key).
-    """
-
-
 def copy_file(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:
     """Copy a file from src to dst, supporting local paths and S3 URIs."""
     try:

@@ -322,7 +322,17 @@ def test_counters_reconcile(pipeline):
 
 def test_surviving_reach_ids(pipeline):
     gdf, *_ = pipeline
-    assert list(gdf[REACH_ID_FIELD]) == ["2", "3", "4", "5", "7", "8_1", "8_2", "9", "12"]
+    assert list(gdf[REACH_ID_FIELD]) == [
+        "2",
+        "3",
+        "4",
+        "5",
+        "7",
+        "8_1",
+        "8_2",
+        "9",
+        "12",
+    ]
 
 
 def test_junction_blocks_merge(pipeline):
@@ -656,7 +666,15 @@ def test_split_ids_sort_beside_their_parent(pipeline):
     """Output order is natural, not lexicographic: 2 < 8 < 8_1 < 9 < 12."""
     gdf, *_ = pipeline
     assert list(gdf[REACH_ID_FIELD]) == [
-        "2", "3", "4", "5", "7", "8_1", "8_2", "9", "12",
+        "2",
+        "3",
+        "4",
+        "5",
+        "7",
+        "8_1",
+        "8_2",
+        "9",
+        "12",
     ]
 
 
@@ -746,9 +764,10 @@ def test_output_layer_is_named_for_build_model(result):
     """build_model queries this GeoPackage by table name, not by position."""
     import pyogrio
 
-    layers = [name for name, _ in pyogrio.list_layers(
-        Path(result.network_dir) / "network.gpkg"
-    )]
+    layers = [
+        name
+        for name, _ in pyogrio.list_layers(Path(result.network_dir) / "network.gpkg")
+    ]
     assert layers == [REACH_TABLE]
 
 
@@ -1020,13 +1039,20 @@ def test_original_headwater_draining_into_a_lake_is_kept(tmp_path):
     net = tmp_path / "hw.gpkg"
     geom = [LineString([(100, 0), (500, 0)])]
     gpd.GeoDataFrame(
-        {"fp_id": ["H"], "fp_to_id": [None], "total_da_sqkm": [10.0],
-         "stream_order": [3], "length_km": [0.4]},
-        geometry=geom, crs=CRS,
+        {
+            "fp_id": ["H"],
+            "fp_to_id": [None],
+            "total_da_sqkm": [10.0],
+            "stream_order": [3],
+            "length_km": [0.4],
+        },
+        geometry=geom,
+        crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
     lake = tmp_path / "hw_lake.gpkg"
-    gpd.GeoDataFrame({"lake_id": [1]}, geometry=[box(300, -100, 900, 100)],
-                     crs=CRS).to_file(lake, layer="lakes_polygons", driver="GPKG")
+    gpd.GeoDataFrame(
+        {"lake_id": [1]}, geometry=[box(300, -100, 900, 100)], crs=CRS
+    ).to_file(lake, layer="lakes_polygons", driver="GPKG")
 
     gdf, counters = _run_lakes(net, lake)
     assert counters.n_reaches_orphaned_lake == 0
@@ -1036,18 +1062,25 @@ def test_original_headwater_draining_into_a_lake_is_kept(tmp_path):
 def test_lake_outlet_with_no_downstream_is_kept(tmp_path):
     """Row 3: a real reach at a real lake, kept even though isolated."""
     rows = [
-        ("O", None, 50.0, [(300, 0), (900, 0)]),   # emerges from the lake
+        ("O", None, 50.0, [(300, 0), (900, 0)]),  # emerges from the lake
     ]
     net = tmp_path / "outlet.gpkg"
     geoms = [LineString(c) for *_, c in rows]
     gpd.GeoDataFrame(
-        {"fp_id": ["O"], "fp_to_id": [None], "total_da_sqkm": [50.0],
-         "stream_order": [5], "length_km": [g.length / 1000 for g in geoms]},
-        geometry=geoms, crs=CRS,
+        {
+            "fp_id": ["O"],
+            "fp_to_id": [None],
+            "total_da_sqkm": [50.0],
+            "stream_order": [5],
+            "length_km": [g.length / 1000 for g in geoms],
+        },
+        geometry=geoms,
+        crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
     lake = tmp_path / "outlet_lake.gpkg"
-    gpd.GeoDataFrame({"lake_id": [2]}, geometry=[box(0, -100, 500, 100)],
-                     crs=CRS).to_file(lake, layer="lakes_polygons", driver="GPKG")
+    gpd.GeoDataFrame(
+        {"lake_id": [2]}, geometry=[box(0, -100, 500, 100)], crs=CRS
+    ).to_file(lake, layer="lakes_polygons", driver="GPKG")
 
     gdf, counters = _run_lakes(net, lake)
     assert counters.n_reaches_orphaned_lake == 0
@@ -1084,9 +1117,15 @@ def two_lake_channel(tmp_path):
     geom = [LineString([(100, 0), (900, 0)])]
     net = tmp_path / "two_lake_net.gpkg"
     gpd.GeoDataFrame(
-        {"fp_id": ["M"], "fp_to_id": [None], "total_da_sqkm": [100.0],
-         "stream_order": [6], "length_km": [0.8]},
-        geometry=geom, crs=CRS,
+        {
+            "fp_id": ["M"],
+            "fp_to_id": [None],
+            "total_da_sqkm": [100.0],
+            "stream_order": [6],
+            "length_km": [0.8],
+        },
+        geometry=geom,
+        crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
 
     lake = tmp_path / "two_lake_lakes.gpkg"
@@ -1143,9 +1182,15 @@ def test_no_dry_middle_between_lakes_is_encompassed(tmp_path):
     geom = [LineString([(100, 0), (900, 0)])]
     net = tmp_path / "touching_net.gpkg"
     gpd.GeoDataFrame(
-        {"fp_id": ["M"], "fp_to_id": [None], "total_da_sqkm": [100.0],
-         "stream_order": [6], "length_km": [0.8]},
-        geometry=geom, crs=CRS,
+        {
+            "fp_id": ["M"],
+            "fp_to_id": [None],
+            "total_da_sqkm": [100.0],
+            "stream_order": [6],
+            "length_km": [0.8],
+        },
+        geometry=geom,
+        crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
     lake = tmp_path / "touching_lakes.gpkg"
     gpd.GeoDataFrame(
@@ -1286,9 +1331,9 @@ def test_source_length_column_is_not_required(tmp_path):
     geom = [LineString([(0, 0), (1000, 0)])]
     path = tmp_path / "no_length.gpkg"
     gpd.GeoDataFrame(
-        {"fp_id": [1], "fp_to_id": [None], "total_da_sqkm": [5.0],
-         "stream_order": [3]},
-        geometry=geom, crs=CRS,
+        {"fp_id": [1], "fp_to_id": [None], "total_da_sqkm": [5.0], "stream_order": [3]},
+        geometry=geom,
+        crs=CRS,
     ).to_file(path, layer="flowpaths", driver="GPKG")
 
     gdf, counters = nw.load_reach_network(str(path), None)
@@ -1301,9 +1346,15 @@ def test_source_length_disagreeing_with_geometry_is_overridden(tmp_path):
     geom = [LineString([(0, 0), (1000, 0)])]
     path = tmp_path / "wrong_length.gpkg"
     gpd.GeoDataFrame(
-        {"fp_id": [1], "fp_to_id": [None], "total_da_sqkm": [5.0],
-         "stream_order": [3], "length_km": [99.0]},
-        geometry=geom, crs=CRS,
+        {
+            "fp_id": [1],
+            "fp_to_id": [None],
+            "total_da_sqkm": [5.0],
+            "stream_order": [3],
+            "length_km": [99.0],
+        },
+        geometry=geom,
+        crs=CRS,
     ).to_file(path, layer="flowpaths", driver="GPKG")
 
     gdf, counters = nw.load_reach_network(str(path), None)
@@ -1393,8 +1444,12 @@ def test_exploded_part_split_by_a_lake_nests_its_suffix(tmp_path):
 
     net = tmp_path / "nested.gpkg"
     gpd.GeoDataFrame(
-        {"fp_id": ["3434"], "fp_to_id": [None], "total_da_sqkm": [100.0],
-         "stream_order": [3]},
+        {
+            "fp_id": ["3434"],
+            "fp_to_id": [None],
+            "total_da_sqkm": [100.0],
+            "stream_order": [3],
+        },
         geometry=[MultiLineString([[(0, 0), (100, 0)], [(200, 0), (900, 0)]])],
         crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
@@ -1416,9 +1471,11 @@ def test_nested_ids_sort_beside_their_parent(tmp_path):
     order = nw._natural_order(
         pd.Series(["3434_10", "3434_2_2", "10", "2", "3434_1", "3434_2_1"])
     )
-    ranked = pd.Series(
-        ["3434_10", "3434_2_2", "10", "2", "3434_1", "3434_2_1"]
-    ).iloc[order].tolist()
+    ranked = (
+        pd.Series(["3434_10", "3434_2_2", "10", "2", "3434_1", "3434_2_1"])
+        .iloc[order]
+        .tolist()
+    )
     assert ranked == ["2", "10", "3434_1", "3434_2_1", "3434_2_2", "3434_10"]
 
 
@@ -1442,8 +1499,20 @@ def test_one_lake_split_into_parts_counts_once(tmp_path):
     from shapely.geometry import Polygon
 
     dumbbell = Polygon(
-        [(0, 0), (400, 0), (400, 190), (600, 190), (600, 0), (1000, 0),
-         (1000, 400), (600, 400), (600, 210), (400, 210), (400, 400), (0, 400)]
+        [
+            (0, 0),
+            (400, 0),
+            (400, 190),
+            (600, 190),
+            (600, 0),
+            (1000, 0),
+            (1000, 400),
+            (600, 400),
+            (600, 210),
+            (400, 210),
+            (400, 400),
+            (0, 400),
+        ]
     )
     path = tmp_path / "dumbbell.gpkg"
     gpd.GeoDataFrame({"lake_id": [55]}, geometry=[dumbbell], crs=CRS).to_file(
@@ -1463,9 +1532,14 @@ def test_missing_coastal_id_records_null_not_a_row_number(tmp_path, caplog):
 
     net = tmp_path / "n.gpkg"
     gpd.GeoDataFrame(
-        {"fp_id": ["A"], "fp_to_id": [None], "total_da_sqkm": [10.0],
-         "stream_order": [3]},
-        geometry=[LineString([(0, 0), (800, 0)])], crs=CRS,
+        {
+            "fp_id": ["A"],
+            "fp_to_id": [None],
+            "total_da_sqkm": [10.0],
+            "stream_order": [3],
+        },
+        geometry=[LineString([(0, 0), (800, 0)])],
+        crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
     coast = tmp_path / "c.gpkg"
     gpd.GeoDataFrame(  # no 'id' column
@@ -1494,14 +1568,20 @@ def test_unidentified_lakes_do_not_compare_as_one_lake(tmp_path):
     """
     net = tmp_path / "n.gpkg"
     gpd.GeoDataFrame(
-        {"fp_id": ["M"], "fp_to_id": [None], "total_da_sqkm": [10.0],
-         "stream_order": [3]},
-        geometry=[LineString([(100, 0), (900, 0)])], crs=CRS,
+        {
+            "fp_id": ["M"],
+            "fp_to_id": [None],
+            "total_da_sqkm": [10.0],
+            "stream_order": [3],
+        },
+        geometry=[LineString([(100, 0), (900, 0)])],
+        crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
     lake = tmp_path / "l.gpkg"
     gpd.GeoDataFrame(  # no 'lake_id' column
         {"name": ["a", "b"]},
-        geometry=[box(0, -100, 300, 100), box(700, -100, 1200, 100)], crs=CRS,
+        geometry=[box(0, -100, 300, 100), box(700, -100, 1200, 100)],
+        crs=CRS,
     ).to_file(lake, layer="lakes_polygons", driver="GPKG")
 
     gdf, counters = _run_lakes(net, lake)
@@ -1518,9 +1598,14 @@ def test_unidentified_lakes_do_not_compare_as_one_lake(tmp_path):
 def _coastal_run(tmp_path, reach_coords, coast_geom, label):
     net = tmp_path / f"{label}_n.gpkg"
     gpd.GeoDataFrame(
-        {"fp_id": ["A"], "fp_to_id": [None], "total_da_sqkm": [10.0],
-         "stream_order": [3]},
-        geometry=[LineString(reach_coords)], crs=CRS,
+        {
+            "fp_id": ["A"],
+            "fp_to_id": [None],
+            "total_da_sqkm": [10.0],
+            "stream_order": [3],
+        },
+        geometry=[LineString(reach_coords)],
+        crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
     coast = tmp_path / f"{label}_c.gpkg"
     gpd.GeoDataFrame({"id": [1]}, geometry=[coast_geom], crs=CRS).to_file(
@@ -1528,9 +1613,7 @@ def _coastal_run(tmp_path, reach_coords, coast_geom, label):
     )
     gdf, counters = nw.load_reach_network(str(net), None)
     gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
-    gdf, _ = nw.apply_coastal(
-        gdf, gpd.read_file(coast).to_crs(gdf.crs), counters
-    )
+    gdf, _ = nw.apply_coastal(gdf, gpd.read_file(coast).to_crs(gdf.crs), counters)
     return gdf, counters
 
 
@@ -1590,9 +1673,14 @@ def test_reach_passing_straight_through_is_trimmed_at_entry(tmp_path):
     net = tmp_path / "through_n.gpkg"
     geoms = [LineString(c) for *_, c in rows]
     gpd.GeoDataFrame(
-        {"fp_id": [r[0] for r in rows], "fp_to_id": [r[1] for r in rows],
-         "total_da_sqkm": [10.0, 11.0], "stream_order": [3, 3]},
-        geometry=geoms, crs=CRS,
+        {
+            "fp_id": [r[0] for r in rows],
+            "fp_to_id": [r[1] for r in rows],
+            "total_da_sqkm": [10.0, 11.0],
+            "stream_order": [3, 3],
+        },
+        geometry=geoms,
+        crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
     coast = tmp_path / "through_c.gpkg"
     gpd.GeoDataFrame({"id": [1]}, geometry=[box(300, -50, 500, 50)], crs=CRS).to_file(
@@ -1626,9 +1714,14 @@ def test_touching_a_lake_boundary_is_not_a_crossing(tmp_path):
     """Same rule on the lake side."""
     net = tmp_path / "touch_n.gpkg"
     gpd.GeoDataFrame(
-        {"fp_id": ["A"], "fp_to_id": [None], "total_da_sqkm": [10.0],
-         "stream_order": [3]},
-        geometry=[LineString([(0, 0), (400, 0)])], crs=CRS,
+        {
+            "fp_id": ["A"],
+            "fp_to_id": [None],
+            "total_da_sqkm": [10.0],
+            "stream_order": [3],
+        },
+        geometry=[LineString([(0, 0), (400, 0)])],
+        crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
     lake = tmp_path / "touch_l.gpkg"
     gpd.GeoDataFrame(
@@ -1651,15 +1744,20 @@ def test_reach_beginning_inside_coastal_is_dropped_with_its_downstream(tmp_path)
     Both go, because the network is not modelled below coastal influence.
     """
     rows = [
-        ("X", "D", [(450, 0), (900, 0)]),   # begins inside coverage
+        ("X", "D", [(450, 0), (900, 0)]),  # begins inside coverage
         ("D", None, [(900, 0), (1400, 0)]),  # purely inland, below X
     ]
     net = tmp_path / "starts_inside.gpkg"
     geoms = [LineString(c) for *_, c in rows]
     gpd.GeoDataFrame(
-        {"fp_id": [r[0] for r in rows], "fp_to_id": [r[1] for r in rows],
-         "total_da_sqkm": [10.0, 11.0], "stream_order": [3, 3]},
-        geometry=geoms, crs=CRS,
+        {
+            "fp_id": [r[0] for r in rows],
+            "fp_to_id": [r[1] for r in rows],
+            "total_da_sqkm": [10.0, 11.0],
+            "stream_order": [3, 3],
+        },
+        geometry=geoms,
+        crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
     coast = tmp_path / "starts_inside_c.gpkg"
     gpd.GeoDataFrame({"id": [1]}, geometry=[box(0, -100, 500, 100)], crs=CRS).to_file(
@@ -1681,9 +1779,14 @@ def test_reach_with_both_ends_inside_coastal_is_dropped(tmp_path):
     coast = box(0, -100, 900, 100).difference(box(400, -50, 500, 50))
     net = tmp_path / "island_coast_n.gpkg"
     gpd.GeoDataFrame(
-        {"fp_id": ["X"], "fp_to_id": [None], "total_da_sqkm": [10.0],
-         "stream_order": [3]},
-        geometry=[LineString([(300, 0), (600, 0)])], crs=CRS,
+        {
+            "fp_id": ["X"],
+            "fp_to_id": [None],
+            "total_da_sqkm": [10.0],
+            "stream_order": [3],
+        },
+        geometry=[LineString([(300, 0), (600, 0)])],
+        crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
     cpath = tmp_path / "island_coast_c.gpkg"
     gpd.GeoDataFrame({"id": [1]}, geometry=[coast], crs=CRS).to_file(
@@ -1702,9 +1805,14 @@ def test_first_contact_partway_still_trims_rather_than_drops(tmp_path):
     """The distinguishing case: contact at distance > 0 keeps the part above."""
     net = tmp_path / "partway_n.gpkg"
     gpd.GeoDataFrame(
-        {"fp_id": ["A"], "fp_to_id": [None], "total_da_sqkm": [10.0],
-         "stream_order": [3]},
-        geometry=[LineString([(0, 0), (600, 0)])], crs=CRS,
+        {
+            "fp_id": ["A"],
+            "fp_to_id": [None],
+            "total_da_sqkm": [10.0],
+            "stream_order": [3],
+        },
+        geometry=[LineString([(0, 0), (600, 0)])],
+        crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
     cpath = tmp_path / "partway_c.gpkg"
     gpd.GeoDataFrame({"id": [1]}, geometry=[box(400, -100, 900, 100)], crs=CRS).to_file(

@@ -81,9 +81,8 @@ def query_upstream_reach(
     )
     gdf = query_database(sql, db_uri, epsg=epsg)
 
-    # Validate 2
     if gdf.empty:
-        raise ReachNotFoundError(f"No reach found for {REACH_TO_ID_FIELD}={reach_id}")
+        return [], gpd.GeoDataFrame()
 
     us_mainstem = gdf[gdf[DA_FIELD] == gdf[DA_FIELD].max()].iloc[:1]
     us_reach_ids = gdf[REACH_ID_FIELD].to_list()

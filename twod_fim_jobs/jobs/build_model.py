@@ -65,6 +65,10 @@ class BuildModelJob(Job[BuildModelInputs]):
         # Query database for relevant geometries
         reach = query_reach(inputs.reach_id, inputs.db_uri)
         us_reaches, us_mainstem = query_upstream_reach(inputs.reach_id, inputs.db_uri)
+        if not us_mainstem.empty:
+            us_mainstem_id = us_mainstem[REACH_ID_FIELD].iloc[0]
+        else:
+            us_mainstem_id = None
 
         # Make inflow line and validate
         inflow_line = make_inflow_line(
@@ -160,7 +164,7 @@ class BuildModelJob(Job[BuildModelInputs]):
             length_m=round(reach.length.iloc[0], 2),
             slope=round(reach[SLOPE_FIELD].iloc[0], 7),
             downstream_reach_id=reach[REACH_ID_FIELD].iloc[0],
-            upstream_mainstem_reach_id=us_mainstem[REACH_ID_FIELD].iloc[0],
+            upstream_mainstem_reach_id=us_mainstem_id,
         )
 
         # Write model manifest json

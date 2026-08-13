@@ -28,7 +28,11 @@ dev = [
 ]
 
 [tool.pixi.dependencies]
-pip = "*"
+libgdal-core = "*"
+hdf5 = "*"
+libnetcdf = "*"
+proj = "*"
+python = "3.13.*"
 
 [tool.pixi.feature.prod.pypi-dependencies]
 twod-fim-jobs = { path = ".", editable = false }

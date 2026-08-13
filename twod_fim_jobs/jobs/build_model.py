@@ -72,6 +72,7 @@ class BuildModelJob(Job[BuildModelInputs]):
         )
         if not us_mainstem.empty:
             us_mainstem_id = us_mainstem[REACH_ID_FIELD].iloc[0]
+            us_mainstem = ensure_linestring(us_mainstem)
         else:
             us_mainstem_id = None
 

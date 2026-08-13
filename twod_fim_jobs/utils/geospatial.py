@@ -142,9 +142,8 @@ def make_inflow_line(
     )
     reach_geom = reach.geometry.iloc[0]
     if us_mainstem.empty:
-        first_line = reach_geom.geoms[0] if hasattr(reach_geom, "geoms") else reach_geom
-        us_bc_pt = Point(first_line.coords[0])
-        inflow_geom = perpendicular_line(first_line, us_bc_pt, inflow_width)
+        us_bc_pt = Point(reach_geom.coords[0])
+        inflow_geom = perpendicular_line(reach_geom, us_bc_pt, inflow_width)
     else:
         us_geom = us_mainstem.geometry.iloc[0]
         # Walk upstream a bit for u/s boundary condition

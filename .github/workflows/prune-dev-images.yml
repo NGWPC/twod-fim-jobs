@@ -1,0 +1,75 @@
+name: Prune Dev Images
+
+on:
+  schedule:
+    # Runs at 03:00, only on Monday
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Log what would be deleted without deleting anything"
+        type: boolean
+        default: true
+
+# No token scope by default; the prune job opts in to exactly what it needs.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    name: Prune ${{ matrix.target }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Must stay in sync with the matrix in build-images.yml. Cleanup is
+        # per-package, and each target is published as its own GHCR package.
+        target:
+          - build_model
+          - run_nd_scenarios-lisflood-gpu
+
+    steps:
+      - name: Prune old sha- images
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          owner: ${{ github.repository_owner }}
+          # build-images.yml publishes to ghcr.io/<owner>/<repo>/<target>,
+          # so the GHCR package name is "<repo>/<target>".
+          package: ${{ github.event.repository.name }}/${{ matrix.target }}
+
+          # Restricts every delete and keep rule below to images older than
+          # this. Anything published in the last two weeks is untouchable.
+          older-than: 2 weeks
+
+          # Of the images that ARE older than two weeks, keep the newest one.
+          # This is the "don't strand the only build" guarantee: if main saw
+          # no pushes for a month, every image is a deletion candidate and
+          # this is what stops the last one from being removed.
+          keep-n-tagged: 1
+
+          # Reap the dangling manifests orphaned each time the dev tag moves.
+          delete-untagged: true
+
+          # Takes priority over every other rule. sha-<short-sha> carries no
+          # dots, so it never matches *.*.* and stays eligible for pruning.
+          #   dev     - the floating tag
+          #   latest  - latest release
+          #   *.*.*   - bare semver (0.1.2, 1.10.3)
+          #   v*      - v-prefixed semver (v1.2.3)
+          exclude-tags: dev,latest,*.*.*,v*
+
+          # Post-run check that no multi-arch image was left without its
+          # platform children. Cheap insurance.
+          validate: true
+
+          # Scheduled runs delete for real. Manual runs default to a dry run
+          # so the filters can be eyeballed before anything is destroyed.
+          dry-run: ${{ inputs.dry-run || false }}

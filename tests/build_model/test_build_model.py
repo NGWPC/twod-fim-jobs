@@ -15,7 +15,7 @@ from twod_fim_jobs.exceptions import (
 from twod_fim_jobs.jobs.build_model import BuildModelJob, _check_inflow_cl_intersection
 from twod_fim_jobs.jobs.build_model import _normalize_href
 from twod_fim_jobs.models.build_model import BuildModelInputs
-from twod_fim_jobs.models.common import (
+from twod_fim_jobs.models.warnings import (
     LargeDomainAreaWarning,
     CenterlineInflowMultiIntersectionWarning,
 )
@@ -36,6 +36,15 @@ ADDITIONAL_GEOMETRY_STR = (
 def build_model_input():
     return BuildModelInputs(
         reach_id=1257410962372414,
+        db_uri=f"sqlite:///{SMALL_NETWORK.resolve()}",
+        base_output_path="/tmp/test-output",
+    )
+
+
+@pytest.fixture
+def build_model_input_headwater():
+    return BuildModelInputs(
+        reach_id=1257411073114277,
         db_uri=f"sqlite:///{SMALL_NETWORK.resolve()}",
         base_output_path="/tmp/test-output",
     )
@@ -111,6 +120,13 @@ def test_end_to_end_w_other_geom(build_model_input_w_extra_geometries):
     """End to end test that should run without failure."""
     workflow = BuildModelJob()
     workflow.run(build_model_input_w_extra_geometries)
+
+
+def test_end_to_end_headwater(build_model_input_headwater):
+    """End to end test that should run without failure and produce no warnings."""
+    workflow = BuildModelJob()
+    result = workflow.run(build_model_input_headwater)
+    assert result.warnings == [], f"Unexpected warnings: {result.warnings}"
 
 
 def test_inputs_missing_required_arg_raises():

@@ -1,0 +1,470 @@
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Literal
+
+import numpy as np
+import rasterio
+import rasterio.transform
+from affine import Affine
+from pydantic import BaseModel, ConfigDict
+from shapely import LineString, MultiLineString, MultiPolygon, Point, Polygon
+from shapely.geometry.base import BaseGeometry
+from shapely.ops import linemerge, unary_union
+
+from twod_fim_jobs.models.build_model import Domain, GridProperties
+from twod_fim_jobs.models.common import RunConfig
+from twod_fim_jobs.utils.geospatial import rasterize_geometry
+
+logger = logging.getLogger(__name__)
+
+
+### CLASSES ###
+
+
+class BoundaryConditionElement(BaseModel):
+    """Single boundary condition element with its type, value, and grid location."""
+
+    model_config = ConfigDict(frozen=True)
+
+    element_type: str  # "P" for point; "N"/"S"/"E"/"W" for cardinal edge
+    bc_type: Literal["QFIX", "HFIX", "FREE", "TRANSFER"]
+    value: float | str
+    x_coord: float
+    y_coord: float
+    x_ind: int
+    y_ind: int
+
+
+class LisfloodWriter:
+    def export(
+        self,
+        bcs: list[BoundaryConditionElement],
+        terrain_path: str | Path,
+        roughness_path: str | Path,
+        run_config: RunConfig,
+        output_dir: Path,
+    ) -> dict[str, Path]:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        bci_path = self.write_bci_file(bcs, output_dir)
+        par_path = self.write_par_file(
+            terrain_path, roughness_path, run_config, bci_path, output_dir
+        )
+        return {"par_path": par_path, "bci_path": bci_path}
+
+    def write_bci_file(
+        self,
+        bcs: list[BoundaryConditionElement],
+        output_dir: Path,
+    ) -> Path:
+        bci_path = output_dir / "lisflood.bci"
+        lines = [
+            f"{bc.element_type} {round(bc.x_coord, 4)} {round(bc.y_coord, 4)} {bc.bc_type} {bc.value}\n"
+            for bc in bcs
+        ]
+        bci_path.write_text("".join(lines))
+        return bci_path
+
+    def write_par_file(
+        self,
+        terrain_path: str | Path,
+        roughness_path: str | Path,
+        run_config: RunConfig,
+        bci_path: Path,
+        output_dir: Path,
+    ) -> Path:
+        par_path = output_dir / "lisflood.par"
+        cfg: dict[str, object] = {
+            "resroot": output_dir.name,
+            "dirroot": str(output_dir),
+            "DEMfile": terrain_path,
+            "manningfile": roughness_path,
+            "bcifile": str(bci_path),
+            "saveint": run_config.save_interval_seconds,
+            "massint": run_config.mass_interval_seconds,
+            "sim_time": run_config.sim_time_seconds,
+            "initial_tstep": run_config.initial_tstep_seconds,
+            "acceleration": "",
+        }
+        if run_config.use_cuda:
+            cfg["cuda"] = ""
+        if run_config.use_elevoff:
+            cfg["elevoff"] = ""
+        if run_config.initial_state_path is not None:
+            cfg["startfile"] = str(run_config.initial_state_path)
+        with open(par_path, mode="w") as f:
+            for k, v in cfg.items():
+                f.write(f"{k} {v}\n")
+        return par_path
+
+
+class SfincsWriter:
+    def export(
+        self,
+        bcs: list[BoundaryConditionElement],
+        terrain_path: str | Path,
+        roughness_path: str | Path,
+        domain: Domain,
+        grid: GridProperties,
+        epsg_code: int,
+        run_config: RunConfig,
+        output_dir: Path,
+    ) -> None:
+        raise NotImplementedError
+        output_dir.mkdir(parents=True, exist_ok=True)
+        resolution = _compute_resolution(domain, grid)
+        msk = self._write_msk(output_dir / "sfincs.msk", grid, bcs)
+        self._write_ind(output_dir / "sfincs.ind", msk)
+        self._write_dep(output_dir / "sfincs.dep", terrain_path, msk)
+        self._write_man(output_dir / "sfincs.man", roughness_path, msk)
+        self._write_src(output_dir / "sfincs.src", bcs)
+        self._write_dis(output_dir / "sfincs.dis", bcs, run_config, resolution)
+        self._write_bnd(output_dir / "sfincs.bnd", bcs)
+        self._write_bzs(output_dir / "sfincs.bzs", bcs, run_config)
+        self._write_bdr(output_dir / "sfincs.bdr", bcs, domain)
+        self._write_inp(
+            output_dir / "sfincs.inp", domain, grid, epsg_code, run_config, resolution
+        )
+
+    def _write_msk(
+        self,
+        fn_msk: Path,
+        grid: GridProperties,
+        bcs: list[BoundaryConditionElement],
+    ) -> np.ndarray:
+        rows = grid.rows
+        cols = grid.cols
+        msk = np.full((rows, cols), 1, dtype=np.uint8)
+        for bc in bcs:
+            if bc.bc_type == "FREE":
+                btype = 5
+            elif bc.bc_type in ["TRANSFER", "HFIX"]:
+                btype = 2
+            else:
+                continue
+            msk[bc.x_ind, bc.y_ind] = btype
+        msk = np.flipud(msk)
+        self._write_binary_file(fn_msk, msk, np.ones_like(msk), "uint8")
+        return msk
+
+    def _write_ind(self, fn_ind: Path, msk: np.ndarray) -> None:
+        # Lifted from hydromt: https://github.com/Deltares/hydromt_sfincs/blob/d8514d644f297b6b3982c249c3c233dfdf5076fb/hydromt_sfincs/utils.py#L82
+        iok = np.where(np.transpose(msk) > 0)
+        iok = (iok[1], iok[0])
+        ind = np.ravel_multi_index(iok, msk.shape, order="F")
+        indices_ = np.array(np.hstack([np.array(len(ind)), ind + 1]), dtype="u4")
+        indices_.tofile(fn_ind)
+
+    def _write_dep(self, fn: Path, terrain_path: str | Path, msk: np.ndarray) -> None:
+        self._raster_2_bin(terrain_path, fn, msk)
+
+    def _write_man(self, fn: Path, roughness_path: str | Path, msk: np.ndarray) -> None:
+        self._raster_2_bin(roughness_path, fn, msk)
+
+    def _write_src(self, fn: Path, bcs: list[BoundaryConditionElement]) -> None:
+        with open(fn, mode="w") as f:
+            for bc in bcs:
+                if bc.bc_type == "QFIX":
+                    f.write(f"{bc.x_coord} {bc.y_coord}\n")
+
+    def _write_dis(
+        self,
+        fn: Path,
+        bcs: list[BoundaryConditionElement],
+        run_config: RunConfig,
+        resolution: float,
+    ) -> None:
+        forcing_str = (
+            " ".join(
+                str(
+                    float(bc.value) * resolution
+                )  # TODO: switch so LISFLOOD divides instead
+                for bc in bcs
+                if bc.bc_type == "QFIX"
+            )
+            + "\n"
+        )
+        with open(fn, mode="w") as f:
+            f.write("0.0 " + forcing_str)
+            f.write(str(run_config.sim_time_seconds) + " " + forcing_str)
+
+    def _write_bnd(self, fn: Path, bcs: list[BoundaryConditionElement]) -> None:
+        with open(fn, mode="w") as f:
+            for bc in bcs:
+                if bc.bc_type in ["TRANSFER", "HFIX"]:
+                    f.write(f"{int(bc.x_coord)} {int(bc.y_coord)}\n")
+
+    def _write_bzs(
+        self,
+        fn: Path,
+        bcs: list[BoundaryConditionElement],
+        run_config: RunConfig,
+    ) -> None:
+        # SFINCS will error on negative WSE values
+        forcing_str = (
+            " ".join(
+                str(max(float(bc.value), 0))
+                for bc in bcs
+                if bc.bc_type in ["TRANSFER", "HFIX"]
+            )
+            + "\n"
+        )
+        with open(fn, mode="w") as f:
+            f.write("0.0 " + forcing_str)
+            f.write(str(run_config.sim_time_seconds) + " " + forcing_str)
+
+    def _write_bdr(
+        self,
+        fn: Path,
+        bcs: list[BoundaryConditionElement],
+        domain: Domain,
+    ) -> None:
+        free_bcs = [bc for bc in bcs if bc.bc_type == "FREE"]
+        if not free_bcs:
+            return
+        xmin, ymin, xmax, ymax = domain.bbox
+        ax, ay = free_bcs[0].x_coord, free_bcs[0].y_coord
+        bx, by = free_bcs[-1].x_coord, free_bcs[-1].y_coord
+        mx = (ax + bx) / 2.0
+        my = (ay + by) / 2.0
+        cx = (xmax + xmin) / 2
+        cy = (ymax + ymin) / 2
+        tmp_str = f"{round(mx, 1)} {round(my, 1)} {round(cx, 1)} {round(cy, 1)} {round(float(free_bcs[0].value), 6)} -1"
+        with open(fn, mode="w") as f:
+            f.write(tmp_str)
+
+    def _write_inp(
+        self,
+        fn: Path,
+        domain: Domain,
+        grid: GridProperties,
+        epsg_code: int,
+        run_config: RunConfig,
+        resolution: float,
+    ) -> None:
+        from datetime import datetime, timedelta
+
+        xmin, ymin, _, _ = domain.bbox
+        # SFINCS uses a fixed epoch of 2000-01-01 for time references
+        tstop = datetime(2000, 1, 1) + timedelta(seconds=run_config.sim_time_seconds)
+        cfg: dict[str, object] = {
+            "x0": xmin,
+            "y0": ymin,
+            "mmax": grid.cols,
+            "nmax": grid.rows,
+            "dx": resolution,
+            "dy": resolution,
+            "epsg": epsg_code,
+            "latitude": 0,
+            "rotation": 0,
+            "tref": "20000101 000000",
+            "tstart": "20000101 000000",
+            "tstop": tstop.strftime("%Y%m%d %H%M%S"),
+            "depfile": "sfincs.dep",
+            "manningfile": "sfincs.man",
+            "mskfile": "sfincs.msk",
+            "srcfile": "sfincs.src",
+            "disfile": "sfincs.dis",
+            "bndfile": "sfincs.bnd",
+            "bzsfile": "sfincs.bzs",
+            "bdrfile": "sfincs.bdr",
+            "indexfile": "sfincs.ind",
+            "dtout": run_config.save_interval_seconds,
+            "inputformat": "bin",
+            "crsgeo": 0,
+        }
+        with open(fn, mode="w") as f:
+            for k, v in cfg.items():
+                f.write(f"{k.ljust(16)}= {v}\n")
+
+    def _raster_2_bin(
+        self,
+        raster_path: str | Path,
+        out_path: Path,
+        msk: np.ndarray,
+    ) -> None:
+        with rasterio.open(raster_path, mode="r") as src:
+            data = src.read(1)
+            data = np.flipud(data)
+        self._write_binary_file(out_path, data, msk)
+
+    def _write_binary_file(
+        self,
+        fn: Path,
+        data: np.ndarray,
+        msk: np.ndarray,
+        dtype: str | np.dtype = "f4",
+    ) -> None:
+        # Lifted from hydromt: https://github.com/Deltares/hydromt_sfincs/blob/d8514d644f297b6b3982c249c3c233dfdf5076fb/hydromt_sfincs/utils.py#L119
+        data_out = np.asarray(data.transpose()[msk.transpose() > 0], dtype=dtype)
+        data_out.tofile(fn)
+
+
+### METHODS ###
+
+
+def write_kwse_model_files(
+    inflow_line: LineString,
+    stl_line: LineString,
+    outflow_area: Polygon,
+    domain: Domain,
+    grid: GridProperties,
+    us_discharge: float,
+    ds_wse: float,
+    nominal_wse: float,
+    terrain_path: str | Path,
+    roughness_path: str | Path,
+    run_config: RunConfig,
+    output_dir: Path,
+) -> None:
+    """Assemble BCs and write LISFLOOD input files for a KWSE scenario."""
+    inflow_bc = process_bc_line(inflow_line, "QFIX", us_discharge, domain, grid)
+    stl_bc = process_bc_line(stl_line, "TRANSFER", nominal_wse, domain, grid)
+    outflow_bc = process_bc_line(outflow_area, "HFIX", ds_wse, domain, grid)
+    bcs = inflow_bc + stl_bc + outflow_bc
+    LisfloodWriter().export(bcs, terrain_path, roughness_path, run_config, output_dir)
+
+
+def write_nd_model_files(
+    domain: Domain,
+    grid: GridProperties,
+    terrain_path: str | Path,
+    roughness_path: str | Path,
+    inflow_line: LineString,
+    outflow_area: Polygon,
+    ds_slope: float,
+    us_discharge: float,
+    run_config: RunConfig,
+    output_dir: Path,
+) -> dict[str, Path]:
+    logger.info(f"Writing solver files to {output_dir}")
+    inflow_bc = process_bc_line(inflow_line, "QFIX", us_discharge, domain, grid)
+    outflow_bc = process_bc_line(outflow_area, "FREE", ds_slope, domain, grid)
+    bcs = inflow_bc + outflow_bc
+    return LisfloodWriter().export(
+        bcs, terrain_path, roughness_path, run_config, output_dir
+    )
+
+
+def process_bc_line(
+    bc_geom: BaseGeometry,
+    bc_type: Literal["QFIX", "HFIX", "FREE", "TRANSFER"],
+    bc_value: float | str,
+    domain: Domain,
+    grid_properties: GridProperties,
+) -> list[BoundaryConditionElement]:
+    """Convert a geometry and boundary condition type into a list of BoundaryConditionElements."""
+    transform = _build_transform(domain, grid_properties)
+    pts = geometry_to_bc_points(bc_geom, grid_properties, transform, domain)
+
+    if not pts:
+        return []
+
+    resolution = _compute_resolution(domain, grid_properties)
+
+    if bc_type == "QFIX":
+        q_per_cell = float(bc_value) / (resolution * len(pts))
+        tagged = [[*pt, "QFIX", q_per_cell] for pt in pts]
+    elif bc_type == "TRANSFER":
+        raise NotImplementedError(
+            "TRANSFER boundary conditions are not yet implemented"
+        )
+    else:
+        tagged = [[*pt, bc_type, bc_value] for pt in pts]
+
+    out = []
+    for item in tagged:
+        if item[0] == "P":
+            _row, _col = rasterio.transform.rowcol(transform, item[1], item[2])
+            row, col = int(_row), int(_col)
+        else:
+            row, col = 0, 0  # cardinal BCs represent extents, not single cells
+        out.append(
+            BoundaryConditionElement(
+                element_type=item[0],
+                bc_type=item[3],
+                value=item[4],
+                x_coord=item[1],
+                y_coord=item[2],
+                x_ind=row,
+                y_ind=col,
+            )
+        )
+
+    return out
+
+
+def geometry_to_bc_points(
+    geometry: BaseGeometry,
+    grid_properties: GridProperties,
+    transform: Affine,
+    domain: Domain,
+) -> list[list[str | float]]:
+    """Dispatch a geometry to the appropriate rasterization function and return BC point lists."""
+    if isinstance(geometry, Point):
+        return [["P", geometry.x, geometry.y]]
+    elif isinstance(geometry, MultiLineString):
+        geometry = linemerge(geometry)
+        pts = rasterize_geometry(
+            geometry, grid_properties.rows, grid_properties.cols, transform
+        )
+        return [["P", pt[0], pt[1]] for pt in pts]
+    elif isinstance(geometry, LineString):
+        pts = rasterize_geometry(
+            geometry, grid_properties.rows, grid_properties.cols, transform
+        )
+        return [["P", pt[0], pt[1]] for pt in pts]
+    elif isinstance(geometry, Polygon):
+        return _poly_to_edge_bc_points(geometry, domain)
+    elif isinstance(geometry, MultiPolygon):
+        merged = unary_union(geometry)
+        if not isinstance(merged, Polygon):
+            raise ValueError(
+                f"geometry_to_bc_points: MultiPolygon union produced a {type(merged).__name__}, not a Polygon; "
+                "parts are likely non-contiguous or non-overlapping."
+            )
+        return _poly_to_edge_bc_points(merged, domain)
+    else:
+        raise ValueError(
+            f"Unsupported geometry type '{geometry.geom_type}'; "
+            "expected Point, LineString, MultiLineString, Polygon, or MultiPolygon."
+        )
+
+
+def _poly_to_edge_bc_points(
+    poly: Polygon,
+    domain: Domain,
+) -> list[list[str | float]]:
+    """Intersect a polygon with each domain edge and return N/S/E/W cardinal BC points."""
+    xmin, ymin, xmax, ymax = domain.bbox
+    edges = {
+        "N": LineString([(xmin, ymax), (xmax, ymax)]),
+        "S": LineString([(xmin, ymin), (xmax, ymin)]),
+        "W": LineString([(xmin, ymin), (xmin, ymax)]),
+        "E": LineString([(xmax, ymin), (xmax, ymax)]),
+    }
+    pts = []
+    for cardinal, edge in edges.items():
+        clipped = edge.intersection(poly)
+        if not clipped.is_empty:
+            bounds = clipped.bounds
+            if cardinal in ("N", "S"):
+                pts.append([cardinal, bounds[0], bounds[2]])  # xmin, xmax
+            else:
+                pts.append([cardinal, bounds[1], bounds[3]])  # ymin, ymax
+    return pts
+
+
+def _build_transform(domain: Domain, grid_properties: GridProperties) -> Affine:
+    """Build an affine transform from domain bounds and grid dimensions."""
+    xmin, ymin, xmax, ymax = domain.bbox
+    return rasterio.transform.from_bounds(
+        xmin, ymin, xmax, ymax, grid_properties.cols, grid_properties.rows
+    )
+
+
+def _compute_resolution(domain: Domain, grid_properties: GridProperties) -> float:
+    """Compute the grid cell resolution in the x-direction."""
+    xmin, _, xmax, _ = domain.bbox
+    return (xmax - xmin) / grid_properties.cols

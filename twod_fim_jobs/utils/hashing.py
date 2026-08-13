@@ -2,7 +2,6 @@ import hashlib
 import json
 from pathlib import Path
 from shapely.geometry.base import BaseGeometry
-
 from twod_fim_jobs.consts import HASH_ALGORITHM
 
 

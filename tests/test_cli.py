@@ -15,6 +15,7 @@ class DummyWorkflow(Job):
 
     def _run(self, inputs: DummyInputs, _):
         DummyWorkflow.last_inputs = inputs
+        return inputs
 
 
 def test_main_accepts_single_json_payload(monkeypatch):

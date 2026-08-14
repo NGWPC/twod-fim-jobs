@@ -1,0 +1,63 @@
+{
+  "type": "network",
+  "hash_algo": "sha256",
+  "twod_fim_version": "0.1.0",
+  "created_at": "2026-06-01T09:00:00Z",
+  "identity_hash": "7c2a9e41",
+  "id": "7c2a9e41",
+  "identity": {
+    "sdr_commit": "826a602d",
+    "reach_network_hash": "3ba1c0e2",
+    "lakes_layer_hash": "d4e9f1a0",
+    "coastal_influence_layer_hash": "91bb2c3d",
+    "drainage_area_threshold_percent": 5.0,
+    "stream_order_filter_threshold": 3,
+    "min_length_threshold_km": 5.0,
+    "lake_area_threshold_sqkm": 5.0,
+    "negative_lake_buffer_meters": 50.0
+  },
+  "inputs": {
+    "reach_network_path": "s3://bucket/pre/nhf_network_raw.gpkg",
+    "base_output_path": "s3://twod-fim/version=v1/network",
+    "lakes_layer_path": "s3://bucket/reference/nhf_lakes_polygons.gpkg",
+    "coastal_influence_layer_path": "s3://bucket/reference/coastal_boundary.gpkg",
+    "drainage_area_threshold_percent": 5.0,
+    "stream_order_filter_threshold": 3,
+    "min_length_threshold_km": 5.0,
+    "lake_area_threshold_sqkm": 5.0,
+    "negative_lake_buffer_meters": 50.0
+  },
+  "properties": {
+    "n_reaches_input": 2483911,
+    "n_reaches_below_stream_order_removed": 1611402,
+    "n_reaches_encompassed_removed_lake": 6104,
+    "n_reaches_encompassed_removed_coastal": 3184,
+    "n_reaches_trimmed_inlet_lake": 812,
+    "n_reaches_trimmed_outlet_lake": 799,
+    "n_reaches_trimmed_coastal": 421,
+    "n_reaches_dropped_coastal_cascade": 1907,
+    "n_reaches_stranded_coastal": 37,
+    "n_reaches_split_passthrough_lake": 133,
+    "n_reaches_trimmed_between_lakes": 24,
+    "n_reaches_orphaned_lake": 58,
+    "n_reaches_merged": 41209,
+    "n_reaches_output": 820180,
+    "n_headwater_reaches": 615178,
+    "n_terminal_reaches": 9540
+  },
+  "assets": {
+    "network": {
+      "checksum": "5151515151515151",
+      "derived": false,
+      "href": "network.gpkg",
+      "source_url": null
+    },
+    "lakes": {
+      "checksum": "6262626262626262",
+      "derived": false,
+      "href": "lakes.gpkg",
+      "source_url": null
+    }
+  },
+  "warnings": []
+}

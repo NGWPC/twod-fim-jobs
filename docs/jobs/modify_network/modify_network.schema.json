@@ -1,0 +1,722 @@
+{
+  "$defs": {
+    "Asset": {
+      "additionalProperties": false,
+      "description": "One output file entry: role-keyed href plus integrity metadata.",
+      "properties": {
+        "href": {
+          "description": "Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.",
+          "examples": [
+            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif"
+          ],
+          "title": "Href",
+          "type": "string"
+        },
+        "checksum": {
+          "description": "First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.",
+          "examples": [
+            "a1b2c3d4e5f6a7b8"
+          ],
+          "pattern": "^[0-9a-f]{16}$",
+          "title": "Checksum",
+          "type": "string"
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.",
+          "examples": [
+            "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt"
+          ],
+          "title": "Source Url"
+        },
+        "retrieved": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the source was fetched, if applicable.",
+          "examples": [
+            "2026-08-06T22:17:07.406819Z"
+          ],
+          "title": "Retrieved"
+        },
+        "derived": {
+          "default": false,
+          "description": "True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.",
+          "examples": [
+            true
+          ],
+          "title": "Derived",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "href",
+        "checksum",
+        "source_url"
+      ],
+      "title": "Asset",
+      "type": "object"
+    },
+    "Assets": {
+      "additionalProperties": false,
+      "description": "This job's own outputs, written as separate GeoPackage files.\n\nnetwork.gpkg is always present; lakes.gpkg only when lake processing ran.\nAn absent lakes asset is omitted from serialization entirely (the schema\nforbids a null asset entry).",
+      "properties": {
+        "network": {
+          "$ref": "#/$defs/Asset",
+          "description": "The modified reach network, written as the reach_network layer \u2014 the table name build_model queries through its db_uri.",
+          "examples": [
+            {
+              "checksum": "5151515151515151",
+              "derived": false,
+              "href": "network.gpkg",
+              "source_url": null
+            }
+          ]
+        },
+        "lakes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Asset"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Filtered + buffered lake polygons actually used for classification (QC/reference only, DR-037 ALT-B). Present only when lake processing ran.",
+          "examples": [
+            {
+              "checksum": "6262626262626262",
+              "derived": false,
+              "href": "lakes.gpkg",
+              "source_url": null
+            }
+          ]
+        }
+      },
+      "required": [
+        "network"
+      ],
+      "title": "Assets",
+      "type": "object"
+    },
+    "Identity": {
+      "additionalProperties": false,
+      "description": "The inputs that define Network identity; hashed to identity_hash.\n\nDataset members follow the _path -> _hash naming rule against inputs.\nThreshold members hold the resolved value after defaults are applied.\nNullable members are required-but-nullable: 'no lakes' / 'no coastal' /\n'unfiltered' must be stated explicitly, never expressed by omission,\nwhich would otherwise hash differently.",
+      "properties": {
+        "sdr_commit": {
+          "description": "Methodology version pin (output-determining).",
+          "examples": [
+            "826a602d"
+          ],
+          "title": "Sdr Commit",
+          "type": "string"
+        },
+        "reach_network_hash": {
+          "description": "Hash of the raw hydrofabric network source + version.",
+          "examples": [
+            "3ba1c0e2"
+          ],
+          "pattern": "^[0-9a-f]{8}$",
+          "title": "Reach Network Hash",
+          "type": "string"
+        },
+        "lakes_layer_hash": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Hash of the lakes source + version. Null when no lakes dataset was supplied and lake processing was skipped.",
+          "examples": [
+            "d4e9f1a0"
+          ],
+          "title": "Lakes Layer Hash"
+        },
+        "coastal_influence_layer_hash": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Hash of the coastal/tidal-influence vector source + version. Null when no coastal dataset was supplied and coastal processing was skipped.",
+          "examples": [
+            "91bb2c3d"
+          ],
+          "title": "Coastal Influence Layer Hash"
+        },
+        "drainage_area_threshold_percent": {
+          "description": "Max drainage-area difference (%) between reaches eligible for merge (DR-024).",
+          "examples": [
+            5.0
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Drainage Area Threshold Percent",
+          "type": "number"
+        },
+        "stream_order_filter_threshold": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Minimum Strahler stream order kept in the network at all. Null when no threshold was given and the filter did not run.",
+          "examples": [
+            3
+          ],
+          "title": "Stream Order Filter Threshold"
+        },
+        "min_length_threshold_km": {
+          "description": "Minimum length (km) a reach should reach by merging \u2014 a floor, not a ceiling: merging continues until the chain clears it (DR-024).",
+          "examples": [
+            5.0
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Min Length Threshold Km",
+          "type": "number"
+        },
+        "lake_area_threshold_sqkm": {
+          "description": "Minimum lake area (km2) considered at all; smaller waterbodies are dropped before reach classification.",
+          "examples": [
+            5.0
+          ],
+          "minimum": 0,
+          "title": "Lake Area Threshold Sqkm",
+          "type": "number"
+        },
+        "negative_lake_buffer_meters": {
+          "description": "Inward buffer (m) approximating the dead-pool extent (DR-034 ALT-A).",
+          "examples": [
+            50.0
+          ],
+          "minimum": 0,
+          "title": "Negative Lake Buffer Meters",
+          "type": "number"
+        }
+      },
+      "required": [
+        "sdr_commit",
+        "reach_network_hash",
+        "lakes_layer_hash",
+        "coastal_influence_layer_hash",
+        "drainage_area_threshold_percent",
+        "stream_order_filter_threshold",
+        "min_length_threshold_km",
+        "lake_area_threshold_sqkm",
+        "negative_lake_buffer_meters"
+      ],
+      "title": "Identity",
+      "type": "object"
+    },
+    "JobWarning": {
+      "properties": {
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "title": "JobWarning",
+      "type": "object"
+    },
+    "ModifyNetworkInputs": {
+      "additionalProperties": false,
+      "description": "Inputs for the modify_network workflow.\n\nDefaults resolve at validation, so a manifest records resolved values for\nthe four defaulted thresholds. stream_order_filter_threshold deliberately\nhas no default: None means no stream-order filtering at all.",
+      "properties": {
+        "reach_network_path": {
+          "description": "Raw hydrofabric reach network. Must be a GPKG file; column/layer names follow the NHF v1.2.3 flowpaths layer schema.",
+          "examples": [
+            "s3://bucket/pre/nhf_network_raw.gpkg"
+          ],
+          "title": "Reach Network Path",
+          "type": "string"
+        },
+        "base_output_path": {
+          "description": "Output location for the modified network and manifest; artifacts are written under <base_output_path>/<identity_hash>/.",
+          "examples": [
+            "s3://twod-fim/version=v1/network"
+          ],
+          "title": "Base Output Path",
+          "type": "string"
+        },
+        "lakes_layer_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Lakes dataset (NHF v1.2.3 lakes_polygons layer schema). Must be a GPKG file. Omit to skip lake processing entirely.",
+          "examples": [
+            "s3://bucket/reference/nhf_lakes_polygons.gpkg"
+          ],
+          "title": "Lakes Layer Path"
+        },
+        "coastal_influence_layer_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Coastal/tidal-influence surface boundary vector dataset. Must be a GPKG file; default layer name is coastal_influence. Omit to skip coastal processing entirely.",
+          "examples": [
+            "s3://bucket/reference/coastal_boundary.gpkg"
+          ],
+          "title": "Coastal Influence Layer Path"
+        },
+        "drainage_area_threshold_percent": {
+          "default": 5.0,
+          "description": "Max drainage-area difference (%) between reaches eligible for merge (DR-024).",
+          "exclusiveMinimum": 0,
+          "title": "Drainage Area Threshold Percent",
+          "type": "number"
+        },
+        "stream_order_filter_threshold": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Minimum Strahler stream order kept in the network at all. Omit to skip stream-order filtering entirely \u2014 every reach enters processing.",
+          "examples": [
+            3
+          ],
+          "title": "Stream Order Filter Threshold"
+        },
+        "min_length_threshold_km": {
+          "default": 5.0,
+          "description": "Minimum length (km) a reach should reach by merging \u2014 a floor, not a ceiling: merging continues until the chain clears it (DR-024).",
+          "exclusiveMinimum": 0,
+          "title": "Min Length Threshold Km",
+          "type": "number"
+        },
+        "lake_area_threshold_sqkm": {
+          "default": 5.0,
+          "description": "Minimum lake area (km2) considered at all; smaller waterbodies are dropped before any reach classification.",
+          "minimum": 0,
+          "title": "Lake Area Threshold Sqkm",
+          "type": "number"
+        },
+        "negative_lake_buffer_meters": {
+          "default": 50.0,
+          "description": "Inward buffer (m) applied to raw lake polygons to approximate the dead-pool extent (DR-034 ALT-A).",
+          "minimum": 0,
+          "title": "Negative Lake Buffer Meters",
+          "type": "number"
+        }
+      },
+      "required": [
+        "reach_network_path",
+        "base_output_path"
+      ],
+      "title": "ModifyNetworkInputs",
+      "type": "object"
+    },
+    "Properties": {
+      "additionalProperties": false,
+      "description": "Reach counters; informational, not part of identity.\n\nNull and 0 are distinct: 0 means the branch ran and matched nothing, null\nmeans the branch did not run. The removal counters are disjoint and must\nreconcile (enforced by a validator here \u2014 JSON Schema cannot express it):\n\n    n_reaches_output = n_reaches_input\n                     - n_reaches_below_stream_order_removed\n                     - n_reaches_encompassed_removed_lake\n                     - n_reaches_encompassed_removed_coastal\n                     - n_reaches_dropped_coastal_cascade\n                     - n_reaches_orphaned_lake\n                     - n_reaches_merged\n                     + n_reaches_split_passthrough_lake\n\nNull terms drop out of the identity. Trim/stranded counters are absent by\ndesign (those reaches keep their rows).",
+      "properties": {
+        "n_reaches_input": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Rows in reach_network_path as read, before the stream-order filter and any other processing.",
+          "examples": [
+            2483911
+          ],
+          "title": "N Reaches Input"
+        },
+        "n_reaches_below_stream_order_removed": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Dropped by the stream_order_filter_threshold filter. Null when no threshold was given and the filter did not run.",
+          "examples": [
+            1611402
+          ],
+          "title": "N Reaches Below Stream Order Removed"
+        },
+        "n_reaches_encompassed_removed_lake": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Fully inside a lake polygon \u2014 classified as encompassed and dropped. Intermediate classification; leaves no column.",
+          "examples": [
+            6104
+          ],
+          "title": "N Reaches Encompassed Removed Lake"
+        },
+        "n_reaches_encompassed_removed_coastal": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Fully inside coastal coverage \u2014 classified as encompassed and dropped. Intermediate classification; leaves no column.",
+          "examples": [
+            3184
+          ],
+          "title": "N Reaches Encompassed Removed Coastal"
+        },
+        "n_reaches_trimmed_inlet_lake": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Downstream end inside a lake \u2014 trimmed to upstream portion, is_terminal set. Row kept; not in the reconciliation.",
+          "examples": [
+            812
+          ],
+          "title": "N Reaches Trimmed Inlet Lake"
+        },
+        "n_reaches_trimmed_outlet_lake": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Upstream end inside a lake \u2014 trimmed to downstream portion, is_headwater set. Row kept; not in the reconciliation.",
+          "examples": [
+            799
+          ],
+          "title": "N Reaches Trimmed Outlet Lake"
+        },
+        "n_reaches_trimmed_coastal": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Downstream end inside coastal coverage, upstream not \u2014 trimmed, terminal_reason='coast'. Row kept; not in the reconciliation.",
+          "examples": [
+            421
+          ],
+          "title": "N Reaches Trimmed Coastal"
+        },
+        "n_reaches_dropped_coastal_cascade": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Removed for being downstream of a coastal encompassed/trimmed reach, not for their own classification.",
+          "examples": [
+            1907
+          ],
+          "title": "N Reaches Dropped Coastal Cascade"
+        },
+        "n_reaches_stranded_coastal": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Tributaries left pointing at a cascade-deleted reach \u2014 made terminal (terminal_reason='coast'), geometry untouched. Row kept; not in the reconciliation.",
+          "examples": [
+            37
+          ],
+          "title": "N Reaches Stranded Coastal"
+        },
+        "n_reaches_split_passthrough_lake": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Passed through a lake with both ends outside it \u2014 split into an inlet/outlet pair, minting a new reach_id (adds one row).",
+          "examples": [
+            133
+          ],
+          "title": "N Reaches Split Passthrough Lake"
+        },
+        "n_reaches_trimmed_between_lakes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Started inside one lake and ended inside another \u2014 trimmed at both ends, keeping the dry middle as a channel between the two. Row kept; not in the reconciliation.",
+          "examples": [
+            24
+          ],
+          "title": "N Reaches Trimmed Between Lakes"
+        },
+        "n_reaches_orphaned_lake": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Left with no upstream and no downstream once lake removal took both neighbors, and not an original headwater \u2014 the island-stub case. Dropped, so it enters the reconciliation.",
+          "examples": [
+            58
+          ],
+          "title": "N Reaches Orphaned Lake"
+        },
+        "n_reaches_merged": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Consumed by a drainage-area-difference merge into a downstream neighbor.",
+          "examples": [
+            41209
+          ],
+          "title": "N Reaches Merged"
+        },
+        "n_reaches_output": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Rows in the written network.gpkg, after every step including merge.",
+          "examples": [
+            820180
+          ],
+          "title": "N Reaches Output"
+        },
+        "n_headwater_reaches": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Rows in the written network.gpkg with is_headwater true \u2014 a state of the final artifact, not a count of any one step.",
+          "examples": [
+            615178
+          ],
+          "title": "N Headwater Reaches"
+        },
+        "n_terminal_reaches": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Rows in the written network.gpkg with is_terminal true \u2014 a state of the final artifact, not a count of any one step.",
+          "examples": [
+            9540
+          ],
+          "title": "N Terminal Reaches"
+        }
+      },
+      "required": [
+        "n_reaches_input",
+        "n_reaches_below_stream_order_removed",
+        "n_reaches_encompassed_removed_lake",
+        "n_reaches_encompassed_removed_coastal",
+        "n_reaches_trimmed_inlet_lake",
+        "n_reaches_trimmed_outlet_lake",
+        "n_reaches_trimmed_coastal",
+        "n_reaches_dropped_coastal_cascade",
+        "n_reaches_stranded_coastal",
+        "n_reaches_split_passthrough_lake",
+        "n_reaches_trimmed_between_lakes",
+        "n_reaches_orphaned_lake",
+        "n_reaches_merged",
+        "n_reaches_output",
+        "n_headwater_reaches",
+        "n_terminal_reaches"
+      ],
+      "title": "Properties",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "modify_network output record: network definition + artifact inventory.\n\nIdentity-only variant of the manifest pattern \u2014 the job operates on the\nwhole network in one shot, with no realization axis, so id ==\nidentity_hash (enforced below).",
+  "properties": {
+    "type": {
+      "const": "network",
+      "default": "network",
+      "description": "Discriminator vs. model/run records.",
+      "title": "Type",
+      "type": "string"
+    },
+    "hash_algo": {
+      "const": "sha256",
+      "default": "sha256",
+      "description": "Hash function for every hash/checksum in this document.",
+      "title": "Hash Algo",
+      "type": "string"
+    },
+    "twod_fim_version": {
+      "default": "0.1.0",
+      "description": "Producer software version (provenance).",
+      "title": "Twod Fim Version",
+      "type": "string"
+    },
+    "created_at": {
+      "description": "Write completion time (UTC). network.json is written last, after network.gpkg/lakes.gpkg.",
+      "examples": [
+        "2026-06-01T09:00:00Z"
+      ],
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "identity_hash": {
+      "description": "Hash of the identity object.",
+      "examples": [
+        "7c2a9e41"
+      ],
+      "pattern": "^[0-9a-f]{8}$",
+      "title": "Identity Hash",
+      "type": "string"
+    },
+    "id": {
+      "description": "Equal to identity_hash \u2014 no realization code to append.",
+      "examples": [
+        "7c2a9e41"
+      ],
+      "pattern": "^[0-9a-f]{8}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "identity": {
+      "$ref": "#/$defs/Identity"
+    },
+    "inputs": {
+      "$ref": "#/$defs/ModifyNetworkInputs",
+      "description": "The modify_network call arguments after default resolution. This is Network's provenance \u2014 not part of identity_hash."
+    },
+    "properties": {
+      "$ref": "#/$defs/Properties"
+    },
+    "assets": {
+      "$ref": "#/$defs/Assets"
+    },
+    "warnings": {
+      "default": [],
+      "description": "Only ambiguous_reach_classification is ever persisted here; network_exists is response-only and never lands in a manifest.",
+      "items": {
+        "$ref": "#/$defs/JobWarning"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "created_at",
+    "identity_hash",
+    "id",
+    "identity",
+    "inputs",
+    "properties",
+    "assets"
+  ],
+  "title": "NetworkManifest",
+  "type": "object"
+}

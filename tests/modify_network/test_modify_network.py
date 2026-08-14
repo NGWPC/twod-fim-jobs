@@ -1828,3 +1828,73 @@ def test_first_contact_partway_still_trims_rather_than_drops(tmp_path):
     np.testing.assert_allclose(
         gdf.set_index(REACH_ID_FIELD).loc["A"].geometry.length, 400.0
     )
+
+
+### CLIPPED EXTRACTS ###
+
+
+@pytest.fixture
+def clipped_extract(tmp_path):
+    """A subset whose boundary reach drains to a reach outside the file.
+
+    B's fp_to_id names a reach that exists in the full hydrofabric but not in
+    this extract. The pointer is real upstream, dangling here.
+    """
+    rows = [
+        ("A", "B", [(0, 0), (1000, 0)]),
+        ("B", "OUTSIDE_THE_SUBSET", [(1000, 0), (2000, 0)]),
+    ]
+    path = tmp_path / "clipped.gpkg"
+    geoms = [LineString(c) for *_, c in rows]
+    gpd.GeoDataFrame(
+        {
+            "fp_id": [r[0] for r in rows],
+            "fp_to_id": [r[1] for r in rows],
+            "total_da_sqkm": [100.0, 200.0],
+            "stream_order": [5, 5],
+        },
+        geometry=geoms,
+        crs=CRS,
+    ).to_file(path, layer="flowpaths", driver="GPKG")
+    return path
+
+
+def test_reach_draining_outside_the_extract_becomes_an_outlet(clipped_extract):
+    """Regression: it was left untagged, carrying a pointer to nothing.
+
+    A clipped or regional extract ends somewhere. That end is an outlet of
+    this network even though the full hydrofabric continues past it.
+    """
+    gdf, counters = nw.load_reach_network(str(clipped_extract), None)
+    gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
+    row = gdf.set_index(REACH_ID_FIELD).loc["B"]
+
+    assert row[IS_TERMINAL_FIELD]
+    assert row[TERMINAL_REASON_FIELD] == "outlet"
+    assert pd.isna(row[REACH_TO_ID_FIELD])
+    assert not row[IS_TRIMMED_FIELD], "the geometry is untouched"
+
+
+def test_clipped_extract_ships_no_dangling_pointers(clipped_extract):
+    """The artifact must never reference a reach it does not contain."""
+    gdf, counters = nw.load_reach_network(str(clipped_extract), None)
+    gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
+    gdf = nw.merge_short_reaches(gdf, 5.0, 5.0, counters)
+    gdf = nw.finalize_network(gdf, counters)
+    live = set(gdf[REACH_ID_FIELD])
+    assert set(gdf[REACH_TO_ID_FIELD].dropna()) <= live
+
+
+def test_terminal_flag_and_reason_never_disagree(pipeline):
+    """Whole-output invariant, independent of which branch set the flag."""
+    gdf, *_ = pipeline
+    terminal = gdf[gdf[IS_TERMINAL_FIELD]]
+    assert not terminal[TERMINAL_REASON_FIELD].isna().any(), (
+        "a terminal reach must say why"
+    )
+    assert not gdf[gdf[TERMINAL_REASON_FIELD].notna() & ~gdf[IS_TERMINAL_FIELD]].shape[
+        0
+    ], "a reason without the flag"
+    assert not terminal[REACH_TO_ID_FIELD].notna().any(), (
+        "a terminal reach must not still point downstream"
+    )

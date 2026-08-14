@@ -294,7 +294,7 @@
             "integer",
             "null"
           ],
-          "description": "Rows in the written network.gpkg with is_terminal true — a state of the final artifact, NOT a count of any one step. Measured after all trimming, splitting, and merging. Three steps set this flag: step 2 (outlets), step 4 (coastal inlets, counted by n_reaches_trimmed_coastal, plus stranded tributaries, counted by n_reaches_stranded_coastal) and step 5 (lake inlets, counted by n_reaches_trimmed_inlet_lake), so this exceeds step 2's own tally. Can overlap n_headwater_reaches — an isolated reach with neither an upstream nor a downstream neighbor is both — so the two are not additive and neither appears in the reconciliation identity. The overlap is incidental, not systematic: headwater and terminal are independent topological ends."
+          "description": "Rows in the written network.gpkg with is_terminal true — a state of the final artifact, NOT a count of any one step. Measured after all trimming, splitting, and merging. Three steps set this flag: step 2 (outlets, including reaches whose downstream is absent from a clipped extract), step 4 (coastal inlets, counted by n_reaches_trimmed_coastal, plus stranded tributaries, counted by n_reaches_stranded_coastal) and step 5 (lake inlets, counted by n_reaches_trimmed_inlet_lake), so this exceeds step 2's own tally. Can overlap n_headwater_reaches — an isolated reach with neither an upstream nor a downstream neighbor is both — so the two are not additive and neither appears in the reconciliation identity. The overlap is incidental, not systematic: headwater and terminal are independent topological ends."
         }
       }
     },

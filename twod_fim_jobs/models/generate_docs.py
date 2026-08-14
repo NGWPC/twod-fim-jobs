@@ -28,9 +28,20 @@ from twod_fim_jobs.models.run_nd_scenarios import (
     RunNDScenariosResult,
 )
 from twod_fim_jobs.models.common import ScenarioRunManifest
+from twod_fim_jobs.models.modify_network import (
+    ModifyNetworkInputs,
+    ModifyNetworkResult,
+    NetworkManifest,
+)
 
 
 JOBS: list[tuple[str, type[BaseModel], type[BaseModel], type[BaseModel] | None]] = [
+    (
+        "modify_network",
+        ModifyNetworkInputs,
+        ModifyNetworkResult,
+        NetworkManifest,
+    ),
     ("build_model", BuildModelInputs, BuildModelResult, ModelManifest),
     (
         "run_nd_scenarios",

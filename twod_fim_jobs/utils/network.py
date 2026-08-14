@@ -274,7 +274,29 @@ def _as_id(series: pd.Series) -> pd.Series:
 
 
 def tag_terminal_reaches(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Null downstream pointer -> terminal outlet (spec step 2)."""
+    """No downstream reach in the network -> terminal outlet (spec step 2).
+
+    Two ways a reach can have no downstream. Its fp_to_id may be null, the
+    ordinary basin outlet. Or fp_to_id may name a reach that is not in the
+    input at all, which is what a clipped or regional extract produces at its
+    boundary: the pointer is real in the full hydrofabric but dangles here.
+
+    Both are outlets of *this* network, so the dangling pointer is nulled and
+    the reach tagged like any other outlet. Leaving it would ship a reference
+    to a reach the artifact does not contain, and would hide a real network
+    end from every downstream consumer.
+    """
+    dangling = gdf[REACH_TO_ID_FIELD].notna() & ~gdf[REACH_TO_ID_FIELD].isin(
+        gdf[REACH_ID_FIELD]
+    )
+    if dangling.any():
+        logger.info(
+            "%d reaches point at a reach absent from the input (clipped "
+            "extract?); nulled and tagged as outlets",
+            int(dangling.sum()),
+        )
+        gdf.loc[dangling, REACH_TO_ID_FIELD] = pd.NA
+
     mask = gdf[REACH_TO_ID_FIELD].isna()
     gdf.loc[mask, IS_TERMINAL_FIELD] = True
     gdf.loc[mask, TERMINAL_REASON_FIELD] = TERMINAL_REASON_OUTLET

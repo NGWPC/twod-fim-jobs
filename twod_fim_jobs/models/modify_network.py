@@ -104,42 +104,53 @@ class Identity(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    sdr_commit: str = Field(description="Methodology version pin (output-determining).")
+    sdr_commit: str = Field(
+        description="Methodology version pin (output-determining).",
+        examples=["826a602d"],
+    )
     reach_network_hash: Hash8 = Field(
-        description="Hash of the raw hydrofabric network source + version."
+        description="Hash of the raw hydrofabric network source + version.",
+        examples=["3ba1c0e2"],
     )
     lakes_layer_hash: Hash8 | None = Field(
         description="Hash of the lakes source + version. Null when no "
-        "lakes dataset was supplied and lake processing was skipped."
+        "lakes dataset was supplied and lake processing was skipped.",
+        examples=["d4e9f1a0"],
     )
     coastal_influence_layer_hash: Hash8 | None = Field(
         description="Hash of the coastal/tidal-influence vector source + version. "
         "Null when no coastal dataset was supplied and coastal processing was "
-        "skipped."
+        "skipped.",
+        examples=["91bb2c3d"],
     )
     drainage_area_threshold_percent: float = Field(
         gt=0,
         description="Max drainage-area difference (%) between reaches eligible "
         "for merge (DR-024).",
+        examples=[5.0],
     )
     stream_order_filter_threshold: Annotated[int, Field(ge=1)] | None = Field(
         description="Minimum Strahler stream order kept in the network at all. "
-        "Null when no threshold was given and the filter did not run."
+        "Null when no threshold was given and the filter did not run.",
+        examples=[3],
     )
     min_length_threshold_km: float = Field(
         gt=0,
         description="Minimum length (km) a reach should reach by merging — a floor, not a ceiling: merging continues until the chain clears it "
         "(DR-024).",
+        examples=[5.0],
     )
     lake_area_threshold_sqkm: float = Field(
         ge=0,
         description="Minimum lake area (km2) considered at all; smaller "
         "waterbodies are dropped before reach classification.",
+        examples=[5.0],
     )
     negative_lake_buffer_meters: float = Field(
         ge=0,
         description="Inward buffer (m) approximating the dead-pool extent "
         "(DR-034 ALT-A).",
+        examples=[50.0],
     )
 
 
@@ -167,70 +178,86 @@ class Properties(BaseModel):
 
     n_reaches_input: Count | None = Field(
         description="Rows in reach_network_path as read, before the "
-        "stream-order filter and any other processing."
+        "stream-order filter and any other processing.",
+        examples=[2483911],
     )
     n_reaches_below_stream_order_removed: Count | None = Field(
         description="Dropped by the stream_order_filter_threshold filter. Null "
-        "when no threshold was given and the filter did not run."
+        "when no threshold was given and the filter did not run.",
+        examples=[1611402],
     )
     n_reaches_encompassed_removed_lake: Count | None = Field(
         description="Fully inside a lake polygon — classified as encompassed "
-        "and dropped. Intermediate classification; leaves no column."
+        "and dropped. Intermediate classification; leaves no column.",
+        examples=[6104],
     )
     n_reaches_encompassed_removed_coastal: Count | None = Field(
         description="Fully inside coastal coverage — classified as encompassed "
-        "and dropped. Intermediate classification; leaves no column."
+        "and dropped. Intermediate classification; leaves no column.",
+        examples=[3184],
     )
     n_reaches_trimmed_inlet_lake: Count | None = Field(
         description="Downstream end inside a lake — trimmed to upstream "
-        "portion, is_terminal set. Row kept; not in the reconciliation."
+        "portion, is_terminal set. Row kept; not in the reconciliation.",
+        examples=[812],
     )
     n_reaches_trimmed_outlet_lake: Count | None = Field(
         description="Upstream end inside a lake — trimmed to downstream "
-        "portion, is_headwater set. Row kept; not in the reconciliation."
+        "portion, is_headwater set. Row kept; not in the reconciliation.",
+        examples=[799],
     )
     n_reaches_trimmed_coastal: Count | None = Field(
         description="Downstream end inside coastal coverage, upstream not — "
-        "trimmed, terminal_reason='coast'. Row kept; not in the reconciliation."
+        "trimmed, terminal_reason='coast'. Row kept; not in the reconciliation.",
+        examples=[421],
     )
     n_reaches_dropped_coastal_cascade: Count | None = Field(
         description="Removed for being downstream of a coastal "
-        "encompassed/trimmed reach, not for their own classification."
+        "encompassed/trimmed reach, not for their own classification.",
+        examples=[1907],
     )
     n_reaches_stranded_coastal: Count | None = Field(
         description="Tributaries left pointing at a cascade-deleted reach — "
         "made terminal (terminal_reason='coast'), geometry untouched. Row "
-        "kept; not in the reconciliation."
+        "kept; not in the reconciliation.",
+        examples=[37],
     )
     n_reaches_split_passthrough_lake: Count | None = Field(
         description="Passed through a lake with both ends outside it — split "
-        "into an inlet/outlet pair, minting a new reach_id (adds one row)."
+        "into an inlet/outlet pair, minting a new reach_id (adds one row).",
+        examples=[133],
     )
     n_reaches_trimmed_between_lakes: Count | None = Field(
         description="Started inside one lake and ended inside another — "
         "trimmed at both ends, keeping the dry middle as a channel between "
-        "the two. Row kept; not in the reconciliation."
+        "the two. Row kept; not in the reconciliation.",
+        examples=[24],
     )
     n_reaches_orphaned_lake: Count | None = Field(
         description="Left with no upstream and no downstream once lake "
         "removal took both neighbors, and not an original headwater — the "
-        "island-stub case. Dropped, so it enters the reconciliation."
+        "island-stub case. Dropped, so it enters the reconciliation.",
+        examples=[58],
     )
     n_reaches_merged: Count | None = Field(
         description="Consumed by a drainage-area-difference merge into a "
-        "downstream neighbor."
+        "downstream neighbor.",
+        examples=[41209],
     )
     n_reaches_output: Count | None = Field(
         description="Rows in the written network.gpkg, after every step "
-        "including merge."
+        "including merge.",
+        examples=[820180],
     )
     n_headwater_reaches: Count | None = Field(
         description="Rows in the written network.gpkg with is_headwater true — "
-        "a state of the final artifact, not a count of any one step."
+        "a state of the final artifact, not a count of any one step.",
+        examples=[615178],
     )
     n_terminal_reaches: Count | None = Field(
         description="Rows in the written network.gpkg with is_terminal true — "
-        "a state of the final artifact, not a count of any one step."
+        "a state of the final artifact, not a count of any one step.",
+        examples=[9540],
     )
 
     _LAKE_COUNTERS: ClassVar[tuple[str, ...]] = (
@@ -301,14 +328,30 @@ class Assets(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     network: Asset = Field(
-        description="The modified reach network (flowpaths layer) — what "
-        "build_model's db_uri points at downstream."
+        description="The modified reach network, written as the reach_network "
+        "layer — the table name build_model queries through its db_uri.",
+        examples=[
+            {
+                "href": "network.gpkg",
+                "checksum": "5151515151515151",
+                "source_url": None,
+                "derived": False,
+            }
+        ],
     )
     lakes: Asset | None = Field(
         default=None,
         description="Filtered + buffered lake polygons actually used for "
         "classification (QC/reference only, DR-037 ALT-B). Present only when "
         "lake processing ran.",
+        examples=[
+            {
+                "href": "lakes.gpkg",
+                "checksum": "6262626262626262",
+                "source_url": None,
+                "derived": False,
+            }
+        ],
     )
 
     @model_serializer(mode="wrap")
@@ -333,11 +376,13 @@ class ModifyNetworkInputs(BaseModel):
     # Required
     reach_network_path: str = Field(
         description="Raw hydrofabric reach network. Must be a GPKG file; "
-        "column/layer names follow the NHF v1.2.3 flowpaths layer schema."
+        "column/layer names follow the NHF v1.2.3 flowpaths layer schema.",
+        examples=["s3://bucket/pre/nhf_network_raw.gpkg"],
     )
     base_output_path: str = Field(
         description="Output location for the modified network and manifest; "
-        "artifacts are written under <base_output_path>/<identity_hash>/."
+        "artifacts are written under <base_output_path>/<identity_hash>/.",
+        examples=["s3://twod-fim/version=v1/network"],
     )
 
     # Optional
@@ -345,12 +390,14 @@ class ModifyNetworkInputs(BaseModel):
         default=None,
         description="Lakes dataset (NHF v1.2.3 lakes_polygons layer "
         "schema). Must be a GPKG file. Omit to skip lake processing entirely.",
+        examples=["s3://bucket/reference/nhf_lakes_polygons.gpkg"],
     )
     coastal_influence_layer_path: str | None = Field(
         default=None,
         description="Coastal/tidal-influence surface boundary vector dataset. "
         "Must be a GPKG file; default layer name is coastal_influence. Omit to "
         "skip coastal processing entirely.",
+        examples=["s3://bucket/reference/coastal_boundary.gpkg"],
     )
     drainage_area_threshold_percent: float = Field(
         default=DEFAULT_DRAINAGE_AREA_THRESHOLD_PERCENT,
@@ -363,6 +410,7 @@ class ModifyNetworkInputs(BaseModel):
         description="Minimum Strahler stream order kept in the network at all. "
         "Omit to skip stream-order filtering entirely — every reach enters "
         "processing.",
+        examples=[3],
     )
     min_length_threshold_km: float = Field(
         default=DEFAULT_MIN_LENGTH_THRESHOLD_KM,
@@ -387,9 +435,18 @@ class ModifyNetworkInputs(BaseModel):
 class ModifyNetworkResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    identity_hash: str
-    network_dir: str
-    warnings: list[SerializeAsAny[JobWarning]]
+    identity_hash: str = Field(
+        description="Hash of the network identity inputs (methodology, sources, "
+        "thresholds). Addresses the output directory and forks on any change.",
+        examples=["7c2a9e41"],
+    )
+    network_dir: str = Field(
+        description="Content-addressed path where the network artifacts were written.",
+        examples=["s3://twod-fim/version=v1/network/7c2a9e41/"],
+    )
+    warnings: list[SerializeAsAny[JobWarning]] = Field(
+        description="Non-fatal warnings raised during the job.",
+    )
 
 
 class NetworkManifest(BaseModel):
@@ -415,11 +472,15 @@ class NetworkManifest(BaseModel):
     )
     created_at: datetime = Field(
         description="Write completion time (UTC). network.json is written "
-        "last, after network.gpkg/lakes.gpkg."
+        "last, after network.gpkg/lakes.gpkg.",
+        examples=["2026-06-01T09:00:00Z"],
     )
-    identity_hash: Hash8 = Field(description="Hash of the identity object.")
+    identity_hash: Hash8 = Field(
+        description="Hash of the identity object.", examples=["7c2a9e41"]
+    )
     id: Hash8 = Field(
-        description="Equal to identity_hash — no realization code to append."
+        description="Equal to identity_hash — no realization code to append.",
+        examples=["7c2a9e41"],
     )
     identity: Identity
     inputs: ModifyNetworkInputs = Field(

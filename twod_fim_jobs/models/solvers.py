@@ -191,6 +191,12 @@ class PostProcessResult(BaseModel):
         description="Local path to the zarr store, if generated",
     )
 
+    @field_validator("nominal_wse")
+    @classmethod
+    def round_nominal_wse(cls, v: float) -> float:
+        """Round nominal_wse to 1 decimal place."""
+        return round(v, 1)
+
 
 class SolveScenarioResults(BaseModel):
     convergence_results: list[ConvergenceResult]
@@ -214,6 +220,12 @@ class RunScenarioResults(BaseModel):
     sim_time: float = Field(
         description="Simulation time (model time)in seconds at the final timestep"
     )
+
+    @field_validator("nominal_wse")
+    @classmethod
+    def round_nominal_wse(cls, v: float) -> float:
+        """Round nominal_wse to 1 decimal place."""
+        return round(v, 1)
 
 
 class RunScenarioInputs(BaseModel):
@@ -249,6 +261,8 @@ class RunScenarioInputs(BaseModel):
     def scenario_out_dir(self) -> str:
         """Derive path where this scenario's data will be saved."""
         from twod_fim_jobs.hydraulic_solvers.identities import get_run_identity_hash
+        # TODO: move this import while avoiding circular deps.
+        # We should have run itentity model defined here and just give it appropriate defaults.
 
         run_id_hash = get_run_identity_hash()
         return f"{self.base_out_dir}/{self.reach_id}/{self.model_id}/{run_id_hash}/{self.scenario_dir_name}"
@@ -285,28 +299,18 @@ class RunScenarioInputs(BaseModel):
     @property
     def scenario_dir_name(self) -> str:
         """Directory name used to house this scenario's assets."""
-        if len(self.kwse_bcs) == 0:
-            nd = self.nd_bcs[0].value
-            ds_str = f"nd={f'{nd:.{RUN_NAME_SLOPE_ROUNDING_PRECISION}e}'.replace('-', '').replace('e', 'E')}"
-        else:
-            kwse = self.kwse_bcs[0].value
-            ds_str = f"kwse={f'{kwse:.{RUN_NAME_KWSE_ROUNDING_PRECISION}f}'}"
-        q = self.q_bcs[0].value
-        us_str = f"q={q:.{RUN_NAME_Q_ROUNDING_PRECISION}f}"
-        return f"{ds_str}/{us_str}"
+        kwse_value = self.kwse_bcs[0].value if len(self.kwse_bcs) > 0 else None
+        nd_value = self.nd_bcs[0].value if len(self.nd_bcs) > 0 else None
+        q_value = self.q_bcs[0].value
+        return get_scenario_dir_name(kwse_value, nd_value, q_value)
 
     @property
     def scenario_code(self) -> str:
         """Scenario code for the run, e.g. KWSE200.2Q1000."""
-        if len(self.kwse_bcs) == 0:
-            nd = self.nd_bcs[0].value
-            ds_str = f"ND{f'{nd:.{RUN_NAME_SLOPE_ROUNDING_PRECISION}e}'.replace('-', '').replace('e', 'E')}"
-        else:
-            kwse = self.kwse_bcs[0].value
-            ds_str = f"KWSE{f'{kwse:.{RUN_NAME_KWSE_ROUNDING_PRECISION}f}'}"
-        q = self.q_bcs[0].value
-        us_str = f"Q{q:.{RUN_NAME_Q_ROUNDING_PRECISION}f}"
-        return f"{ds_str}{us_str}"
+        kwse_value = self.kwse_bcs[0].value if len(self.kwse_bcs) > 0 else None
+        nd_value = self.nd_bcs[0].value if len(self.nd_bcs) > 0 else None
+        q_value = self.q_bcs[0].value
+        return get_scenario_code(kwse_value, nd_value, q_value)
 
     @property
     def inflow(self) -> float:

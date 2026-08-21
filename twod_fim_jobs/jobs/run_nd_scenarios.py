@@ -4,14 +4,6 @@ from pathlib import Path
 
 import numpy as np
 from twod_fim_jobs.consts import (
-    ADAPTIVE_STEP_ALGORITHM_GROW_FACTOR,
-    ADAPTIVE_STEP_ALGORITHM_SHRINK_FACTOR,
-    ADAPTIVE_STEP_ALGORITHM_EXTENT_MAX_ACCEPTABLE,
-    ADAPTIVE_STEP_ALGORITHM_EXTENT_MIN_ACCEPTABLE,
-    ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MAX_ACCEPTABLE,
-    ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MIN_ACCEPTABLE,
-    ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MAX_ACCEPTABLE,
-    ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MIN_ACCEPTABLE,
     MINIMUM_REACH_SLOPE,
 )
 from twod_fim_jobs.hydraulic_solvers.common import run_scenario
@@ -64,7 +56,7 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
             inputs.min_upstream_inflow, downstream_bc, model_manifest, inputs, tmp_dir
         )
         current_scenario = ref_scenario
-        scenario_comparison = compare_scenario_changes(current_scenario, None)
+        scenario_comparison = compare_scenario_changes(current_scenario, inputs, None)
         results = RunNDScenariosResult(
             scenario_comparison_results=[scenario_comparison], warnings=[]
         )
@@ -87,12 +79,14 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 results.warnings.append(WaterOnEdgeWarning())
                 return results
 
-            scenario_comparison = compare_scenario_changes(trial_scenario, ref_scenario)
+            scenario_comparison = compare_scenario_changes(
+                trial_scenario, inputs, ref_scenario
+            )
             results.scenario_comparison_results.append(scenario_comparison)
 
             if scenario_comparison.result == "reject_high":
                 logger.info(f"Rejecting trial discharge {round(q_trial, 1)}: high")
-                delta_us_discharge *= ADAPTIVE_STEP_ALGORITHM_SHRINK_FACTOR
+                delta_us_discharge *= inputs.adaptive_step_algorithm_shrink_factor
 
             elif scenario_comparison.result == "accept":
                 logger.info(f"Accepting trial discharge {round(q_trial, 1)}")
@@ -102,7 +96,7 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
             elif scenario_comparison.result == "reject_low":
                 logger.info(f"Rejecting trial discharge {round(q_trial, 1)}: low")
                 current_scenario = trial_scenario
-                delta_us_discharge *= ADAPTIVE_STEP_ALGORITHM_GROW_FACTOR
+                delta_us_discharge *= inputs.adaptive_step_algorithm_grow_factor
 
             q_trial = current_scenario.us_discharge + delta_us_discharge
 
@@ -115,7 +109,7 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
             hot_start=current_scenario.assets.depth,
         )
         scenario_comparison = compare_scenario_changes(
-            trial_scenario, ref_scenario, force_accept=True
+            trial_scenario, inputs, ref_scenario, force_accept=True
         )
         results.scenario_comparison_results.append(scenario_comparison)
 
@@ -192,6 +186,7 @@ def _run_scenario(
 
 def compare_scenario_changes(
     trial_scenario: RunScenarioManifest,
+    inputs: RunNDScenariosInputs,
     ref_scenario: RunScenarioManifest | None = None,
     force_accept: bool = False,
 ) -> AdaptiveStepComparisonResults:
@@ -224,15 +219,17 @@ def compare_scenario_changes(
 
     # reject_high takes priority: any criterion over its ceiling means the step was too large
     if (
-        max_depth_diff > ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MAX_ACCEPTABLE
-        or median_depth_diff > ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MAX_ACCEPTABLE
-        or extent_diff > ADAPTIVE_STEP_ALGORITHM_EXTENT_MAX_ACCEPTABLE
+        max_depth_diff > inputs.adaptive_step_algorithm_max_stage_max_acceptable
+        or median_depth_diff
+        > inputs.adaptive_step_algorithm_median_stage_max_acceptable
+        or extent_diff > inputs.adaptive_step_algorithm_extent_max_acceptable
     ):
         result = "reject_high"
     elif (
-        ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MIN_ACCEPTABLE <= max_depth_diff
-        or ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MIN_ACCEPTABLE <= median_depth_diff
-        or ADAPTIVE_STEP_ALGORITHM_EXTENT_MIN_ACCEPTABLE <= extent_diff
+        inputs.adaptive_step_algorithm_max_stage_min_acceptable <= max_depth_diff
+        or inputs.adaptive_step_algorithm_median_stage_min_acceptable
+        <= median_depth_diff
+        or inputs.adaptive_step_algorithm_extent_min_acceptable <= extent_diff
     ):
         result = "accept"
     else:

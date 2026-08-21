@@ -1,9 +1,18 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Literal
 from twod_fim_jobs.consts import (
+    ADAPTIVE_STEP_ALGORITHM_EXTENT_MAX_ACCEPTABLE,
+    ADAPTIVE_STEP_ALGORITHM_EXTENT_MIN_ACCEPTABLE,
+    ADAPTIVE_STEP_ALGORITHM_GROW_FACTOR,
+    ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MAX_ACCEPTABLE,
+    ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MIN_ACCEPTABLE,
+    ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MAX_ACCEPTABLE,
+    ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MIN_ACCEPTABLE,
+    ADAPTIVE_STEP_ALGORITHM_SHRINK_FACTOR,
     DEFAULT_MAX_WALL_TIME_SECONDS,
     DEFAULT_SIM_TIME_SECONDS,
     DEFAULT_SIM_SAVE_INTERVAL_SECONDS,
+    DEFAULT_VOLUME_CONVERGENCE_THRESHOLD,
 )
 
 from twod_fim_jobs.models.warnings import JobWarning
@@ -37,10 +46,6 @@ class RunNDScenariosInputs(BaseModel):
         description="Discharge increment for adaptive step algorithm in cms",
         examples=[100.0],
     )
-    ds_slope: float = Field(
-        description="Slope value to apply for the downstream boundary condition in m/m",
-        examples=[0.01],
-    )
     outflow_area_polygon_path: str = Field(
         description="Path to a polygon that determines where normal depth boundary condition will be applied.",
         examples=["s3://twod-fim/version=v1/shared/outflow_area.geojson"],
@@ -48,7 +53,7 @@ class RunNDScenariosInputs(BaseModel):
 
     # Optional
     volume_convergence_tolerance: float = Field(
-        default=0,
+        default=DEFAULT_VOLUME_CONVERGENCE_THRESHOLD,
         description="Volume increase in the reach as a percent of inflow below which model is considered steady",
         examples=[0.1],
     )
@@ -81,6 +86,46 @@ class RunNDScenariosInputs(BaseModel):
         default=False,
         description="Whether or not to generate and save a zarr file with wse and depth at each print interval",
         examples=[False],
+    )
+    adaptive_step_algorithm_shrink_factor: float = Field(
+        default=ADAPTIVE_STEP_ALGORITHM_SHRINK_FACTOR,
+        description="Multiplier applied to the discharge step size when a trial scenario is rejected for producing too large a change",
+        examples=[0.5],
+    )
+    adaptive_step_algorithm_grow_factor: float = Field(
+        default=ADAPTIVE_STEP_ALGORITHM_GROW_FACTOR,
+        description="Multiplier applied to the discharge step size when a trial scenario is accepted or rejected for producing too small a change",
+        examples=[1.5],
+    )
+    adaptive_step_algorithm_max_stage_min_acceptable: float = Field(
+        default=ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MIN_ACCEPTABLE,
+        description="Minimum 95th-percentile depth difference (m) between consecutive discharge scenarios required to accept the step",
+        examples=[0.75],
+    )
+    adaptive_step_algorithm_max_stage_max_acceptable: float = Field(
+        default=ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MAX_ACCEPTABLE,
+        description="Maximum 95th-percentile depth difference (m) between consecutive discharge scenarios before rejection",
+        examples=[1.25],
+    )
+    adaptive_step_algorithm_median_stage_min_acceptable: float = Field(
+        default=ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MIN_ACCEPTABLE,
+        description="Minimum median depth difference (m) between consecutive discharge scenarios required to accept the step",
+        examples=[0.25],
+    )
+    adaptive_step_algorithm_median_stage_max_acceptable: float = Field(
+        default=ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MAX_ACCEPTABLE,
+        description="Maximum median depth difference (m) between consecutive discharge scenarios before rejection",
+        examples=[0.75],
+    )
+    adaptive_step_algorithm_extent_min_acceptable: float = Field(
+        default=ADAPTIVE_STEP_ALGORITHM_EXTENT_MIN_ACCEPTABLE,
+        description="Minimum fractional change in inundated area between consecutive discharge scenarios required to accept the step",
+        examples=[0.075],
+    )
+    adaptive_step_algorithm_extent_max_acceptable: float = Field(
+        default=ADAPTIVE_STEP_ALGORITHM_EXTENT_MAX_ACCEPTABLE,
+        description="Maximum fractional change in inundated area between consecutive discharge scenarios before rejection",
+        examples=[0.125],
     )
 
     @field_validator("save_velocity")

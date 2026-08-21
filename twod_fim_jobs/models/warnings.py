@@ -38,3 +38,13 @@ class LargeDomainAreaWarning(JobWarning):
         BaseModel.__init__(
             self, message=message, domain_area=domain_area, threshold=threshold
         )
+
+
+class WaterOnEdgeWarning(JobWarning):
+    """Warning emitted when water pools on an invalid edge mid-run."""
+
+    code: ClassVar[str] = "water_on_edge"
+
+    def __init__(self):
+        message = "Water pooled on a domain edge where it was not expected."
+        BaseModel.__init__(self, message=message)

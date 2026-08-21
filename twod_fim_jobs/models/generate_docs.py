@@ -2,7 +2,7 @@
 
 Writes to:
   schemas/<job>/{inputs,result,manifest}.json
-  docs/jobs/<job>/<job>.example.json
+  docs/jobs/<job>/<job>.example.jsonc
   docs/jobs/<job>/<job>.md  (injects between <!-- AUTO:* --> sentinels only)
 
 Usage:
@@ -27,7 +27,11 @@ from twod_fim_jobs.models.run_nd_scenarios import (
     RunNDScenariosInputs,
     RunNDScenariosResult,
 )
-from twod_fim_jobs.models.common import ScenarioRunManifest
+from twod_fim_jobs.models.run_kwse_scenarios import (
+    RunKWSEScenariosInputs,
+    RunKWSEScenariosResult,
+)
+from twod_fim_jobs.models.solvers import RunScenarioManifest
 
 
 JOBS: list[tuple[str, type[BaseModel], type[BaseModel], type[BaseModel] | None]] = [
@@ -36,12 +40,76 @@ JOBS: list[tuple[str, type[BaseModel], type[BaseModel], type[BaseModel] | None]]
         "run_nd_scenarios",
         RunNDScenariosInputs,
         RunNDScenariosResult,
-        ScenarioRunManifest,
+        RunScenarioManifest,
     ),
+    ("RunKWSEScenariosResult", RunKWSEScenariosInputs, RunKWSEScenariosResult, None),
 ]
 
 SENTINEL_START = "<!-- AUTO:{key} -->"
 SENTINEL_END = "<!-- /AUTO:{key} -->"
+
+
+def _extract_field_descriptions(
+    prop_schema: dict[str, Any], defs: dict[str, Any]
+) -> "str | dict[str, Any]":
+    """Return a description string for leaf fields, or a nested dict for object fields."""
+    desc = prop_schema.get("description", "")
+    resolved = prop_schema
+    if "$ref" in prop_schema:
+        resolved = _resolve_ref(prop_schema["$ref"], defs)
+        desc = desc or resolved.get("description", "")
+    for combiner in ("anyOf", "oneOf"):
+        if combiner in resolved:
+            for branch in resolved[combiner]:
+                r = _resolve_ref(branch["$ref"], defs) if "$ref" in branch else branch
+                if r.get("type") != "null":
+                    child = _extract_field_descriptions(r, defs)
+                    return child if isinstance(child, dict) else desc or child
+            break
+    if resolved.get("type") == "object" and "properties" in resolved:
+        return {
+            k: _extract_field_descriptions(v, defs)
+            for k, v in resolved["properties"].items()
+        }
+    return desc
+
+
+def _build_descriptions(model_cls: type[BaseModel]) -> dict[str, Any]:
+    schema = model_cls.model_json_schema()
+    defs = schema.get("$defs", {})
+    return {
+        name: _extract_field_descriptions(prop, defs)
+        for name, prop in schema.get("properties", {}).items()
+    }
+
+
+def _to_jsonc(data: Any, descriptions: dict[str, Any], indent: int = 4) -> str:
+    """Render data as JSONC with inline // description comments."""
+    pad = "  " * indent
+    inner = "  " * (indent + 1)
+    if not isinstance(data, dict):
+        return json.dumps(data)
+    lines = ["{"]
+    items = list(data.items())
+    for i, (key, value) in enumerate(items):
+        comma = "," if i < len(items) - 1 else ""
+        field_desc = descriptions.get(key, "")
+        if isinstance(value, dict) and isinstance(field_desc, dict):
+            nested = _to_jsonc(value, field_desc, indent + 1)
+            lines.append(f'{inner}"{key}": {nested}{comma}')
+        else:
+            if isinstance(value, dict):
+                rendered = _to_jsonc(value, {}, indent + 1)
+            else:
+                rendered = json.dumps(value)
+            comment = (
+                f"  // {field_desc}"
+                if isinstance(field_desc, str) and field_desc
+                else ""
+            )
+            lines.append(f'{inner}"{key}": {rendered}{comma}{comment}')
+    lines.append(f"{pad}}}")
+    return "\n".join(lines)
 
 
 def export_schemas(schemas_dir: Path) -> None:
@@ -68,7 +136,7 @@ def _resolve_ref(ref: str, defs: dict[str, Any]) -> dict[str, Any]:
 def _extract_example(prop_schema: dict[str, Any], defs: dict[str, Any]) -> Any:
     """Return the first examples value, or fall back to default, or a typed placeholder."""
     # Check default/examples on the raw property before any resolution (catches nullable defaults)
-    if "examples" in prop_schema and prop_schema["examples"]:
+    if prop_schema.get("examples"):
         return prop_schema["examples"][0]
     if "default" in prop_schema:
         return prop_schema["default"]
@@ -76,7 +144,7 @@ def _extract_example(prop_schema: dict[str, Any], defs: dict[str, Any]) -> Any:
     # Resolve $ref
     if "$ref" in prop_schema:
         prop_schema = _resolve_ref(prop_schema["$ref"], defs)
-        if "examples" in prop_schema and prop_schema["examples"]:
+        if prop_schema.get("examples"):
             return prop_schema["examples"][0]
         if "default" in prop_schema:
             return prop_schema["default"]
@@ -137,8 +205,9 @@ def export_examples(docs_dir: Path) -> None:
         job_dir = docs_dir / "jobs" / job_name
         job_dir.mkdir(parents=True, exist_ok=True)
         example = build_example(manifest_cls)
-        path = job_dir / f"{job_name}.example.json"
-        path.write_text(json.dumps(example, indent=2) + "\n")
+        descriptions = _build_descriptions(manifest_cls)
+        path = job_dir / f"{job_name}.example.jsonc"
+        path.write_text(_to_jsonc(example, descriptions) + "\n")
         print(f"  wrote {path}")
         schema_path = job_dir / f"{job_name}.schema.json"
         schema_path.write_text(

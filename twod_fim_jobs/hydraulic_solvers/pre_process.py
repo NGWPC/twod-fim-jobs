@@ -2,20 +2,28 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Literal
 
 import numpy as np
 import rasterio
 import rasterio.transform
 from affine import Affine
-from pydantic import BaseModel, ConfigDict
 from shapely import LineString, MultiLineString, MultiPolygon, Point, Polygon
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import linemerge, unary_union
-
+import geopandas as gpd
 from twod_fim_jobs.models.build_model import Domain, GridProperties
-from twod_fim_jobs.models.common import RunConfig
-from twod_fim_jobs.utils.geospatial import rasterize_geometry
+from twod_fim_jobs.models.common import Asset
+from twod_fim_jobs.utils.geospatial import rasterize_geometry, tif_to_asc
+from twod_fim_jobs.models.solvers import (
+    BoundaryConditionElement,
+    QFixBC,
+    RunConfig,
+    RunScenarioInputs,
+    BoundaryCondition,
+    TransferBC,
+)
+from twod_fim_jobs.consts import SCENARIO_SOLVER, SupportedSolver
+from twod_fim_jobs.utils.storage import ASSET_CACHE
 
 logger = logging.getLogger(__name__)
 
@@ -23,35 +31,24 @@ logger = logging.getLogger(__name__)
 ### CLASSES ###
 
 
-class BoundaryConditionElement(BaseModel):
-    """Single boundary condition element with its type, value, and grid location."""
-
-    model_config = ConfigDict(frozen=True)
-
-    element_type: str  # "P" for point; "N"/"S"/"E"/"W" for cardinal edge
-    bc_type: Literal["QFIX", "HFIX", "FREE", "TRANSFER"]
-    value: float | str
-    x_coord: float
-    y_coord: float
-    x_ind: int
-    y_ind: int
-
-
 class LisfloodWriter:
-    def export(
-        self,
-        bcs: list[BoundaryConditionElement],
-        terrain_path: str | Path,
-        roughness_path: str | Path,
-        run_config: RunConfig,
-        output_dir: Path,
-    ) -> dict[str, Path]:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        bci_path = self.write_bci_file(bcs, output_dir)
-        par_path = self.write_par_file(
-            terrain_path, roughness_path, run_config, bci_path, output_dir
+    def export(self, run_scenario_inputs: RunScenarioInputs) -> Path:
+        bc_elements = process_bc_lines(
+            run_scenario_inputs.boundary_conditions,
+            run_scenario_inputs.domain,
+            run_scenario_inputs.grid_properties,
         )
-        return {"par_path": par_path, "bci_path": bci_path}
+        run_scenario_inputs.working_dir.mkdir(parents=True, exist_ok=True)
+        bci_path = self.write_bci_file(bc_elements, run_scenario_inputs.working_dir)
+        par_path = self.write_par_file(
+            run_scenario_inputs.terrain,
+            run_scenario_inputs.roughness,
+            run_scenario_inputs.run_config,
+            bci_path,
+            run_scenario_inputs.working_dir,
+            run_scenario_inputs.hot_start,
+        )
+        return par_path
 
     def write_bci_file(
         self,
@@ -68,18 +65,25 @@ class LisfloodWriter:
 
     def write_par_file(
         self,
-        terrain_path: str | Path,
-        roughness_path: str | Path,
+        terrain: Asset,
+        roughness: Asset,
         run_config: RunConfig,
         bci_path: Path,
         output_dir: Path,
+        hot_start: Asset | None,
     ) -> Path:
         par_path = output_dir / "lisflood.par"
+
+        resolved_terrain = ASSET_CACHE.materialize_path(terrain)
+        resolved_roughness = ASSET_CACHE.materialize_path(roughness)
+        resolved_terrain = tif_to_asc(resolved_terrain)
+        resolved_roughness = tif_to_asc(resolved_roughness)
+
         cfg: dict[str, object] = {
             "resroot": output_dir.name,
             "dirroot": str(output_dir),
-            "DEMfile": terrain_path,
-            "manningfile": roughness_path,
+            "DEMfile": resolved_terrain,
+            "manningfile": resolved_roughness,
             "bcifile": str(bci_path),
             "saveint": run_config.save_interval_seconds,
             "massint": run_config.mass_interval_seconds,
@@ -91,8 +95,10 @@ class LisfloodWriter:
             cfg["cuda"] = ""
         if run_config.use_elevoff:
             cfg["elevoff"] = ""
-        if run_config.initial_state_path is not None:
-            cfg["startfile"] = str(run_config.initial_state_path)
+        if hot_start is not None:
+            resolved_hot_start = ASSET_CACHE.materialize_path(hot_start)
+            resolved_hot_start = tif_to_asc(resolved_hot_start)
+            cfg["startfile"] = resolved_hot_start
         with open(par_path, mode="w") as f:
             for k, v in cfg.items():
                 f.write(f"{k} {v}\n")
@@ -304,57 +310,38 @@ class SfincsWriter:
 ### METHODS ###
 
 
-def write_kwse_model_files(
-    inflow_line: LineString,
-    stl_line: LineString,
-    outflow_area: Polygon,
-    domain: Domain,
-    grid: GridProperties,
-    us_discharge: float,
-    ds_wse: float,
-    nominal_wse: float,
-    terrain_path: str | Path,
-    roughness_path: str | Path,
-    run_config: RunConfig,
-    output_dir: Path,
-) -> None:
-    """Assemble BCs and write LISFLOOD input files for a KWSE scenario."""
-    inflow_bc = process_bc_line(inflow_line, "QFIX", us_discharge, domain, grid)
-    stl_bc = process_bc_line(stl_line, "TRANSFER", nominal_wse, domain, grid)
-    outflow_bc = process_bc_line(outflow_area, "HFIX", ds_wse, domain, grid)
-    bcs = inflow_bc + stl_bc + outflow_bc
-    LisfloodWriter().export(bcs, terrain_path, roughness_path, run_config, output_dir)
+def write_model_files(run_scenario_inputs: RunScenarioInputs) -> Path:
+    if SCENARIO_SOLVER == SupportedSolver.LISFLOOD:
+        return LisfloodWriter().export(run_scenario_inputs)
+    elif SCENARIO_SOLVER == SupportedSolver.SFINCS:
+        raise NotImplementedError(
+            "Tried to generate model files for SFINCS, but this solver is not yet supported."
+        )
+    else:
+        return Path()
 
 
-def write_nd_model_files(
+def process_bc_lines(
+    boundary_conditions: list[BoundaryCondition],
     domain: Domain,
-    grid: GridProperties,
-    terrain_path: str | Path,
-    roughness_path: str | Path,
-    inflow_line: LineString,
-    outflow_area: Polygon,
-    ds_slope: float,
-    us_discharge: float,
-    run_config: RunConfig,
-    output_dir: Path,
-) -> dict[str, Path]:
-    logger.info(f"Writing solver files to {output_dir}")
-    inflow_bc = process_bc_line(inflow_line, "QFIX", us_discharge, domain, grid)
-    outflow_bc = process_bc_line(outflow_area, "FREE", ds_slope, domain, grid)
-    bcs = inflow_bc + outflow_bc
-    return LisfloodWriter().export(
-        bcs, terrain_path, roughness_path, run_config, output_dir
-    )
+    grid_properties: GridProperties,
+) -> list[BoundaryConditionElement]:
+    bcs = []
+    for i in boundary_conditions:
+        bcs.extend(process_bc_line(i, domain, grid_properties))
+    return bcs
 
 
 def process_bc_line(
-    bc_geom: BaseGeometry,
-    bc_type: Literal["QFIX", "HFIX", "FREE", "TRANSFER"],
-    bc_value: float | str,
+    boundary_condition: BoundaryCondition,
     domain: Domain,
     grid_properties: GridProperties,
 ) -> list[BoundaryConditionElement]:
     """Convert a geometry and boundary condition type into a list of BoundaryConditionElements."""
+    # Get geometry
+    resolved_geom = ASSET_CACHE.materialize_path(boundary_condition.vector)
+    bc_geom = gpd.read_file(resolved_geom).geometry.iloc[0]
+
     transform = _build_transform(domain, grid_properties)
     pts = geometry_to_bc_points(bc_geom, grid_properties, transform, domain)
 
@@ -363,15 +350,17 @@ def process_bc_line(
 
     resolution = _compute_resolution(domain, grid_properties)
 
-    if bc_type == "QFIX":
-        q_per_cell = float(bc_value) / (resolution * len(pts))
+    if isinstance(boundary_condition, QFixBC):
+        q_per_cell = float(boundary_condition.value) / (resolution * len(pts))
         tagged = [[*pt, "QFIX", q_per_cell] for pt in pts]
-    elif bc_type == "TRANSFER":
+    elif isinstance(boundary_condition, TransferBC):
         raise NotImplementedError(
             "TRANSFER boundary conditions are not yet implemented"
         )
     else:
-        tagged = [[*pt, bc_type, bc_value] for pt in pts]
+        tagged = [
+            [*pt, boundary_condition.bc_type, boundary_condition.value] for pt in pts
+        ]
 
     out = []
     for item in tagged:

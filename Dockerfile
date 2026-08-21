@@ -69,4 +69,16 @@ FROM ghcr.io/dewberry/lisflood-fp:sha-aa006ae776b084eac5d00c8b165d2f1e1f689b0d-g
 
 COPY --from=ghcr.io/prefix-dev/pixi:0.70.2-bookworm /usr/local/bin/pixi /usr/local/bin/pixi
 
+# Create non-root user matching the host user to avoid root-owned files on bind mounts
+ARG USER_UID=1000
+ARG USER_GID=1000
+RUN groupadd --gid ${USER_GID} vscode \
+    && useradd --uid ${USER_UID} --gid ${USER_GID} -m --shell /bin/bash vscode \
+    && mkdir -p /workspaces/twod-fim-jobs \
+    && chown vscode:vscode /workspaces/twod-fim-jobs
+
 WORKDIR /workspaces/twod-fim-jobs
+USER vscode
+
+# Install dev env on first start (source is bind-mounted from WSL at runtime)
+CMD ["bash", "-c", "pixi install --frozen && tail -f /dev/null"]

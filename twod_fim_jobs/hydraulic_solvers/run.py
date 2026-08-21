@@ -8,49 +8,30 @@ import time
 import numpy as np
 
 from twod_fim_jobs.consts import STABILITY_WAIT
-from twod_fim_jobs.models.common import (
+from twod_fim_jobs.models.solvers import (
     TerminationCondition,
     BoundaryCheckResult,
     ConvergenceResult,
 )
-from twod_fim_jobs.utils.geospatial import Raster
+from twod_fim_jobs.models.solvers import RunScenarioInputs, SolveScenarioResults
+from twod_fim_jobs.utils.geospatial import Raster, load_dem_and_get_pt_indices
 
 logger = logging.getLogger(__name__)
 
 ### METHODS ###
 
 
-def run_scenario(
-    parfile_path: Path,
-    inflow: float | None = None,
-    convergence_tolerance: float | None = None,
-    save_interval_sec: float | None = None,
-    endpoint_indices: tuple[tuple[int, int], tuple[int, int]] | None = None,
-    dem_array: np.ndarray | None = None,
-    allow_water_on_edges: bool = False,
-) -> tuple[list[ConvergenceResult], TerminationCondition, float]:
-    _validate_convergence_params(inflow, save_interval_sec, convergence_tolerance)
-    _validate_boundary_params(endpoint_indices, dem_array)
-    process = run_lisflood(parfile_path)
+def solve_scenario(
+    config_path: Path, run_scenario_inputs: RunScenarioInputs
+) -> SolveScenarioResults:
+    process = run_lisflood(config_path)
 
-    t0 = time.perf_counter()
     with ThreadPoolExecutor(max_workers=1) as executor:
-        watcher_future = executor.submit(
-            watch_run,
-            parfile_path.parent,
-            process,
-            inflow,
-            save_interval_sec,
-            convergence_tolerance,
-            endpoint_indices,
-            dem_array,
-            allow_water_on_edges,
-        )
+        watcher_future = executor.submit(watch_run, process, run_scenario_inputs)
         process.wait()  # watcher will terminate early if converged
         watcher_results = watcher_future.result()
-    runtime_seconds = time.perf_counter() - t0
 
-    return (*watcher_results, runtime_seconds)
+    return watcher_results
 
 
 def run_lisflood(parfile_path: Path, pipe_out_logs: bool = True) -> subprocess.Popen:
@@ -78,56 +59,22 @@ def run_lisflood(parfile_path: Path, pipe_out_logs: bool = True) -> subprocess.P
     return process
 
 
-def _validate_convergence_params(
-    inflow: float | None,
-    save_interval_sec: float | None,
-    convergence_tolerance: float | None,
-) -> None:
-    params = {
-        "inflow": inflow,
-        "save_interval_sec": save_interval_sec,
-        "convergence_tolerance": convergence_tolerance,
-    }
-    provided = {k for k, v in params.items() if v is not None}
-    if provided and len(provided) != len(params):
-        missing = sorted(set(params) - provided)
-        raise ValueError(
-            f"If any convergence parameter is provided, all must be provided. "
-            f"Got: {sorted(provided)}, missing: {missing}"
-        )
-
-
-def _validate_boundary_params(
-    endpoint_indices: tuple[tuple[int, int], tuple[int, int]] | None,
-    dem_array: np.ndarray | None,
-) -> None:
-    params = {"endpoint_indices": endpoint_indices, "dem_array": dem_array}
-    provided = {k for k, v in params.items() if v is not None}
-    if provided and len(provided) != len(params):
-        missing = sorted(set(params) - provided)
-        raise ValueError(
-            f"If any boundary parameter is provided, all must be provided. "
-            f"Got: {sorted(provided)}, missing: {missing}"
-        )
-
-
 def watch_run(
-    out_dir: Path,
-    proc: subprocess.Popen,
-    inflow: float | None,
-    save_interval_sec: float | None,
-    convergence_tolerance: float | None,
-    endpoint_indices: tuple[tuple[int, int], tuple[int, int]] | None = None,
-    dem_array: np.ndarray | None = None,
-    allow_water_on_edges: bool = False,
-) -> tuple[list[ConvergenceResult], TerminationCondition]:
+    proc: subprocess.Popen, run_scenario_inputs: RunScenarioInputs
+) -> SolveScenarioResults:
     seen: set[Path] = set()
     prev_array: np.ndarray | None = None
     metric_log = []
 
-    stem = out_dir.name
+    dem_array, endpoint_indices = load_dem_and_get_pt_indices(
+        run_scenario_inputs.centerline, run_scenario_inputs.terrain
+    )
+
+    stem = run_scenario_inputs.working_dir.name
     running = True
     new_files = []
+    t0 = time.perf_counter()
+    elapsed_wall_time = 0
     termination_condition = TerminationCondition.MAX_SIMULATION_TIME
 
     while running or len(new_files) > 0:
@@ -140,8 +87,8 @@ def watch_run(
             metrics, prev_array = check_status(
                 p,
                 prev_array,
-                inflow,
-                save_interval_sec,
+                run_scenario_inputs.inflow,
+                run_scenario_inputs.run_config.save_interval_seconds,
                 endpoint_indices,
                 dem_array,
                 running,
@@ -149,11 +96,13 @@ def watch_run(
             seen.add(p)
             metric_log.append(metrics)
 
-            converged = _is_converged(metrics, convergence_tolerance)
+            converged = _is_converged(
+                metrics, run_scenario_inputs.run_config.volume_convergence_tolerance
+            )
             edge_error = (
                 metrics.boundary_check is not None
                 and metrics.boundary_check.error is not None
-                and not allow_water_on_edges
+                and not run_scenario_inputs.run_config.allow_water_on_edges
             )
             if converged or edge_error:
                 if converged:
@@ -162,11 +111,30 @@ def watch_run(
                     termination_condition = TerminationCondition.EDGE_ERROR
                 terminate_run(proc)
                 running = False
+        elapsed_wall_time = time.perf_counter() - t0
         if running and proc.poll() is not None:
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(proc.returncode, proc.args)
             running = False
             termination_condition = TerminationCondition.MAX_SIMULATION_TIME
-        new_files = sorted(set(out_dir.glob(f"{stem}-????.wd")).difference(seen))
-    return metric_log, termination_condition
+        elif (
+            running
+            and elapsed_wall_time
+            > run_scenario_inputs.run_config.max_simulation_wall_time_seconds
+        ):
+            terminate_run(proc)
+            running = False
+            termination_condition = TerminationCondition.MAX_WALL_TIME
+        new_files = sorted(
+            set(run_scenario_inputs.working_dir.glob(f"{stem}-????.wd")).difference(
+                seen
+            )
+        )
+    return SolveScenarioResults(
+        convergence_results=metric_log,
+        termination_condition=termination_condition,
+        wall_time=elapsed_wall_time,
+    )
 
 
 def check_status(

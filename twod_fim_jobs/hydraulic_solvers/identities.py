@@ -1,6 +1,9 @@
-from twod_fim_jobs.consts import SupportedSolver
+from twod_fim_jobs.consts import SCENARIO_SOLVER, SDR_COMMIT, SupportedSolver
 import subprocess
 import re
+
+from twod_fim_jobs.models.solvers import RunIdentity, SolverInfo
+from twod_fim_jobs.utils.hashing import hash_dict
 
 
 def get_model_version(solver: SupportedSolver) -> str:
@@ -30,3 +33,17 @@ def get_lisflood_version() -> str:
 
 def get_sfincs_version() -> str:
     raise NotImplementedError("Have not added support for sfincs solver yet.")
+
+
+def get_run_identity() -> RunIdentity:
+    "Make canonical identity for solver and sdr commit id."
+    version = get_model_version(SCENARIO_SOLVER)
+    return RunIdentity(
+        sdr_commit_id=SDR_COMMIT,
+        solver=SolverInfo(name=SCENARIO_SOLVER.value, version=version),
+    )
+
+
+def get_run_identity_hash() -> str:
+    "Make canonical identity hash for solver and sdr commit id."
+    return hash_dict(get_run_identity().model_dump(), role_length=8)

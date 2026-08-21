@@ -66,6 +66,10 @@ scripts = ["load_env.sh"]
 lint = "ruff check ."
 format = "ruff format ."
 lint-fix = "ruff check --fix ."
-ruff = { depends-on = ["lint-fix", "format"] }
+ruff = "ruff format . && ruff check --fix ."
 pyright = "pyright twod_fim_jobs"
 generate_docs = "python -m twod_fim_jobs.models.generate_docs"
+
+[tool.ruff.lint]
+select = ["E", "F", "ERA", "RUF"]
+ignore = ["E501"]

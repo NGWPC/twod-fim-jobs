@@ -1,16 +1,56 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Literal
+from pydantic import BaseModel, ConfigDict, Field
+
+from pydantic import field_validator
 from twod_fim_jobs.consts import (
-    DEFAULT_MAX_WALL_TIME_SECONDS,
     DEFAULT_SIM_TIME_SECONDS,
     DEFAULT_SIM_SAVE_INTERVAL_SECONDS,
+    DEFAULT_MAX_WALL_TIME_SECONDS,
 )
 
+from twod_fim_jobs.hydraulic_solvers.identities import get_run_identity_hash
 from twod_fim_jobs.models.warnings import JobWarning
 
 
-class RunNDScenariosInputs(BaseModel):
-    """Inputs for the run_nd_scenarios workflow."""
+class HotStart(BaseModel):
+    upstream_discharge: float = Field(
+        description="Flows applied at the top of the reach in cms", examples=[1000.0]
+    )
+    bc_value: float = Field(
+        description="Nominal water surface elevation at the bottom of the reach",
+        examples=[202.3],
+    )
+    identity_hash: str | None = Field(
+        pattern=r"^[0-9a-f]{8}$",
+        description="Hash of the run identity object. If none, assumed to be same as current scenario's.",
+        examples=["fceb20c6"],
+        default=get_run_identity_hash(),
+    )
+
+
+class KWSEScenario(BaseModel):
+    """Definition of KWSE scenario configuration."""
+
+    upstream_discharge: float = Field(
+        description="Flows applied at the top of the reach in cms", examples=[1000.0]
+    )
+    bc_value: float = Field(
+        description="Nominal water surface elevation at the bottom of the reach",
+        examples=[202.3],
+    )
+    downstream_Scenario: str = Field(
+        description="Path to the scenario manifest json for the model providing downstrem WSE forcing",
+        examples=[
+            "s3://twod-fim/version=v1/results/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/scenario.json"
+        ],
+    )
+    hotstart: HotStart | None = Field(
+        default=None,
+        description="Scenario used for initial water depths in the simulation.",
+    )
+
+
+class RunKWSEScenariosInputs(BaseModel):
+    """Inputs for the run_kwse_scenarios workflow."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -23,27 +63,10 @@ class RunNDScenariosInputs(BaseModel):
     )
     model_results_base_path: str = Field(
         description="Path where results will be saved",
-        examples=["s3://twod-fim/version=v1/results/1257410937935512"],
+        examples=["s3://twod-fim/version=v1/results"],
     )
-    min_upstream_inflow: float = Field(
-        description="Minimum of the target discharge range in cms",
-        examples=[100.0],
-    )
-    max_upstream_inflow: float = Field(
-        description="Maximum of the target discharge range in cms",
-        examples=[5000.0],
-    )
-    delta_upstream_inflow: float = Field(
-        description="Discharge increment for adaptive step algorithm in cms",
-        examples=[100.0],
-    )
-    ds_slope: float = Field(
-        description="Slope value to apply for the downstream boundary condition in m/m",
-        examples=[0.01],
-    )
-    outflow_area_polygon_path: str = Field(
-        description="Path to a polygon that determines where normal depth boundary condition will be applied.",
-        examples=["s3://twod-fim/version=v1/shared/outflow_area.geojson"],
+    scenarios: list[KWSEScenario] = Field(
+        description="A list of KWSE scenarios to run.  If hot start files will be needed "
     )
 
     # Optional
@@ -91,28 +114,8 @@ class RunNDScenariosInputs(BaseModel):
         return v
 
 
-class AdaptiveStepComparisonResults(BaseModel):
-    ref_scenario_manifest: str | None = Field(
-        examples=[
-            "s3://twod-fim/version=v1/results/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1000/scenario.json"
-        ]
-    )
-    trial_scenario_manifest: str = Field(
-        examples=[
-            "s3://twod-fim/version=v1/results/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1200/scenario.json"
-        ]
-    )
-    max_stage_diff: float = Field(examples=[1.15])
-    median_stage_diff: float = Field(examples=[1.03])
-    extent_diff: float = Field(examples=[0.02])
-    result: Literal["reject_high", "reject_low", "accept"] = Field(examples=["accept"])
-
-
-class RunNDScenariosResult(BaseModel):
+class RunKWSEScenariosResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    scenario_comparison_results: list[AdaptiveStepComparisonResults | None] = Field(
-        description="Adaptive step comparison results for each accepted scenario; None for the baseline and max-discharge scenarios",
-        examples=[[None]],
-    )
+    manifests: list[str] = Field(description="Paths to all generated scenario assets.")
     warnings: list[JobWarning] = Field(examples=[[]])

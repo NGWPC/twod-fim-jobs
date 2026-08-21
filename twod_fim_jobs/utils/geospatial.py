@@ -49,6 +49,7 @@ from twod_fim_jobs.exceptions import (
     DatasetUnavailableError,
     RasterProcessingError,
 )
+from twod_fim_jobs.utils.storage import ASSET_CACHE
 
 ### CLASSES ###
 
@@ -472,6 +473,8 @@ def raster_to_polygon(raster_path: Path, out_path: Path) -> None:
 def tif_to_asc(tif_path: Path) -> Path:
     """Convert a GeoTIFF to an Arc ASCII raster alongside the source file."""
     out_path = tif_path.with_suffix(".asc")
+    if out_path.exists():
+        return out_path
     src = Raster(tif_path)
     asc_profile = {
         "driver": "AAIGrid",
@@ -695,3 +698,28 @@ def wd_files_to_zarr(
             ds.to_zarr(zarr_path, mode="w", encoding=encoding, zarr_format=2)
 
     return zarr_path
+
+
+def load_dem_and_get_pt_indices(
+    centerline_asset: Asset, terrain_asset: Asset
+) -> tuple[np.ndarray, tuple[tuple[int, int], tuple[int, int]]]:
+    """Load data from a DEM and get the indices of centerline endpoints (convenience func)."""
+    resolved_centerline = ASSET_CACHE.materialize_path(centerline_asset)
+    resolved_terrain = ASSET_CACHE.materialize_path(terrain_asset)
+    centerline = gpd.read_file(resolved_centerline).geometry.iloc[0]
+    us_point: Point = Point(centerline.coords[0])
+    ds_point: Point = Point(centerline.coords[-1])
+    raster = Raster(resolved_terrain)
+    us_col, us_row = ~raster.transform * (us_point.x, us_point.y)
+    ds_col, ds_row = ~raster.transform * (ds_point.x, ds_point.y)
+    us_inds = (int(np.floor(us_row)), int(np.floor(us_col)))
+    ds_inds = (int(np.floor(ds_row)), int(np.floor(ds_col)))
+    endpoint_indices = (us_inds, ds_inds)
+    return (raster.data, endpoint_indices)
+
+
+def get_us_pt(centerline_asset: Asset) -> Point:
+    """Get a Point representing the upstream end of a reach centerline."""
+    resolved_centerline = ASSET_CACHE.materialize_path(centerline_asset)
+    centerline = gpd.read_file(resolved_centerline).geometry.iloc[0]
+    return Point(centerline.coords[0])

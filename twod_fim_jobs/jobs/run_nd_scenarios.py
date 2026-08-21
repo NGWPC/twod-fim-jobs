@@ -94,6 +94,7 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
             min_us_discharge=inputs.min_upstream_inflow,
             max_us_discharge=inputs.max_upstream_inflow,
             delta_us_discharge=inputs.delta_upstream_inflow,
+            adaptive_step_min_delta_q=inputs.adaptive_step_min_delta_q,
             inflow_line=inflow_line,
             us_point=us_point,
             ds_point=ds_point,
@@ -156,6 +157,7 @@ def run_adaptive_step_scenarios(
     min_us_discharge: float,
     max_us_discharge: float,
     delta_us_discharge: float,
+    adaptive_step_min_delta_q: float,
     inflow_line: LineString,
     us_point: Point,
     ds_point: Point,
@@ -221,9 +223,15 @@ def run_adaptive_step_scenarios(
         )
         if trial_scenario.termination_condition == "edge_error":
             logger.error("Aborting adaptive step algorithm for edge error")
-            return []
+            raise RuntimeError(
+                "Terminated adaptive step algorithm because edge_error termination condition was hit"
+            )
 
-        scenario_comparison = compare_scenario_changes(ref_scenario, trial_scenario)
+        scenario_comparison = compare_scenario_changes(
+            ref_scenario,
+            trial_scenario,
+            force_accept=(delta_us_discharge <= adaptive_step_min_delta_q),
+        )
 
         step_results = AdaptiveStepAlgorithmStepResult(
             worker_manifest=trial_scenario, comparison_results=scenario_comparison
@@ -244,6 +252,7 @@ def run_adaptive_step_scenarios(
             current_scenario = trial_scenario
             delta_us_discharge *= ADAPTIVE_STEP_ALGORITHM_GROW_FACTOR
 
+        delta_us_discharge = max(adaptive_step_min_delta_q, delta_us_discharge)
         q_trial = current_scenario.us_discharge + delta_us_discharge
 
     trial_scenario = _run_scenario(
@@ -339,11 +348,15 @@ def process_scenario_worker(
 
 
 def compare_scenario_changes(
-    ref_scenario: ScenarioWorkerManifest, trial_scenario: ScenarioWorkerManifest
+    ref_scenario: ScenarioWorkerManifest,
+    trial_scenario: ScenarioWorkerManifest,
+    force_accept: bool,
 ) -> AdaptiveStepComparisonResults:
     """Compare depth and extent changes between a reference and trial scenario to accept or reject the step."""
     ref_raster = Raster(ref_scenario.depth_path)
     trial_raster = Raster(trial_scenario.depth_path)
+    ref_raster.data = np.clip(ref_raster.data, 0, None)
+    trial_raster.data = np.clip(trial_raster.data, 0, None)
     comparison_mask = (ref_raster.data > 0) | (trial_raster.data > 0)
 
     depth_diffs = (
@@ -361,6 +374,7 @@ def compare_scenario_changes(
         or extent_diff > ADAPTIVE_STEP_ALGORITHM_EXTENT_MAX_ACCEPTABLE
     ):
         result = "reject_high"
+
     elif (
         ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MIN_ACCEPTABLE <= max_depth_diff
         or ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MIN_ACCEPTABLE <= median_depth_diff
@@ -369,6 +383,9 @@ def compare_scenario_changes(
         result = "accept"
     else:
         result = "reject_low"
+
+    if force_accept:
+        result = "accept"
 
     return AdaptiveStepComparisonResults(
         ref_us_discharge=ref_scenario.us_discharge,

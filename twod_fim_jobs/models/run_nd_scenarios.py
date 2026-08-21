@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Literal
 from twod_fim_jobs.consts import (
+    ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q,
     DEFAULT_SIM_TIME_SECONDS,
     DEFAULT_SIM_SAVE_INTERVAL_SECONDS,
     SupportedSolver,
@@ -75,6 +76,11 @@ class RunNDScenariosInputs(BaseModel):
         default=None,
         description="Maximum time (in wall time) that a model will be allowed to run before it is forcefully terminated",
         examples=[60.0],
+    )
+    adaptive_step_min_delta_q: float = Field(
+        default=ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q,
+        description="Minimum sensitivity for Q in adaptive step algorithm.  If delta_q at the min and algorithm would reject high, trial is accepted instead.",
+        examples=[10],
     )
     save_velocity: bool = Field(
         default=False,

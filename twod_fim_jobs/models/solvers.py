@@ -3,7 +3,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 import twod_fim_jobs
 from twod_fim_jobs.consts import (
     DEFAULT_ELEVOFF,
@@ -17,6 +17,7 @@ from twod_fim_jobs.consts import (
 )
 from twod_fim_jobs.models.warnings import JobWarning
 from twod_fim_jobs.models.common import Asset, GridProperties, Domain
+from twod_fim_jobs.utils.naming import get_scenario_dir_name, get_scenario_code
 
 
 class SolverInfo(BaseModel):
@@ -148,7 +149,8 @@ class FreeBC(_BCBase):
 
 class TransferBC(_BCBase):
     bc_type: Literal["TRANSFER"] = "TRANSFER"
-    value: Asset
+    value: float
+    transfer_depths: Asset
 
 
 BoundaryCondition = Annotated[

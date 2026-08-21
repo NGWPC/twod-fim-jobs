@@ -54,7 +54,8 @@ class RunKWSEScenariosJob(Job[RunKWSEScenariosInputs]):
             transfer_bc = TransferBC(
                 bc_type="TRANSFER",
                 vector=ds_scenario_asset.assets.stage_transfer_line,
-                value=ds_scenario_asset.assets.depth,
+                value=scenario.bc_value,
+                transfer_depths=ds_scenario_asset.assets.depth,
             )
             bcs = [inflow_bc, outflow_bc, transfer_bc]
 

@@ -13,7 +13,7 @@ from shapely.ops import linemerge, unary_union
 import geopandas as gpd
 from twod_fim_jobs.models.build_model import Domain, GridProperties
 from twod_fim_jobs.models.common import Asset
-from twod_fim_jobs.utils.geospatial import rasterize_geometry, tif_to_asc
+from twod_fim_jobs.utils.geospatial import Raster, rasterize_geometry, tif_to_asc
 from twod_fim_jobs.models.solvers import (
     BoundaryConditionElement,
     QFixBC,
@@ -341,6 +341,13 @@ def process_bc_line(
     # Get geometry
     resolved_geom = ASSET_CACHE.materialize_path(boundary_condition.vector)
     bc_geom = gpd.read_file(resolved_geom).geometry.iloc[0]
+    if isinstance(boundary_condition, TransferBC) and isinstance(
+        bc_geom, (Polygon, MultiPolygon)
+    ):
+        raise ValueError(
+            "TransferBC boundary conditions cannot use Polygon geometries; "
+            "use LineString, MultiLineString, or Point instead."
+        )
 
     transform = _build_transform(domain, grid_properties)
     pts = geometry_to_bc_points(bc_geom, grid_properties, transform, domain)
@@ -354,9 +361,7 @@ def process_bc_line(
         q_per_cell = float(boundary_condition.value) / (resolution * len(pts))
         tagged = [[*pt, "QFIX", q_per_cell] for pt in pts]
     elif isinstance(boundary_condition, TransferBC):
-        raise NotImplementedError(
-            "TRANSFER boundary conditions are not yet implemented"
-        )
+        tagged = process_transfer_bc_line(boundary_condition, transform, pts)
     else:
         tagged = [
             [*pt, boundary_condition.bc_type, boundary_condition.value] for pt in pts
@@ -382,6 +387,23 @@ def process_bc_line(
         )
 
     return out
+
+
+def process_transfer_bc_line(
+    bc: TransferBC, transform: Affine, pts: list[list[str | float]]
+) -> tuple[str, float, float, str, float]:
+    # Get WSE data
+    resolved_wse = ASSET_CACHE.materialize_path(bc.transfer_depths)
+    wse = Raster(resolved_wse).data
+
+    # Iterate over cells
+    bc_pts = []
+    for _, x, y in pts:
+        _row, _col = rasterio.transform.rowcol(transform, x, y)
+        row, col = int(_row), int(_col)
+        val = wse[row, col]
+        bc_pts.append(["P", x, y, "HFIX", val])
+    return bc_pts
 
 
 def geometry_to_bc_points(

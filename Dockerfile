@@ -46,7 +46,9 @@ FROM ghcr.io/dewberry/lisflood-fp:sha-aa006ae776b084eac5d00c8b165d2f1e1f689b0d-g
 
 COPY --from=builder /app/.pixi/envs/prod /app/.pixi/envs/prod
 
-ENV PATH="/app/.pixi/envs/prod/bin:$PATH"
+ENV PATH="/app/.pixi/envs/prod/bin:$PATH" \
+    USE_CUDA=true \
+    SCENARIO_SOLVER=lisflood
 
 ENTRYPOINT ["twod_fim_jobs", "run_nd_scenarios"]
 
@@ -56,7 +58,9 @@ FROM ghcr.io/dewberry/lisflood-fp:sha-aa006ae776b084eac5d00c8b165d2f1e1f689b0d-c
 
 COPY --from=builder /app/.pixi/envs/prod /app/.pixi/envs/prod
 
-ENV PATH="/app/.pixi/envs/prod/bin:$PATH"
+ENV PATH="/app/.pixi/envs/prod/bin:$PATH" \
+    USE_CUDA=false \
+    SCENARIO_SOLVER=lisflood
 
 ENTRYPOINT ["twod_fim_jobs", "run_nd_scenarios"]
 
@@ -66,7 +70,9 @@ FROM ghcr.io/dewberry/lisflood-fp:sha-aa006ae776b084eac5d00c8b165d2f1e1f689b0d-g
 
 COPY --from=builder /app/.pixi/envs/prod /app/.pixi/envs/prod
 
-ENV PATH="/app/.pixi/envs/prod/bin:$PATH"
+ENV PATH="/app/.pixi/envs/prod/bin:$PATH" \
+    USE_CUDA=true \
+    SCENARIO_SOLVER=lisflood
 
 ENTRYPOINT ["twod_fim_jobs", "run_kwse_scenarios"]
 
@@ -76,7 +82,9 @@ FROM ghcr.io/dewberry/lisflood-fp:sha-aa006ae776b084eac5d00c8b165d2f1e1f689b0d-c
 
 COPY --from=builder /app/.pixi/envs/prod /app/.pixi/envs/prod
 
-ENV PATH="/app/.pixi/envs/prod/bin:$PATH"
+ENV PATH="/app/.pixi/envs/prod/bin:$PATH" \
+    USE_CUDA=false \
+    SCENARIO_SOLVER=lisflood
 
 ENTRYPOINT ["twod_fim_jobs", "run_kwse_scenarios"]
 
@@ -86,7 +94,9 @@ FROM deltares/sfincs-cpu:sfincs-v2.4.0-Galibier-Release AS run_kwse_scenarios-sf
 
 COPY --from=builder /app/.pixi/envs/prod /app/.pixi/envs/prod
 
-ENV PATH="/app/.pixi/envs/prod/bin:$PATH"
+ENV PATH="/app/.pixi/envs/prod/bin:$PATH" \
+    USE_CUDA=false \
+    SCENARIO_SOLVER=sfincs
 
 ENTRYPOINT ["twod_fim_jobs", "run_kwse_scenarios"]
 

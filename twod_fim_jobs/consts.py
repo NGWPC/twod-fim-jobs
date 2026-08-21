@@ -109,6 +109,9 @@ ADAPTIVE_STEP_ALGORITHM_EXTENT_MIN_ACCEPTABLE: float = float(
 ADAPTIVE_STEP_ALGORITHM_EXTENT_MAX_ACCEPTABLE: float = float(
     os.environ.get("ADAPTIVE_STEP_ALGORITHM_EXTENT_MAX_ACCEPTABLE", 0.125)
 )
+ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q: float = float(
+    os.environ.get("ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q", 10)
+)
 
 # Artifact names (where they will be written)
 DEM_FILENAME = "dem.tif"

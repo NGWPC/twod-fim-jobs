@@ -81,7 +81,7 @@ class RunKWSEScenariosJob(Job[RunKWSEScenariosInputs]):
                     update={"value": scenario.hotstart.bc_value}
                 )
                 hot_us_bc_proxy = inflow_bc.model_copy(
-                    update={"value": scenario.hotstart.bc_value}
+                    update={"value": scenario.hotstart.upstream_discharge}
                 )
                 hot_bc_proxy = [hot_us_bc_proxy, outflow_bc, hot_ds_bc_proxy]
                 hot_scenario_proxy = run_scenario_inputs.model_copy(
@@ -93,6 +93,6 @@ class RunKWSEScenariosJob(Job[RunKWSEScenariosInputs]):
                 run_scenario_inputs.hot_start = hot_scenario_manifest.assets.depth
 
             scenario_manifest = run_scenario(run_scenario_inputs)
-            manifests.append(scenario_manifest)
+            manifests.append(scenario_manifest.self_href)
 
         return RunKWSEScenariosResult(manifests=manifests, warnings=[])

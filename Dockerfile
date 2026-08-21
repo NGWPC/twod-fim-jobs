@@ -41,8 +41,28 @@ FROM two-dim-fim-base AS build_model
 ENTRYPOINT ["twod_fim_jobs", "build_model"]
 
 
-# KWSE scenarios with SFINCS solver (not yet implemented)
-FROM deltares/sfincs-cpu:sfincs-v2.4.0-Galibier-Release AS run_kwse_scenarios-sfincs
+# ND scenarios with LISFLOOD-FP solver (gpu)
+FROM ghcr.io/dewberry/lisflood-fp:sha-aa006ae776b084eac5d00c8b165d2f1e1f689b0d-gpu AS run_nd_scenarios-lisflood-gpu
+
+COPY --from=builder /app/.pixi/envs/prod /app/.pixi/envs/prod
+
+ENV PATH="/app/.pixi/envs/prod/bin:$PATH"
+
+ENTRYPOINT ["twod_fim_jobs", "run_nd_scenarios"]
+
+
+# ND scenarios with LISFLOOD-FP solver (cpu)
+FROM ghcr.io/dewberry/lisflood-fp:sha-aa006ae776b084eac5d00c8b165d2f1e1f689b0d-cpu AS run_nd_scenarios-lisflood-cpu
+
+COPY --from=builder /app/.pixi/envs/prod /app/.pixi/envs/prod
+
+ENV PATH="/app/.pixi/envs/prod/bin:$PATH"
+
+ENTRYPOINT ["twod_fim_jobs", "run_nd_scenarios"]
+
+
+# KWSE scenarios with LISFLOOD-FP solver (gpu)
+FROM ghcr.io/dewberry/lisflood-fp:sha-aa006ae776b084eac5d00c8b165d2f1e1f689b0d-gpu AS run_kwse_scenarios-lisflood-gpu
 
 COPY --from=builder /app/.pixi/envs/prod /app/.pixi/envs/prod
 
@@ -51,14 +71,24 @@ ENV PATH="/app/.pixi/envs/prod/bin:$PATH"
 ENTRYPOINT ["twod_fim_jobs", "run_kwse_scenarios"]
 
 
-# ND scenarios with LISFLOOD-FP solver
-FROM ghcr.io/dewberry/lisflood-fp:sha-aa006ae776b084eac5d00c8b165d2f1e1f689b0d-gpu AS run_nd_scenarios-lisflood
+# KWSE scenarios with LISFLOOD-FP solver (cpu)
+FROM ghcr.io/dewberry/lisflood-fp:sha-aa006ae776b084eac5d00c8b165d2f1e1f689b0d-cpu AS run_kwse_scenarios-lisflood-cpu
 
 COPY --from=builder /app/.pixi/envs/prod /app/.pixi/envs/prod
 
 ENV PATH="/app/.pixi/envs/prod/bin:$PATH"
 
-ENTRYPOINT ["twod_fim_jobs", "run_nd_scenarios"]
+ENTRYPOINT ["twod_fim_jobs", "run_kwse_scenarios"]
+
+
+# KWSE scenarios with SFINCS solver (not yet implemented)
+FROM deltares/sfincs-cpu:sfincs-v2.4.0-Galibier-Release AS run_kwse_scenarios-sfincs
+
+COPY --from=builder /app/.pixi/envs/prod /app/.pixi/envs/prod
+
+ENV PATH="/app/.pixi/envs/prod/bin:$PATH"
+
+ENTRYPOINT ["twod_fim_jobs", "run_kwse_scenarios"]
 
 
 # ============================================================================

@@ -8,6 +8,7 @@ from twod_fim_jobs.consts import (
     ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MIN_ACCEPTABLE,
     ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MAX_ACCEPTABLE,
     ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MIN_ACCEPTABLE,
+    ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q,
     ADAPTIVE_STEP_ALGORITHM_SHRINK_FACTOR,
     DEFAULT_MAX_WALL_TIME_SECONDS,
     DEFAULT_SIM_TIME_SECONDS,
@@ -76,6 +77,11 @@ class RunNDScenariosInputs(BaseModel):
         default=DEFAULT_MAX_WALL_TIME_SECONDS,
         description="Maximum time (in wall time) that a model will be allowed to run before it is forcefully terminated",
         examples=[60.0],
+    )
+    adaptive_step_min_delta_q: float = Field(
+        default=ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q,
+        description="Minimum sensitivity for Q in adaptive step algorithm.  If delta_q at the min and algorithm would reject high, trial is accepted instead.",
+        examples=[10],
     )
     save_velocity: bool = Field(
         default=False,

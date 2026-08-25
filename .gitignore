@@ -40,6 +40,11 @@ coverage.xml
 .pytest_cache/
 .pytest_tmp/
 
+# Test output / generated data (but not test fixtures)
+tests/end_to_end_data/
+tests/**/*.tmp/
+tests/**/*.cache/
+
 # dotenv
 .env
 

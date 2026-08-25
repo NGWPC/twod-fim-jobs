@@ -151,6 +151,9 @@ class TransferBC(_BCBase):
     bc_type: Literal["TRANSFER"] = "TRANSFER"
     value: float
     transfer_depths: Asset
+    transfer_els: Asset
+    grid_properties: GridProperties
+    domain: Domain
 
 
 BoundaryCondition = Annotated[

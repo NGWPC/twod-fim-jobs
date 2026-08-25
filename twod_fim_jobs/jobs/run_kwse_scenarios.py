@@ -56,6 +56,9 @@ class RunKWSEScenariosJob(Job[RunKWSEScenariosInputs]):
                 vector=ds_scenario_asset.assets.stage_transfer_line,
                 value=scenario.bc_value,
                 transfer_depths=ds_scenario_asset.assets.depth,
+                transfer_els=ds_scenario_asset.inputs.terrain,
+                grid_properties=ds_scenario_asset.inputs.grid_properties,
+                domain=ds_scenario_asset.inputs.domain,
             )
             bcs = [inflow_bc, outflow_bc, transfer_bc]
 

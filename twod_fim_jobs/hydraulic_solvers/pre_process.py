@@ -367,7 +367,7 @@ def process_bc_line(
         q_per_cell = float(boundary_condition.value) / (resolution * len(pts))
         tagged = [[*pt, "QFIX", q_per_cell] for pt in pts]
     elif isinstance(boundary_condition, TransferBC):
-        tagged = process_transfer_bc_line(boundary_condition, transform, pts)
+        tagged = process_transfer_bc_line(boundary_condition, pts)
     else:
         tagged = [
             [*pt, boundary_condition.bc_type, boundary_condition.value] for pt in pts
@@ -396,11 +396,17 @@ def process_bc_line(
 
 
 def process_transfer_bc_line(
-    bc: TransferBC, transform: Affine, pts: list[list[str | float]]
+    bc: TransferBC, pts: list[list[str | float]]
 ) -> tuple[str, float, float, str, float]:
     # Get WSE data
-    resolved_wse = ASSET_CACHE.materialize_path(bc.transfer_depths)
-    wse = Raster(resolved_wse).data
+    resolved_depth = ASSET_CACHE.materialize_path(bc.transfer_depths)
+    resolved_el = ASSET_CACHE.materialize_path(bc.transfer_els)
+    depth = Raster(resolved_depth).data
+    el = Raster(resolved_el).data
+    wse = depth + el
+
+    # Build transform
+    transform = _build_transform(bc.domain, bc.grid_properties)
 
     # Iterate over cells
     bc_pts = []
@@ -408,7 +414,8 @@ def process_transfer_bc_line(
         _row, _col = rasterio.transform.rowcol(transform, x, y)
         row, col = int(_row), int(_col)
         val = wse[row, col]
-        bc_pts.append(["P", x, y, "HFIX", val])
+        if val > 0:
+            bc_pts.append(["P", x, y, "HFIX", val])
     return bc_pts
 
 

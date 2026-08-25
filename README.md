@@ -6,9 +6,9 @@ This library provides the three core jobs within a continental-scale flood inund
 
 ## Features
 
- * `build_model` — Takes a reach ID and build parameters; produces terrain, roughness, geometry artifacts.
- * `run_nd_scenarios` — Takes a model and a discharge range; runs normal-depth simulations across that range and writes depth rasters.
- * `run_kwse_scenarios` — Takes a model and a set of boundary condition scenarios (downstream condition + upstream discharge) and runs the full combination of all conditions.
+* `build_model` — Takes a reach ID and build parameters; produces terrain, roughness, geometry artifacts.
+* `run_nd_scenarios` — Takes a model and a discharge range; runs normal-depth simulations across that range and writes depth rasters.
+* `run_kwse_scenarios` — Takes a model and a set of boundary condition scenarios (downstream condition + upstream discharge) and runs the full combination of all conditions.
 
 ## Package Architecture
 
@@ -70,9 +70,9 @@ cd twod-fim-jobs
 pixi install
 ```
 
-### Installation With docker
+### Docker Images
 
-The Dockerfile defines several named stages. Build the stage that matches the job you want to run:
+Docker images for different jobs are provided in the GHCR for all releases as well as for `main` branch. The main branch images are tagged as `dev`
 
 ```bash
 git clone https://github.com/NGWPC/twod-fim-jobs.git
@@ -346,3 +346,23 @@ python -m twod_fim_jobs.models.generate_docs
 
 pixi run generate_docs
 ```
+
+### Build Docker Images from Source Code
+
+The Dockerfile defines several named stages. Build the stage that matches the job you want to run:
+
+```bash
+git clone https://github.com/NGWPC/twod-fim-jobs.git
+cd twod-fim-jobs
+
+# Base image (includes all jobs via the generic entrypoint)
+docker build --target two-dim-fim-base -t twod-fim-jobs:base .
+
+# Job-specific images
+docker build --target health -t twod-fim-jobs:health .
+docker build --target build_model -t twod-fim-jobs:build_model .
+docker build --target run_kwse_scenarios-sfincs -t twod-fim-jobs:run_kwse_scenarios . # (not yet implemented)
+docker build --target run_nd_scenarios-lisflood-gpu -t twod-fim-jobs:run_nd_scenarios .
+
+```
+

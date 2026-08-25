@@ -104,7 +104,6 @@ ENTRYPOINT ["twod_fim_jobs", "run_kwse_scenarios"]
 # ============================================================================
 # Development Stage
 # ============================================================================
-# LISFLOOD-FP solver with pixi for dev work (private image)
 FROM ghcr.io/dewberry/lisflood-fp:sha-aa006ae776b084eac5d00c8b165d2f1e1f689b0d-gpu AS two-dim-fim-lisflood-dev
 
 COPY --from=ghcr.io/prefix-dev/pixi:0.70.2-bookworm /usr/local/bin/pixi /usr/local/bin/pixi

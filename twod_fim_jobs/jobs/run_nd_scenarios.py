@@ -233,6 +233,7 @@ def compare_scenario_changes(
         or extent_diff > inputs.adaptive_step_algorithm_extent_max_acceptable
     ):
         result = "reject_high"
+
     elif (
         inputs.adaptive_step_algorithm_max_stage_min_acceptable <= max_depth_diff
         or inputs.adaptive_step_algorithm_median_stage_min_acceptable

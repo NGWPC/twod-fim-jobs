@@ -39,7 +39,7 @@ def get_run_identity() -> RunIdentity:
     "Make canonical identity for solver and sdr commit id."
     return RunIdentity(
         sdr_commit_id=SDR_COMMIT,
-        solver=SCENARIO_SOLVER.value,
+        solver=SCENARIO_SOLVER,
     )
 
 

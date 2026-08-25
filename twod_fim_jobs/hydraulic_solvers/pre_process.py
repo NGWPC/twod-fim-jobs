@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import rasterio
@@ -400,7 +401,7 @@ def process_bc_line(
 
 def process_transfer_bc_line(
     bc: TransferBC, pts: list[list[str | float]]
-) -> tuple[str, float, float, str, float]:
+) -> list[tuple[str, float, float, Literal["HFIX"], float]]:
     # Get WSE data
     resolved_depth = ASSET_CACHE.materialize_path(bc.transfer_depths)
     resolved_el = ASSET_CACHE.materialize_path(bc.transfer_els)

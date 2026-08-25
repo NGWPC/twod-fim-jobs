@@ -22,7 +22,11 @@ from twod_fim_jobs.models.solvers import (
     BoundaryCondition,
     TransferBC,
 )
-from twod_fim_jobs.consts import SCENARIO_SOLVER, SupportedSolver
+from twod_fim_jobs.consts import (
+    DEFAULT_RESROOT_LISFLOOD,
+    SCENARIO_SOLVER,
+    SupportedSolver,
+)
 from twod_fim_jobs.utils.storage import ASSET_CACHE
 
 logger = logging.getLogger(__name__)
@@ -80,7 +84,7 @@ class LisfloodWriter:
         resolved_roughness = tif_to_asc(resolved_roughness)
 
         cfg: dict[str, object] = {
-            "resroot": output_dir.name,
+            "resroot": DEFAULT_RESROOT_LISFLOOD,
             "dirroot": str(output_dir),
             "DEMfile": resolved_terrain,
             "manningfile": resolved_roughness,

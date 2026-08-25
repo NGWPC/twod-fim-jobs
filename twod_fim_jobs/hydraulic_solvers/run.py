@@ -7,7 +7,7 @@ import time
 
 import numpy as np
 
-from twod_fim_jobs.consts import STABILITY_WAIT
+from twod_fim_jobs.consts import DEFAULT_RESROOT_LISFLOOD, STABILITY_WAIT
 from twod_fim_jobs.models.solvers import (
     TerminationCondition,
     BoundaryCheckResult,
@@ -72,7 +72,6 @@ def watch_run(
         run_scenario_inputs.centerline, run_scenario_inputs.terrain
     )
 
-    stem = run_scenario_inputs.working_dir.name
     running = True
     new_files = []
     t0 = time.perf_counter()
@@ -128,7 +127,7 @@ def watch_run(
             running = False
             termination_condition = TerminationCondition.MAX_WALL_TIME
         new_files = sorted(
-            set(run_scenario_inputs.working_dir.glob(f"{stem}-????.wd")).difference(
+            set(working_dir.glob(f"{DEFAULT_RESROOT_LISFLOOD}-????.wd")).difference(
                 seen
             )
         )

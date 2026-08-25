@@ -9,6 +9,7 @@ from twod_fim_jobs.consts import (
     DEFAULT_ELEVOFF,
     DEFAULT_INITIAL_TSTEP_SECONDS,
     DEFAULT_MASS_INTERVAL_SECONDS,
+    DEFAULT_VOLUME_CONVERGENCE_THRESHOLD,
     RUN_NAME_KWSE_ROUNDING_PRECISION,
     RUN_NAME_Q_ROUNDING_PRECISION,
     RUN_NAME_SLOPE_ROUNDING_PRECISION,
@@ -62,7 +63,7 @@ class RunConfig(BaseModel):
     use_cuda: bool = Field(default=USE_CUDA, examples=[True])
     use_elevoff: bool = Field(default=DEFAULT_ELEVOFF, examples=[False])
     volume_convergence_tolerance: float = Field(
-        default=0,
+        default=DEFAULT_VOLUME_CONVERGENCE_THRESHOLD,
         description="Volume increase in the reach as a percent of inflow below which model is considered steady",
         examples=[0.1],
     )

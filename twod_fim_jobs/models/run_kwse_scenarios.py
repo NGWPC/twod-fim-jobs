@@ -5,6 +5,7 @@ from twod_fim_jobs.consts import (
     DEFAULT_SIM_TIME_SECONDS,
     DEFAULT_SIM_SAVE_INTERVAL_SECONDS,
     DEFAULT_MAX_WALL_TIME_SECONDS,
+    DEFAULT_VOLUME_CONVERGENCE_THRESHOLD,
 )
 
 from twod_fim_jobs.hydraulic_solvers.identities import get_run_identity_hash
@@ -71,7 +72,7 @@ class RunKWSEScenariosInputs(BaseModel):
 
     # Optional
     volume_convergence_tolerance: float = Field(
-        default=0,
+        default=DEFAULT_VOLUME_CONVERGENCE_THRESHOLD,
         description="Volume increase in the reach as a percent of inflow below which model is considered steady",
         examples=[0.1],
     )

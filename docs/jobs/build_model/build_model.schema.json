@@ -30,6 +30,7 @@
               "type": "null"
             }
           ],
+          "default": null,
           "description": "External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.",
           "examples": [
             "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt"
@@ -65,8 +66,7 @@
       },
       "required": [
         "href",
-        "checksum",
-        "source_url"
+        "checksum"
       ],
       "title": "Asset",
       "type": "object"

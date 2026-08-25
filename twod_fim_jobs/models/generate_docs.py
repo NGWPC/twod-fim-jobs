@@ -4,6 +4,7 @@ Writes to:
   schemas/<job>/{inputs,result,manifest}.json
   docs/jobs/<job>/<job>.example.jsonc
   docs/jobs/<job>/<job>.md  (injects between <!-- AUTO:* --> sentinels only)
+  docs/jobs/run_scenarios/{scenario_manifest.example.jsonc,scenario_manifest.schema.json}
 
 Usage:
   generate_docs
@@ -349,6 +350,25 @@ def update_markdown_tables(docs_dir: Path) -> None:
         print(f"  updated {md_path}")
 
 
+def export_scenario_manifest(docs_dir: Path) -> None:
+    """Export shared scenario_manifest example and schema to run_scenarios directory."""
+    run_scenarios_dir = docs_dir / "jobs" / "run_scenarios"
+    run_scenarios_dir.mkdir(parents=True, exist_ok=True)
+    
+    example = build_example(RunScenarioManifest)
+    descriptions = _build_descriptions(RunScenarioManifest)
+    
+    example_path = run_scenarios_dir / "scenario_manifest.example.jsonc"
+    example_path.write_text(_to_jsonc(example, descriptions) + "\n")
+    print(f"  wrote {example_path}")
+    
+    schema_path = run_scenarios_dir / "scenario_manifest.schema.json"
+    schema_path.write_text(
+        json.dumps(RunScenarioManifest.model_json_schema(), indent=2) + "\n"
+    )
+    print(f"  wrote {schema_path}")
+
+
 def main(
     root: Path | None = None,
     schemas_dir: Path | None = None,
@@ -369,6 +389,9 @@ def main(
 
     print("Updating markdown tables...")
     update_markdown_tables(docs_dir)
+    
+    print("Exporting scenario manifest...")
+    export_scenario_manifest(docs_dir)
 
 
 if __name__ == "__main__":

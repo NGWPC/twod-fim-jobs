@@ -354,14 +354,14 @@ def export_scenario_manifest(docs_dir: Path) -> None:
     """Export shared scenario_manifest example and schema to run_scenarios directory."""
     run_scenarios_dir = docs_dir / "jobs" / "run_scenarios"
     run_scenarios_dir.mkdir(parents=True, exist_ok=True)
-    
+
     example = build_example(RunScenarioManifest)
     descriptions = _build_descriptions(RunScenarioManifest)
-    
+
     example_path = run_scenarios_dir / "scenario_manifest.example.jsonc"
     example_path.write_text(_to_jsonc(example, descriptions) + "\n")
     print(f"  wrote {example_path}")
-    
+
     schema_path = run_scenarios_dir / "scenario_manifest.schema.json"
     schema_path.write_text(
         json.dumps(RunScenarioManifest.model_json_schema(), indent=2) + "\n"
@@ -389,7 +389,7 @@ def main(
 
     print("Updating markdown tables...")
     update_markdown_tables(docs_dir)
-    
+
     print("Exporting scenario manifest...")
     export_scenario_manifest(docs_dir)
 

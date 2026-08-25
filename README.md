@@ -20,6 +20,12 @@ twod_fim_jobs
 ├── cli.py                    # Entry point; parses job names and JSON payloads to dispatch workflows
 ├── consts.py                 # Shared constants (DEM/LULC sources, field names, processing thresholds)
 ├── exceptions.py             # Custom exception classes for reach database and data processing errors
+├── hydraulic_solvers
+│   ├── common.py             # Shared utilities for hydraulic solver pre/post processing
+│   ├── identities.py         # Identity and hash management for solver runs
+│   ├── post_process.py       # Post-processing of solver outputs
+│   ├── pre_process.py        # Pre-processing of solver inputs
+│   └── run.py                # Solver execution and orchestration
 ├── jobs
 │   ├── __init__.py
 │   ├── build_model.py        # Job: initializes a 2D FIM model for a single reach
@@ -33,11 +39,13 @@ twod_fim_jobs
 │   ├── run_nd_scenarios.py   # Pydantic models for RunNDInputs, RunNDResult, and related types
 │   ├── run_kwse_scenarios.py # Pydantic models for RunKWSEModelInputs, RunKWSEResult, and related types
 │   ├── common.py             # Shared Pydantic models: Asset (file references) and JobWarning base class
+│   ├── solvers.py            # Pydantic models for solver configuration and results
 │   ├── warnings.py           # JobWarning subclasses for domain-specific warning codes
 │   └── generate_docs.py      # Generates schemas, example JSON, and markdown docs for each job
 └── utils
     ├── geospatial.py         # Utilities for line intersections, domain building, and raster clipping/reprojection
     ├── hashing.py            # SHA256 hash helpers for dicts, strings, geometries, and files
+    ├── naming.py             # Utilities for naming conventions and ID generation
     └── storage.py            # Database utilities for querying reach geometries from PostgreSQL/SQLite hydrofabric DBs
 ```
 
@@ -76,8 +84,8 @@ docker build --target two-dim-fim-base -t twod-fim-jobs:base .
 # Job-specific images
 docker build --target health -t twod-fim-jobs:health .
 docker build --target build_model -t twod-fim-jobs:build_model .
-docker build --target run_kwse_scenarios-sfincs -t twod-fim-jobs:run_kwse_scenarios . # (not yet implemented)
-docker build --target run_nd_scenarios-lisflood -t twod-fim-jobs:run_nd_scenarios .
+docker build --target run_nd_scenarios-lisflood-gpu -t twod-fim-jobs:run_nd_scenarios .
+docker build --target run_kwse_scenarios-lisflood-gpu -t twod-fim-jobs:run_kwse_scenarios .
 
 ```
 
@@ -248,7 +256,6 @@ The job returns a JSON result payload on stdout:
     "output/.../results/a1b2c3d4/nd=1E-03/q=150.000/scenario_manifest.json"
   ],
   "scenario_comparison_results": [
-    null,
     {
       "ref_us_discharge": 100.0,
       "trial_us_discharge": 150.0,
@@ -263,6 +270,51 @@ The job returns a JSON result payload on stdout:
 ```
 
 Each entry in `scenario_comparison_results` corresponds to the entry at the same index in `scenario_manifest_paths`. The first scenario (baseline) and the max-discharge scenario are always `null`. For all others, the object records the discharge of the reference and trial scenarios, the maximum and median water surface elevation difference between them, the normalized difference in inundation extent, and the adaptive step algorithm's `result` (`"accept"`, `"reject_high"`, or `"reject_low"`).
+
+### `run_kwse_scenarios` Job
+
+Given a previously built model, this job runs hydraulic simulations using pairs of upstream discharges and downstream (previously computed) scenarios. It reads the model manifest, pre-processes solver inputs, and writes depth rasters and scenario manifests to the specified output path (local or S3).
+
+Example command (local install):
+
+```bash
+twod_fim_jobs run_kwse_scenarios '{
+  "model_manifest_path": "example/path/model.json",
+  "model_results_base_path": "example/path/results/",
+  "scenarios": {
+    "upstream_discharge": 1000,
+    "bc_value": 202.3,
+    "downstream_Scenario": "example/path/scenario.json"
+    }
+}'
+```
+
+#### Outputs
+
+The job writes one subdirectory per scenario under `model_results_base_path`, grouped first by a solver+sdr-specific run identity hash and then by the downstream kwse nominal value and discharge values.
+
+```text
+<model_results_base_path>/
+└── <run_identity_hash>/          # e.g. a1b2c3d4/ — hash of solver identity + sdr commit id
+    └──kwse=<bc_value>/               # e.g. nd=1E-03/
+        └── q=<discharge>/        # e.g. q=150.000/
+            ├── scenario_manifest.json  # Scenario manifest (inputs, properties, asset references)
+            ├── depth.tif               # Water depth raster at final timestep
+            ├── inundation.geojson      # Inundated area polygon at final timestep
+            └── stage_transfer_line.geojson  # Stage transfer line geometry
+```
+
+The job returns a JSON result payload on stdout:
+
+```json
+{
+  "scenario_manifest_paths": [
+    "output/.../results/a1b2c3d4/nd=1E-03/q=150.000/scenario_manifest.json"
+  ],
+  "warnings": []
+}
+```
+
 
 ## Development
 

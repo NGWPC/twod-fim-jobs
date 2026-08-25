@@ -22,12 +22,14 @@ logger = logging.getLogger(__name__)
 
 
 def solve_scenario(
-    config_path: Path, run_scenario_inputs: RunScenarioInputs
+    config_path: Path, run_scenario_inputs: RunScenarioInputs, working_dir: Path
 ) -> SolveScenarioResults:
     process = run_lisflood(config_path)
 
     with ThreadPoolExecutor(max_workers=1) as executor:
-        watcher_future = executor.submit(watch_run, process, run_scenario_inputs)
+        watcher_future = executor.submit(
+            watch_run, process, run_scenario_inputs, working_dir
+        )
         process.wait()  # watcher will terminate early if converged
         watcher_results = watcher_future.result()
 
@@ -60,7 +62,7 @@ def run_lisflood(parfile_path: Path, pipe_out_logs: bool = True) -> subprocess.P
 
 
 def watch_run(
-    proc: subprocess.Popen, run_scenario_inputs: RunScenarioInputs
+    proc: subprocess.Popen, run_scenario_inputs: RunScenarioInputs, working_dir: Path
 ) -> SolveScenarioResults:
     seen: set[Path] = set()
     prev_array: np.ndarray | None = None
@@ -220,7 +222,7 @@ def check_boundary_errors(
     worst = (
         float(violating_wse[np.nanargmax(np.abs(violating_wse - wse_0))])
         if violating_wse.size
-        else float("nan")
+        else None
     )
 
     # margin: for wetted non-violating cells, distance to nearest range boundary
@@ -234,7 +236,7 @@ def check_boundary_errors(
             )
         )
     else:
-        margin = float("nan")
+        margin = None
 
     def _count(arr: np.ndarray) -> int:
         return int(np.sum((arr >= lo) & (arr <= hi)))

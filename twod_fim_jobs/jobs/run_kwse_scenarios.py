@@ -71,7 +71,6 @@ class RunKWSEScenariosJob(Job[RunKWSEScenariosInputs]):
                 base_out_dir=inputs.model_results_base_path,
                 reach_id=model_manifest.reach_id,
                 model_id=model_manifest.model_id,
-                tmp_dir=tmp_dir,
                 centerline=model_manifest.assets.centerline,
             )
 
@@ -92,7 +91,8 @@ class RunKWSEScenariosJob(Job[RunKWSEScenariosInputs]):
                 )
                 run_scenario_inputs.hot_start = hot_scenario_manifest.assets.depth
 
-            scenario_manifest = run_scenario(run_scenario_inputs)
+            working_dir = tmp_dir / run_scenario_inputs.scenario_dir_name
+            scenario_manifest = run_scenario(run_scenario_inputs, working_dir)
             manifests.append(scenario_manifest.self_href)
 
         return RunKWSEScenariosResult(manifests=manifests, warnings=[])

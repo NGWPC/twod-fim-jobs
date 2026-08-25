@@ -177,9 +177,10 @@ def _run_scenario(
         tmp_dir=tmp_dir,
         centerline=model_manifest.assets.centerline,
     )
+    working_dir = tmp_dir / run_scenario_inputs.scenario_dir_name
 
     # Execute run
-    scenario_manifest = run_scenario(run_scenario_inputs)
+    scenario_manifest = run_scenario(run_scenario_inputs, working_dir)
 
     return scenario_manifest
 

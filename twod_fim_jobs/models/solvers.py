@@ -101,11 +101,11 @@ class BoundaryCheckResult(BaseModel):
     n_violating_right: int = Field(
         description="Violating cells on the right edge (last col, interior rows)"
     )
-    worst_violating_wse: float = Field(
-        description="WSE of the edge cell furthest from wse_0 within the violation window; nan if no violations"
+    worst_violating_wse: float | None = Field(
+        description="WSE of the edge cell furthest from wse_0 within the violation window; None if no violations"
     )
-    closest_edge_margin: float = Field(
-        description="Minimum distance of any wetted non-violating edge cell WSE to the nearest range boundary; nan if all wetted edge cells are violating"
+    closest_edge_margin: float | None = Field(
+        description="Minimum distance of any wetted non-violating edge cell WSE to the nearest range boundary; None if all wetted edge cells are violating"
     )
     error: str | None = Field(
         default=None,
@@ -239,7 +239,6 @@ class RunScenarioInputs(BaseModel):
     base_out_dir: str
     reach_id: int
     model_id: str
-    tmp_dir: Path
     centerline: Asset
 
     @model_validator(mode="after")
@@ -271,11 +270,6 @@ class RunScenarioInputs(BaseModel):
     def manifest_href(self) -> str:
         """Derive path where this scenario manifest will be saved."""
         return f"{self.scenario_out_dir}/{SCENARIO_MANIFEST_FILENAME}"
-
-    @property
-    def working_dir(self) -> Path:
-        """Path where this run's data will live until it is copied to its final location."""
-        return self.tmp_dir / self.scenario_dir_name
 
     @property
     def kwse_bcs(self) -> list[BoundaryCondition]:

@@ -1,4 +1,7 @@
 from datetime import datetime, timezone
+from pathlib import Path
+
+from pydantic import ValidationError
 
 from twod_fim_jobs.hydraulic_solvers.identities import (
     get_run_identity,
@@ -26,14 +29,18 @@ from twod_fim_jobs.utils.storage import (
 )
 
 
-def run_scenario(run_scenario_inputs: RunScenarioInputs) -> RunScenarioManifest:
+def run_scenario(
+    run_scenario_inputs: RunScenarioInputs, working_dir: Path
+) -> RunScenarioManifest:
     completed = check_run_exists(run_scenario_inputs)
     if completed is not None:
         return completed
 
-    config_path = write_model_files(run_scenario_inputs)
-    solve_scenario_results = solve_scenario(config_path, run_scenario_inputs)
-    processed = post_process_lisflood(run_scenario_inputs)
+    config_path = write_model_files(run_scenario_inputs, working_dir)
+    solve_scenario_results = solve_scenario(
+        config_path, run_scenario_inputs, working_dir
+    )
+    processed = post_process_lisflood(run_scenario_inputs, working_dir)
 
     # Publish results to out location
     scenario_manifest = publish_scenario(
@@ -46,12 +53,18 @@ def run_scenario(run_scenario_inputs: RunScenarioInputs) -> RunScenarioManifest:
 def check_run_exists(
     run_scenario_inputs: RunScenarioInputs,
 ) -> RunScenarioManifest | None:
-    # TODO: add validation to check if new inputs match existing.
     if not check_file_exists(run_scenario_inputs.manifest_href):
         return None
-    return RunScenarioManifest.model_validate_json(
-        read_json(run_scenario_inputs.manifest_href)
-    )
+    try:
+        manifest = RunScenarioManifest.model_validate_json(
+            read_json(run_scenario_inputs.manifest_href)
+        )
+        if manifest.inputs == run_scenario_inputs:
+            return manifest
+        else:
+            return None
+    except ValidationError:
+        return None
 
 
 def publish_scenario(

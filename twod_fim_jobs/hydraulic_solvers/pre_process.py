@@ -32,20 +32,20 @@ logger = logging.getLogger(__name__)
 
 
 class LisfloodWriter:
-    def export(self, run_scenario_inputs: RunScenarioInputs) -> Path:
+    def export(self, run_scenario_inputs: RunScenarioInputs, working_dir: Path) -> Path:
         bc_elements = process_bc_lines(
             run_scenario_inputs.boundary_conditions,
             run_scenario_inputs.domain,
             run_scenario_inputs.grid_properties,
         )
-        run_scenario_inputs.working_dir.mkdir(parents=True, exist_ok=True)
-        bci_path = self.write_bci_file(bc_elements, run_scenario_inputs.working_dir)
+        working_dir.mkdir(parents=True, exist_ok=True)
+        bci_path = self.write_bci_file(bc_elements, working_dir)
         par_path = self.write_par_file(
             run_scenario_inputs.terrain,
             run_scenario_inputs.roughness,
             run_scenario_inputs.run_config,
             bci_path,
-            run_scenario_inputs.working_dir,
+            working_dir,
             run_scenario_inputs.hot_start,
         )
         return par_path
@@ -310,9 +310,11 @@ class SfincsWriter:
 ### METHODS ###
 
 
-def write_model_files(run_scenario_inputs: RunScenarioInputs) -> Path:
+def write_model_files(
+    run_scenario_inputs: RunScenarioInputs, working_dir: Path
+) -> Path:
     if SCENARIO_SOLVER == SupportedSolver.LISFLOOD:
-        return LisfloodWriter().export(run_scenario_inputs)
+        return LisfloodWriter().export(run_scenario_inputs, working_dir)
     elif SCENARIO_SOLVER == SupportedSolver.SFINCS:
         raise NotImplementedError(
             "Tried to generate model files for SFINCS, but this solver is not yet supported."

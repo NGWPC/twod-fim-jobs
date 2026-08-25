@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 
 from twod_fim_jobs.consts import (
@@ -20,24 +21,23 @@ from twod_fim_jobs.utils.storage import ASSET_CACHE
 logger = logging.getLogger(__name__)
 
 
-def post_process_lisflood(run_scenario_inputs: RunScenarioInputs) -> PostProcessResult:
+def post_process_lisflood(
+    run_scenario_inputs: RunScenarioInputs, working_dir: Path
+) -> PostProcessResult:
     """Post-process a LISFLOOD output directory into a COG and a flood polygon GeoJSON."""
-    logger.info(f"Post-processing lisflood model at {run_scenario_inputs.working_dir}")
+    logger.info(f"Post-processing lisflood model at {working_dir}")
     # Materialize assets
     resolved_dem = ASSET_CACHE.materialize_path(run_scenario_inputs.terrain)
 
     # Define output paths
-    depth_path = run_scenario_inputs.working_dir / DEPTH_FILENAME
-    inun_path = run_scenario_inputs.working_dir / INUNDATED_AREA_FILENAME
-    stl_path = run_scenario_inputs.working_dir / STL_FILENAME
+    depth_path = working_dir / DEPTH_FILENAME
+    inun_path = working_dir / INUNDATED_AREA_FILENAME
+    stl_path = working_dir / STL_FILENAME
 
     # Get wd files
-    stem = run_scenario_inputs.working_dir.name
-    wd_files = sorted(run_scenario_inputs.working_dir.glob(f"{stem}-????.wd"))
+    wd_files = sorted(working_dir.glob(f"{DEFAULT_RESROOT_LISFLOOD}-????.wd"))
     if not wd_files:
-        raise FileNotFoundError(
-            f"No .wd files found in {run_scenario_inputs.working_dir}"
-        )
+        raise FileNotFoundError(f"No .wd files found in {working_dir}")
 
     # Process
     last_wd = wd_files[-1]
@@ -48,7 +48,7 @@ def post_process_lisflood(run_scenario_inputs: RunScenarioInputs) -> PostProcess
         resolved_dem, depth_path, us_point, stl_path, clip_poly=inun_path
     )
     if run_scenario_inputs.run_config.save_zarr:
-        zarr_path = run_scenario_inputs.working_dir / DEPTH_ZARR_FILENAME
+        zarr_path = working_dir / DEPTH_ZARR_FILENAME
         wd_files_to_zarr(wd_files, zarr_path, resolved_dem)
     else:
         zarr_path = None

@@ -2,7 +2,7 @@ from twod_fim_jobs.consts import SCENARIO_SOLVER, SDR_COMMIT, SupportedSolver
 import subprocess
 import re
 
-from twod_fim_jobs.models.solvers import RunIdentity, SolverInfo
+from twod_fim_jobs.models.solvers import RunIdentity
 from twod_fim_jobs.utils.hashing import hash_dict
 
 
@@ -37,10 +37,9 @@ def get_sfincs_version() -> str:
 
 def get_run_identity() -> RunIdentity:
     "Make canonical identity for solver and sdr commit id."
-    version = get_model_version(SCENARIO_SOLVER)
     return RunIdentity(
         sdr_commit_id=SDR_COMMIT,
-        solver=SolverInfo(name=SCENARIO_SOLVER.value, version=version),
+        solver=SCENARIO_SOLVER.value,
     )
 
 

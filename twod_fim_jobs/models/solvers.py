@@ -15,6 +15,7 @@ from twod_fim_jobs.consts import (
     RUN_NAME_SLOPE_ROUNDING_PRECISION,
     SCENARIO_MANIFEST_FILENAME,
     USE_CUDA,
+    SupportedSolver,
 )
 from twod_fim_jobs.models.warnings import JobWarning
 from twod_fim_jobs.models.common import Asset, GridProperties, Domain
@@ -35,7 +36,7 @@ class RunIdentity(BaseModel):
         description="Git commit SHA of the SDR used to run the model",
         examples=["826a602ddcaf58bf4081dc04b65ba15b82cc8c8a"],
     )
-    solver: SolverInfo = Field(description="Solver name and version")
+    solver: SupportedSolver = Field(description="Solver name")
 
 
 class TerminationCondition(StrEnum):

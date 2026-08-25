@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import geopandas as gpd
@@ -9,7 +10,11 @@ from twod_fim_jobs.hydraulic_solvers.pre_process import process_bc_line
 from twod_fim_jobs.models.common import Asset, Domain, GridProperties
 from twod_fim_jobs.models.solvers import (
     ConvergenceResult,
+    HFixBC,
     PostProcessResult,
+    QFixBC,
+    RunConfig,
+    RunIdentity,
     RunScenarioInputs,
     RunScenarioManifest,
     RunScenarioResults,
@@ -27,7 +32,7 @@ TEST_MODEL_DATA = (
 
 
 def create_test_run_scenario_inputs(
-    base_out_dir: str, reach_id: int, model_id: str
+    base_out_dir: str, reach_id: int, model_id: str = "fceb20c6_N164S214E230W107"
 ) -> RunScenarioInputs:
     """Helper to create minimal valid RunScenarioInputs for testing."""
     return RunScenarioInputs(
@@ -49,9 +54,32 @@ def create_test_run_scenario_inputs(
             source_url=None,
             derived=False,
         ),
-        boundary_conditions=[],  # Will need to add at least one in real scenarios, but not for publish test
+        boundary_conditions=[
+            HFixBC(
+                vector=Asset(
+                    href="s3://bucket/bc_vector.geojson",
+                    checksum="d4e5f6a7b8c9d0e1",
+                    source_url=None,
+                    derived=False,
+                ),
+                value=1.0,
+            ),
+            QFixBC(
+                vector=Asset(
+                    href="s3://bucket/qfix_vector.geojson",
+                    checksum="e5f6a7b8c9d0e1f2",
+                    source_url=None,
+                    derived=False,
+                ),
+                value=100.0,
+            ),
+        ],
         hot_start=None,
-        run_config=MagicMock(),  # Mock for testing
+        run_config=RunConfig(
+            sim_time_seconds=3600.0,
+            save_interval_seconds=600.0,
+            max_simulation_wall_time_seconds=3600.0,
+        ),
         base_out_dir=base_out_dir,
         reach_id=reach_id,
         model_id=model_id,
@@ -76,11 +104,62 @@ def test_publish_scenario_preserves_s3_double_slash(tmp_path: Path) -> None:
     for f in (depth, inun, stl):
         f.write_text("mock data")
 
-    # Create mock RunScenarioInputs - but we need to mock scenario_out_dir to be S3 path
-    run_scenario_inputs = MagicMock(spec=RunScenarioInputs)
-    run_scenario_inputs.scenario_out_dir = "s3://bucket/results"
-    run_scenario_inputs.reach_id = 12345
-    run_scenario_inputs.model_id = "test-model"
+    # Create real RunScenarioInputs with valid model_id format
+    run_scenario_inputs = RunScenarioInputs(
+        domain=Domain(
+            bbox=(0.0, 0.0, 100.0, 100.0),
+            anchor=(50.0, 50.0),
+            offsets=(10.0, 20.0, 15.0, 5.0),
+        ),
+        grid_properties=GridProperties(rows=10, cols=10),
+        terrain=Asset(
+            href="s3://bucket/terrain.tif",
+            checksum="a1b2c3d4e5f6a7b8",
+            source_url=None,
+            derived=False,
+        ),
+        roughness=Asset(
+            href="s3://bucket/roughness.tif",
+            checksum="b2c3d4e5f6a7b8c9",
+            source_url=None,
+            derived=False,
+        ),
+        boundary_conditions=[
+            HFixBC(
+                vector=Asset(
+                    href="s3://bucket/bc_vector.geojson",
+                    checksum="d4e5f6a7b8c9d0e1",
+                    source_url=None,
+                    derived=False,
+                ),
+                value=1.0,
+            ),
+            QFixBC(
+                vector=Asset(
+                    href="s3://bucket/qfix_vector.geojson",
+                    checksum="e5f6a7b8c9d0e1f2",
+                    source_url=None,
+                    derived=False,
+                ),
+                value=100.0,
+            ),
+        ],
+        hot_start=None,
+        run_config=RunConfig(
+            sim_time_seconds=3600.0,
+            save_interval_seconds=600.0,
+            max_simulation_wall_time_seconds=3600.0,
+        ),
+        base_out_dir="s3://bucket/results",
+        reach_id=12345,
+        model_id="fceb20c6_N164S214E230W107",
+        centerline=Asset(
+            href="s3://bucket/centerline.geojson",
+            checksum="c3d4e5f6a7b8c9d0",
+            source_url=None,
+            derived=False,
+        ),
+    )
 
     # Create mock solve results
     solve_results = SolveScenarioResults(
@@ -106,15 +185,22 @@ def test_publish_scenario_preserves_s3_double_slash(tmp_path: Path) -> None:
     # Mock the file operations to avoid actual S3 calls
     with (
         patch(
-            "twod_fim_jobs.hydraulic_solvers.common.hash_file", return_value="abc123"
+            "twod_fim_jobs.hydraulic_solvers.common.hash_file",
+            return_value="a1b2c3d4e5f6a7b8",
         ),
         patch("twod_fim_jobs.hydraulic_solvers.common.copy_file"),
         patch("twod_fim_jobs.hydraulic_solvers.common.write_json"),
         patch(
             "twod_fim_jobs.hydraulic_solvers.common.get_run_identity_hash",
-            return_value="test_hash",
+            return_value="fceb20c6",
         ),
-        patch("twod_fim_jobs.hydraulic_solvers.common.get_run_identity"),
+        patch(
+            "twod_fim_jobs.hydraulic_solvers.common.get_run_identity",
+            return_value=RunIdentity(
+                sdr_commit_id="826a602ddcaf58bf4081dc04b65ba15b82cc8c8a",
+                solver="lisflood",
+            ),
+        ),
     ):
         manifest = publish_scenario(run_scenario_inputs, solve_results, processed)
 
@@ -139,11 +225,62 @@ def test_write_model_results_to_s3_works(tmp_path: Path) -> None:
     for f in (depth, inun, stl):
         f.write_text("mock output data")
 
-    # Create mock RunScenarioInputs with S3 output directory
-    run_scenario_inputs = MagicMock(spec=RunScenarioInputs)
-    run_scenario_inputs.scenario_out_dir = "s3://bucket/results/reach-123"
-    run_scenario_inputs.reach_id = 9876543210
-    run_scenario_inputs.model_id = "test-model-2"
+    # Create real RunScenarioInputs with S3 output directory
+    run_scenario_inputs = RunScenarioInputs(
+        domain=Domain(
+            bbox=(0.0, 0.0, 100.0, 100.0),
+            anchor=(50.0, 50.0),
+            offsets=(10.0, 20.0, 15.0, 5.0),
+        ),
+        grid_properties=GridProperties(rows=10, cols=10),
+        terrain=Asset(
+            href="s3://bucket/terrain.tif",
+            checksum="a1b2c3d4e5f6a7b8",
+            source_url=None,
+            derived=False,
+        ),
+        roughness=Asset(
+            href="s3://bucket/roughness.tif",
+            checksum="b2c3d4e5f6a7b8c9",
+            source_url=None,
+            derived=False,
+        ),
+        boundary_conditions=[
+            HFixBC(
+                vector=Asset(
+                    href="s3://bucket/bc_vector.geojson",
+                    checksum="d4e5f6a7b8c9d0e1",
+                    source_url=None,
+                    derived=False,
+                ),
+                value=2.5,
+            ),
+            QFixBC(
+                vector=Asset(
+                    href="s3://bucket/qfix_vector.geojson",
+                    checksum="e5f6a7b8c9d0e1f2",
+                    source_url=None,
+                    derived=False,
+                ),
+                value=250.0,
+            ),
+        ],
+        hot_start=None,
+        run_config=RunConfig(
+            sim_time_seconds=3600.0,
+            save_interval_seconds=600.0,
+            max_simulation_wall_time_seconds=3600.0,
+        ),
+        base_out_dir="s3://bucket/results/reach-123",
+        reach_id=9876543210,
+        model_id="fceb20c6_N164S214E230W107",
+        centerline=Asset(
+            href="s3://bucket/centerline.geojson",
+            checksum="c3d4e5f6a7b8c9d0",
+            source_url=None,
+            derived=False,
+        ),
+    )
 
     # Create mock solve results
     solve_results = SolveScenarioResults(
@@ -167,7 +304,7 @@ def test_write_model_results_to_s3_works(tmp_path: Path) -> None:
     )
 
     # Mock S3 operations to verify they are called
-    mock_hash_file = MagicMock(return_value="hash1234567890ab")
+    mock_hash_file = MagicMock(return_value="a1b2c3d4e5f6a7b8")
     mock_copy_file = MagicMock()
     mock_write_json = MagicMock()
 
@@ -177,9 +314,15 @@ def test_write_model_results_to_s3_works(tmp_path: Path) -> None:
         patch("twod_fim_jobs.hydraulic_solvers.common.write_json", mock_write_json),
         patch(
             "twod_fim_jobs.hydraulic_solvers.common.get_run_identity_hash",
-            return_value="test_hash",
+            return_value="fceb20c6",
         ),
-        patch("twod_fim_jobs.hydraulic_solvers.common.get_run_identity"),
+        patch(
+            "twod_fim_jobs.hydraulic_solvers.common.get_run_identity",
+            return_value=RunIdentity(
+                sdr_commit_id="826a602ddcaf58bf4081dc04b65ba15b82cc8c8a",
+                solver="lisflood",
+            ),
+        ),
     ):
         manifest = publish_scenario(run_scenario_inputs, solve_results, processed)
 
@@ -200,21 +343,25 @@ def test_write_model_results_to_s3_works(tmp_path: Path) -> None:
 
 def test_check_model_skips_when_run_exists() -> None:
     """Test that models skip when a run already exists by checking check_run_exists returns manifest."""
-    # Create minimal RunScenarioInputs
+    # Create minimal RunScenarioInputs with valid model_id
+    model_id = "fceb20c6_N164S214E230W107"
     run_scenario_inputs = create_test_run_scenario_inputs(
         base_out_dir="s3://bucket/results",
         reach_id=54321,
-        model_id="skip-test-model",
+        model_id=model_id,
     )
 
     # Create a valid manifest that would be returned by check_run_exists
     expected_manifest = RunScenarioManifest(
-        created_at=None,
-        identity_hash="test_hash",
-        scenario_code="test_scenario",
+        created_at=datetime.now(timezone.utc),
+        identity_hash="fceb20c6",
+        scenario_code="KWSE1.0Q100",
         reach_id=54321,
-        model_id="skip-test-model",
-        identity=MagicMock(),
+        model_id=model_id,
+        identity=RunIdentity(
+            sdr_commit_id="826a602ddcaf58bf4081dc04b65ba15b82cc8c8a",
+            solver="lisflood",
+        ),
         self_href="s3://bucket/manifest.json",
         inputs=run_scenario_inputs,
         assets=ScenarioAssets(
@@ -252,7 +399,7 @@ def test_check_model_skips_when_run_exists() -> None:
         warnings=[],
     )
 
-    # Mock the storage functions
+    # Mock the storage functions to return valid JSON
     with (
         patch(
             "twod_fim_jobs.hydraulic_solvers.common.check_file_exists",
@@ -269,7 +416,7 @@ def test_check_model_skips_when_run_exists() -> None:
     assert result is not None
     assert isinstance(result, RunScenarioManifest)
     assert result.reach_id == 54321
-    assert result.model_id == "skip-test-model"
+    assert result.model_id == model_id
 
 
 def test_check_run_exists_returns_none_when_manifest_not_found() -> None:

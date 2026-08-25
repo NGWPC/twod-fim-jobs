@@ -1,14 +1,11 @@
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import geopandas as gpd
-import pytest
 from shapely.geometry import LineString
 
-from twod_fim_jobs.exceptions import NonIntersectingKWSELine
 from twod_fim_jobs.hydraulic_solvers.common import check_run_exists, publish_scenario
 from twod_fim_jobs.hydraulic_solvers.pre_process import process_bc_line
-from twod_fim_jobs.models.build_model import ModelManifest
 from twod_fim_jobs.models.common import Asset, Domain, GridProperties
 from twod_fim_jobs.models.solvers import (
     ConvergenceResult,
@@ -21,7 +18,6 @@ from twod_fim_jobs.models.solvers import (
     TerminationCondition,
     TransferBC,
 )
-from twod_fim_jobs.utils.storage import read_json
 
 
 ROOT = Path(__file__).parent

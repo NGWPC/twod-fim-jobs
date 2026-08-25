@@ -32,3 +32,7 @@ class InvalidWKTGeometryError(Exception):
 
 class AnchorOutsideDomainError(Exception):
     """Raised when the computed anchor point falls outside the model domain bbox."""
+
+
+class NonIntersectingKWSELine(Exception):
+    """Raised when a KWSE transfer line does not intersect the model domain."""

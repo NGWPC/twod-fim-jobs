@@ -11,6 +11,7 @@ from shapely import LineString, MultiLineString, MultiPolygon, Point, Polygon
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import linemerge, unary_union
 import geopandas as gpd
+from twod_fim_jobs.exceptions import NonIntersectingKWSELine
 from twod_fim_jobs.models.build_model import Domain, GridProperties
 from twod_fim_jobs.models.common import Asset
 from twod_fim_jobs.utils.geospatial import Raster, rasterize_geometry, tif_to_asc
@@ -368,6 +369,8 @@ def process_bc_line(
         tagged = [[*pt, "QFIX", q_per_cell] for pt in pts]
     elif isinstance(boundary_condition, TransferBC):
         tagged = process_transfer_bc_line(boundary_condition, pts)
+        if len(tagged) == 0:
+            raise NonIntersectingKWSELine()
     else:
         tagged = [
             [*pt, boundary_condition.bc_type, boundary_condition.value] for pt in pts

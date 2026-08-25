@@ -69,6 +69,13 @@ lint-fix = "ruff check --fix ."
 ruff = "ruff format . && ruff check --fix ."
 pyright = "pyright twod_fim_jobs"
 generate_docs = "python -m twod_fim_jobs.models.generate_docs"
+pytest = "pytest -m 'not e2e'"
+test-all = "pytest"
+
+[tool.pytest.ini_options]
+markers = [
+    "e2e: end-to-end test",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "ERA", "RUF"]

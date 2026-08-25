@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 import geopandas as gpd
 import pandas as pd
+from pydantic import ValidationError
 
 from twod_fim_jobs.consts import (
     ANCHOR_FILENAME,
@@ -259,5 +260,8 @@ def _check_model_built(inputs: BuildModelInputs, manifest_href: str) -> bool:
     """Checks if a model with the same inputs has already been built."""
     if not check_file_exists(manifest_href):
         return False
-    ref = ModelManifest.model_validate_json(read_json(manifest_href))
-    return ref.inputs == inputs
+    try:
+        ref = ModelManifest.model_validate_json(read_json(manifest_href))
+        return ref.inputs == inputs
+    except ValidationError:
+        return False

@@ -80,7 +80,10 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 return results
 
             scenario_comparison = compare_scenario_changes(
-                trial_scenario, inputs, ref_scenario
+                trial_scenario,
+                inputs,
+                ref_scenario,
+                force_accept=(delta_us_discharge <= inputs.adaptive_step_min_delta_q),
             )
             results.scenario_comparison_results.append(scenario_comparison)
 
@@ -98,6 +101,9 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 current_scenario = trial_scenario
                 delta_us_discharge *= inputs.adaptive_step_algorithm_grow_factor
 
+            delta_us_discharge = max(
+                inputs.adaptive_step_min_delta_q, delta_us_discharge
+            )
             q_trial = current_scenario.us_discharge + delta_us_discharge
 
         trial_scenario = _run_scenario(
@@ -208,6 +214,8 @@ def compare_scenario_changes(
     # Load data
     ref_raster = Raster(resolved_ref_depth)
     trial_raster = Raster(resolved_tria_depth)
+    ref_raster.data = np.clip(ref_raster.data, 0, None)
+    trial_raster.data = np.clip(trial_raster.data, 0, None)
     comparison_mask = (ref_raster.data > 0) | (trial_raster.data > 0)
 
     depth_diffs = (

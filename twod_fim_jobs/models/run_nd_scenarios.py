@@ -33,7 +33,7 @@ class RunNDScenariosInputs(BaseModel):
     )
     model_results_base_path: str = Field(
         description="Path where results will be saved",
-        examples=["s3://twod-fim/version=v1/results/1257410937935512"],
+        examples=["s3://twod-fim/version=v1/results"],
     )
     min_upstream_inflow: float = Field(
         description="Minimum of the target discharge range in cms",

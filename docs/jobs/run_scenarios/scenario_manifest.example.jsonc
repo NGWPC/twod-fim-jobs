@@ -1,102 +1,121 @@
 {
-          "type": "run",  // Discriminator vs. a run record.
-          "hash_algo": "sha256",  // Hash function for every hash/checksum in this document. Truncation length is per-field (see build_model-design.md).
-          "twod_fim_version": "0.1.0",  // Producer software version (provenance).
-          "created_at": "2026-08-06T22:17:07.406819Z",  // Run completion time (UTC). model.json is written last.
-          "reach_id": 1257410937935512,  // Primary key for the reach in the reach db
-          "identity_hash": "fceb20c6",  // Hash of the identity object. Stable across domain changes; results group under it.
-          "scenario_code": "KWSE200.2Q200",  // Scenario identifier: bc_type + bc_value (decimal or scientific notation) + 'Q' + integer discharge
-          "model_id": "fceb20c6_N164S214E230W107",  // <identity_hash>+<domain_code>. Also the folder name.
-          "identity": {
-            "sdr_commit_id": "826a602ddcaf58bf4081dc04b65ba15b82cc8c8a",  // Git commit SHA of the SDR used to run the model
-            "solver": "sfincs"  // Solver name
-          },
-          "self_href": "s3://twod-fim/version=v1/results/nd=1.0E02/q=1000/scenario_manifest.json",  // Location of this scenario manifest's json
-          "inputs": {
-            "domain": {
-              "bbox": [-2059240.0, 2806980.0, -2055870.0, 2810760.0],  // Domain bbox in native CRS [west, south, east, north].
-              "anchor": [-2058170.0, 2809120.0],  // Grid-snapped reach centroid in native CRS [x, y]; origin the offsets are measured from.
-              "offsets": [164.0, 214.0, 230.0, 107.0]  // [N, S, E, W] grid-snapped offsets in CRS units; matches domain_token.
-            },
-            "grid_properties": {
-              "rows": 378,  // Number of rows in the model domain
-              "cols": 337  // Number of columns in the model domain
-            },
-            "terrain": {
-              "href": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
-              "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
-              "source_url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
-              "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
-              "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
-            },
-            "roughness": {
-              "href": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
-              "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
-              "source_url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
-              "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
-              "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
-            },
-            "boundary_conditions": [{"vector": {"href": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif", "checksum": "a1b2c3d4e5f6a7b8", "source_url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt", "retrieved": "2026-08-06T22:17:07.406819Z", "derived": true}, "bc_type": "QFIX", "value": "<required: number>"}],
-            "hot_start": {
-              "href": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
-              "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
-              "source_url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
-              "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
-              "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
-            },
-            "run_config": {
-              "sim_time_seconds": 36000.0,
-              "save_interval_seconds": 3600.0,
-              "mass_interval_seconds": 60.0,
-              "initial_tstep_seconds": 0.5,
-              "use_cuda": true,
-              "use_elevoff": false,
-              "volume_convergence_tolerance": 0.1,  // Volume increase in the reach as a percent of inflow below which model is considered steady
-              "allow_water_on_edges": false,  // Whether to ignore or terminate when water pools on an invalid edge
-              "max_simulation_wall_time_seconds": 36000.0,
-              "save_zarr": false  // Whether or not to generate and save a zarr file with wse and depth at each print interval
-            },
-            "base_out_dir": "<required: string>",
-            "reach_id": "<required: integer>",
-            "model_id": "<required: string>",
-            "centerline": {
-              "href": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
-              "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
-              "source_url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
-              "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
-              "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
-            }
-          },
-          "properties": {
-            "convergence_results": [{"volume_convergence": 0.02, "boundary_check": null, "model_running": true}],  // Convergence status after each raster output
-            "termination_condition": "volume_convergence",  // The reason the simulation ended.
-            "wall_time": "<required: number>",  // How long the model ran in wall time
-            "nominal_wse": "<required: number>",  // Nominal water surface elevation achieved at the reach upstream point
-            "sim_time": "<required: number>"  // Simulation time (model time)in seconds at the final timestep
-          },
-          "assets": {
-            "depth": {
-              "href": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
-              "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
-              "source_url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
-              "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
-              "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
-            },
-            "inundation_polygon": {
-              "href": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
-              "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
-              "source_url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
-              "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
-              "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
-            },
-            "stage_transfer_line": {
-              "href": "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
-              "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
-              "source_url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
-              "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
-              "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
-            },
-            "zarr_store": null
-          },
-          "warnings": []  // Non-fatal check results; the scenario run still completes and writes scenario.json.
-        }
+  "type": "run",  // Discriminator vs. a run record.
+  "hash_algo": "sha256",  // Hash function for every hash/checksum in this document. Truncation length is per-field (see build_model-design.md).
+  "twod_fim_version": "0.1.0",  // Producer software version (provenance).
+  "created_at": "2026-08-06T22:17:07.406819Z",  // Run completion time (UTC). model.json is written last.
+  "reach_id": 1257410937935512,  // Primary key for the reach in the reach db
+  "identity_hash": "fceb20c6",  // Hash of the identity object. Stable across domain changes; results group under it.
+  "scenario_code": "KWSE200.2Q200",  // Scenario identifier: bc_type + bc_value (decimal or scientific notation) + 'Q' + integer discharge
+  "model_id": "fceb20c6_N164S214E230W107",  // <identity_hash>+<domain_code>. Also the folder name.
+  "identity": {
+    "sdr_commit_id": "826a602ddcaf58bf4081dc04b65ba15b82cc8c8a",  // Git commit SHA of the SDR used to run the model
+    "solver": "sfincs"  // Solver name
+  },
+  "self_href": "s3://twod-fim/version=v1/results/nd=1.0E02/q=1000/scenario_manifest.json",  // Location of this scenario manifest's json
+  "inputs": {
+    "domain": {
+      "bbox": [-2059240.0, 2806980.0, -2055870.0, 2810760.0],  // Domain bbox in native CRS [west, south, east, north].
+      "anchor": [-2058170.0, 2809120.0],  // Grid-snapped reach centroid in native CRS [x, y]; origin the offsets are measured from.
+      "offsets": [164.0, 214.0, 230.0, 107.0]  // [N, S, E, W] grid-snapped offsets in CRS units; matches domain_token.
+    },
+    "grid_properties": {
+      "rows": 378,  // Number of rows in the model domain
+      "cols": 337  // Number of columns in the model domain
+    },
+    "terrain": {
+      "href": "s3://bucket/prefix/file.ext",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
+      "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
+      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
+      "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
+      "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
+    },
+    "roughness": {
+      "href": "s3://bucket/prefix/file.ext",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
+      "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
+      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
+      "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
+      "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
+    },
+    "boundary_conditions": [
+      {
+        "vector": {
+          "href": "s3://bucket/prefix/file.ext",
+          "checksum": "a1b2c3d4e5f6a7b8",
+          "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",
+          "retrieved": "2026-08-06T22:17:07.406819Z",
+          "derived": true
+        },
+        "bc_type": "QFIX",
+        "value": "<required: number>"
+      }
+    ],
+    "hot_start": {
+      "href": "s3://bucket/prefix/file.ext",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
+      "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
+      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
+      "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
+      "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
+    },
+    "run_config": {
+      "sim_time_seconds": 36000.0,
+      "save_interval_seconds": 3600.0,
+      "mass_interval_seconds": 60.0,
+      "initial_tstep_seconds": 0.5,
+      "use_cuda": true,
+      "use_elevoff": false,
+      "volume_convergence_tolerance": 0.1,  // Volume increase in the reach as a percent of inflow below which model is considered steady
+      "allow_water_on_edges": false,  // Whether to ignore or terminate when water pools on an invalid edge
+      "max_simulation_wall_time_seconds": 36000.0,
+      "save_zarr": false  // Whether or not to generate and save a zarr file with wse and depth at each print interval
+    },
+    "base_out_dir": "<required: string>",
+    "reach_id": "<required: integer>",
+    "model_id": "<required: string>",
+    "centerline": {
+      "href": "s3://bucket/prefix/file.ext",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
+      "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
+      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
+      "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
+      "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
+    },
+    "run_identity_hash": "<required: string>"
+  },
+  "properties": {
+    "convergence_results": [
+      {
+        "volume_convergence": 0.02,
+        "boundary_check": null,
+        "model_running": true
+      }
+    ],  // Convergence status after each raster output
+    "termination_condition": "volume_convergence",  // The reason the simulation ended.
+    "wall_time": "<required: number>",  // How long the model ran in wall time
+    "nominal_wse": "<required: number>",  // Nominal water surface elevation achieved at the reach upstream point
+    "sim_time": "<required: number>"  // Simulation time (model time)in seconds at the final timestep
+  },
+  "assets": {
+    "depth": {
+      "href": "s3://bucket/prefix/file.ext",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
+      "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
+      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
+      "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
+      "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
+    },
+    "inundation_polygon": {
+      "href": "s3://bucket/prefix/file.ext",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
+      "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
+      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
+      "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
+      "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
+    },
+    "stage_transfer_line": {
+      "href": "s3://bucket/prefix/file.ext",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
+      "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
+      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
+      "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
+      "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
+    },
+    "zarr_store": null
+  },
+  "warnings": []  // Non-fatal check results; the scenario run still completes and writes scenario.json.
+}

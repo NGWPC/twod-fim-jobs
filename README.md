@@ -239,13 +239,15 @@ The job writes one subdirectory per scenario under `model_results_base_path`, gr
 
 ```text
 <model_results_base_path>/
-└── <run_identity_hash>/          # e.g. a1b2c3d4/ — hash of solver identity + sdr commit id
-    └── nd=<slope>/               # e.g. nd=1E-03/
-        └── q=<discharge>/        # e.g. q=150.000/
-            ├── scenario_manifest.json  # Scenario manifest (inputs, properties, asset references)
-            ├── depth.tif               # Water depth raster at final timestep
-            ├── inundation.geojson      # Inundated area polygon at final timestep
-            └── stage_transfer_line.geojson  # Stage transfer line geometry
+└── reach=<reach_id>/                                # e.g. reach=1257410937935512/
+    └── <model_id>/                                  # e.g. 5f14368c_N350S296E449W355/
+        └── <run_identity_hash>/                     # e.g. a1b2c3d4/ — hash of solver identity + sdr commit id
+            └── nd=<slope>/                          # e.g. nd=1E-03/
+                └── q=<discharge>/                   # e.g. q=150.000/
+                    ├── scenario_manifest.json       # Scenario manifest (inputs, properties, asset references)
+                    ├── depth.tif                    # Water depth raster at final timestep
+                    ├── inundation.geojson           # Inundated area polygon at final timestep
+                    └── stage_transfer_line.geojson  # Stage transfer line geometry
 ```
 
 The job returns a JSON result payload on stdout:
@@ -295,13 +297,15 @@ The job writes one subdirectory per scenario under `model_results_base_path`, gr
 
 ```text
 <model_results_base_path>/
-└── <run_identity_hash>/          # e.g. a1b2c3d4/ — hash of solver identity + sdr commit id
-    └──kwse=<bc_value>/               # e.g. nd=1E-03/
-        └── q=<discharge>/        # e.g. q=150.000/
-            ├── scenario_manifest.json  # Scenario manifest (inputs, properties, asset references)
-            ├── depth.tif               # Water depth raster at final timestep
-            ├── inundation.geojson      # Inundated area polygon at final timestep
-            └── stage_transfer_line.geojson  # Stage transfer line geometry
+└── reach=<reach_id>/                                # e.g. reach=1257410937935512/
+    └── <model_id>/                                  # e.g. 5f14368c_N350S296E449W355/
+        └── <run_identity_hash>/                     # e.g. a1b2c3d4/ — hash of solver identity + sdr commit id
+            └── kwse=<bc_value>/                     # e.g. kwse=202.3/
+                └── q=<discharge>/                   # e.g. q=1000.000/
+                    ├── scenario_manifest.json       # Scenario manifest (inputs, properties, asset references)
+                    ├── depth.tif                    # Water depth raster at final timestep
+                    ├── inundation.geojson           # Inundated area polygon at final timestep
+                    └── stage_transfer_line.geojson  # Stage transfer line geometry
 ```
 
 The job returns a JSON result payload on stdout:

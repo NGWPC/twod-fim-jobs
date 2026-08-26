@@ -7,7 +7,7 @@
         "href": {
           "description": "Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.",
           "examples": [
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif"
+            "s3://bucket/prefix/file.ext"
           ],
           "title": "Href",
           "type": "string"
@@ -33,7 +33,7 @@
           "default": null,
           "description": "External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.",
           "examples": [
-            "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt"
+            "https://bucket.s3.amazonaws.com/prefix/source.ext"
           ],
           "title": "Source Url"
         },
@@ -599,6 +599,10 @@
         },
         "centerline": {
           "$ref": "#/$defs/Asset"
+        },
+        "run_identity_hash": {
+          "title": "Run Identity Hash",
+          "type": "string"
         }
       },
       "required": [
@@ -612,7 +616,8 @@
         "base_out_dir",
         "reach_id",
         "model_id",
-        "centerline"
+        "centerline",
+        "run_identity_hash"
       ],
       "title": "RunScenarioInputs",
       "type": "object"

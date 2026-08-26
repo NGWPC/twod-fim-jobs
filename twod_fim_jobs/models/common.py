@@ -52,9 +52,7 @@ class Asset(BaseModel):
 
     href: str = Field(
         description="Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.",
-        examples=[
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif"
-        ],
+        examples=["s3://bucket/prefix/file.ext"],
     )
     checksum: str = Field(
         pattern=r"^[0-9a-f]{16}$",
@@ -64,9 +62,7 @@ class Asset(BaseModel):
     source_url: str | None = Field(
         default=None,
         description="External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.",
-        examples=[
-            "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt"
-        ],
+        examples=["https://bucket.s3.amazonaws.com/prefix/source.ext"],
     )
     retrieved: datetime | None = Field(
         default=None,

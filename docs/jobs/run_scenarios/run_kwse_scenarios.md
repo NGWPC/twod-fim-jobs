@@ -1,76 +1,106 @@
 # run_kwse_scenarios
 
-Inputs match `run.schema.json#/properties/inputs` (see conventions.md). Writes one `run.json` per scenario in the batch — see conventions.md's "one manifest per object" rule. Shares its manifest type with `run_nd_scenarios` (see conventions.md's cardinality note).
-
 ## Overview
 
-Run a hydraulic solver for a batch of (discharge, downstream-stage) scenarios against one Model, using the downstream reach's own Run results to build each scenario's boundary condition, and write one Run manifest plus depth/STL rasters per scenario.
+Run a hydraulic solver for a set of user-defined scenarios.  A scenario is defined by an upstream discharge, a (previously-run) downstream scenario, and optionally, a depth grid to hot-start the scenario.  Water surface elevations are enforced on a cell-by-cell basis along the stage transfer line of the downstream scenario onto the current reach's domain.  Scenarios are run in serial, such that scenarios earlier in the user-defined list can serve as hot-starts for later scenarios.  Any scenario that already exists on storage is skipped instead of being re-run.
 
 ## Inputs
 
-
-One call solves a **batch** of scenarios for one reach against one downstream reach, in parallel — not one scenario per call. The Dagster partition boundary is the batch call; scenarios inside a batch are not individually retriable units.
-
 <!-- AUTO:inputs_table -->
+### Required
 
-| Name              | Type         | Description                                                                                          |
-| ----------------- | ------------ | ---------------------------------------------------------------------------------------------------- |
-| model_id          | str          | model_id of the reach that will be modeled                                                           |
-| ds_model_id       | str          | model_id of the reach immediately downstream                                                         |
-| models_base_path  | str          | Path where models are read from                                                                      |
-| results_base_path | str          | Path where run artifacts are written                                                                 |
-| scenarios         | list[object] | One entry per scenario: `{q, bc_value, downstream_scenario, hotstart (optional)}` — `hotstart` uses `run.schema.json`'s `scenarioRef` shape (reach_id/run_identity/scenario_point, not a resolved href — paths are self-documenting and rebuilt by the job, valid because it's a same-model reference). `downstream_scenario` crosses reach/model boundaries, so it's a resolved S3 URI string instead, not `scenarioRef` coordinates |
+| Name | Type | Description |
+| --- | --- | --- |
+| `model_manifest_path` | `string` | Path where the model manifest json is saved |
+| `model_results_base_path` | `string` | Path where results will be saved |
+| `scenarios` | `list[KWSEScenario]` | A list of KWSE scenarios to run.  If hot start files will be needed  |
 
 ### Optional
 
-| Name                             | Type  | Description                                                  |
-| -------------------------------- | ----- | ------------------------------------------------------------ |
-| max_simulation_length_hours      | float | Max sim-clock time before a scenario is forcibly terminated  |
-| max_simulation_wall_time_minutes | float | Max wall-clock time before a scenario is forcibly terminated |
-| save_velocity                    | bool  | Whether to generate and save a velocity raster asset         |
-
-`solver` is **not** a call argument. Each solver (LISFLOOD, SFINCS, ...) is its own job/container image — installing two solvers on one image isn't done — so which solver ran is fixed by deployment, not requested per call. It's still recorded in each scenario's `run.json` under `identity.solver`, since it's output-determining.
-
-
+| Name | Type | Default | Description |
+| --- | --- | --- | --- |
+| `volume_convergence_tolerance` | `number` | 0.001 | Volume increase in the reach as a percent of inflow below which model is considered steady |
+| `allow_water_on_edges` | `boolean` | false | Whether to ignore or terminate when water pools on an invalid edge |
+| `max_simulation_length_seconds` | `number` | 86400 | Maximum time (in model seconds) that a model will be allowed to run before it is forcefully terminated |
+| `save_interval_seconds` | `number` | 3600.0 | Frequency (in model seconds) with which a model will export depth rasters |
+| `max_simulation_wall_time_seconds` | `number` | 10000000000.0 | Maximum time (in wall time) that a model will be allowed to run before it is forcefully terminated |
+| `save_velocity` | `boolean` | false | Whether or not to generate and save velocity tifs |
+| `save_zarr` | `boolean` | false | Whether or not to generate and save a zarr file with wse and depth at each print interval |
 <!-- /AUTO:inputs_table -->
+
+### `KWSEScenario`
+
+<!-- AUTO:kwse_scenario_table -->
+#### Required
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `upstream_discharge` | `number` | Flows applied at the top of the reach in cms |
+| `bc_value` | `number` | Nominal water surface elevation at the bottom of the reach |
+| `downstream_Scenario` | `string` | Path to the scenario manifest json for the model providing downstrem WSE forcing |
+
+#### Optional
+
+| Name | Type | Default | Description |
+| --- | --- | --- | --- |
+| `hotstart` | `HotStart` | null | Scenario used for initial water depths in the simulation. |
+<!-- /AUTO:kwse_scenario_table -->
+
+### `HotStart`
+
+<!-- AUTO:hotstart_table -->
+#### Required
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `upstream_discharge` | `number` | Flows applied at the top of the reach in cms |
+| `bc_value` | `number` | Nominal water surface elevation at the bottom of the reach |
+
+#### Optional
+
+| Name | Type | Default | Description |
+| --- | --- | --- | --- |
+| `identity_hash` | `string` | "0c24be7a" | Hash of the run identity object. If none, assumed to be same as current scenario's. |
+<!-- /AUTO:hotstart_table -->
 
 
 ## Artifacts
 
 <!-- AUTO:artifacts_table -->
-
-| Artifact                                                                                           | Description                                                                     |
-| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `results/reach=<reach_id>/<model identity_hash>/<run identity_hash>/z=<value>/q=<value>/depth.tif` | Depth raster, COG, EPSG:5070                                                    |
-| `.../velocity.tif`                                                                                 | Velocity raster — present only if `save_velocity`                               |
-| `.../stl.geojson`                                                                                  | This scenario's Stage Transfer Line                                             |
-| `.../metadata.csv` / `.parquet`                                                                    | Metadata on artifacts                                                           |
-| `.../run.json`                                                                                     | Run definition and artifact inventory for this scenario — see `run.schema.json` |
-
+| Name | Description |
+| --- | --- |
+| `depth` | Depth grid at the final timestep |
+| `inundation_polygon` | Inundated area polygon at the final timestep |
+| `stage_transfer_line` | Stage transfer line |
+| `zarr_store` | Zarr store with depths at each print interval |
 <!-- /AUTO:artifacts_table -->
 
 
 ## Response
 
 <!-- AUTO:result_table -->
-
-
+| Name | Type | Description |
+| --- | --- | --- |
+| `manifests` | `list[string]` | Paths to all generated scenario assets. |
+| `warnings` | `list[JobWarning]` |  |
 <!-- /AUTO:result_table -->
 
-- `runs` — list[object] — one `{id, identity_hash}` per scenario solved, same order as the `scenarios` input. It will have same order as input list.
 
-A list, not a single pointer — one call produces N Run objects. `run.json` per scenario is the durable record; this is a pointer into each.
 
 ## Processing Scope
 
-- Retrieve the Model's artifacts (`dem.tif`, `roughness.tif`, `domain.geojson`, `cl.geojson`) from `model_id`.
-- For each scenario, retrieve the downstream reach's Run referenced by `downstream_scenario` (from `ds_model_id`'s results).
-- Extract the downstream stage and sample it onto the STL for a cell-by-cell boundary condition (DR-031).
-- For each scenario, in parallel: build the solver input deck, apply `hotstart` if supplied, invoke the solver, watch for convergence.
-- Compute per-scenario diagnostic metrics (see Metrics).
-- Post-process each scenario's native solver output into twod-fim spec results (EPSG:5070 COG).
-- Generate each scenario's own `stl.geojson` (DR-025, DR-026 — regenerated per run, not shared, so it can be handed to whichever reach is upstream of this one).
-- Write each scenario's `run.json` last, recording `downstream_scenario` so the orchestrator can later detect staleness via `runs.kwse_transfer_run_identity` (triggers-and-propagation.md).
+ - Retrieve the model manifest for the reach to be modeled.
+ - Iterate over all scenarios. For each scenario,
+  - Check if a scenario with the same inputs has already been run, skip if it has
+  - Create an inflow boundary condition using the provided discharge
+  - Apply a steep normal depth outflow condition along domain edges intersecting the downstream model's inundated area (slope = 0.5 m/m)
+  - Apply water surface elevations from a downstream scenario on a cell-by-cell basis along the downstream scenario's stage transfer line.
+  - If a hot start is specified, locate the depth tif for that scenario and set as the initial model state.
+  - Solve the scenario
+  - Post-process the results to derive a depth grid, inundated area polygon, stage transfer line, and optional zarr for timestep-specific depth/wse.
+  - Publish results to final storage location
+ - Assemble list of generated scenario manifests and warnings, then return
+
 
 ## Out of Scope
 
@@ -85,35 +115,18 @@ A list, not a single pointer — one call produces N Run objects. `run.json` per
 - Python
 - GDAL
 - AWS CLI
-- LISFLOOD or SFINCS — exactly one per job image; see the solver note under Inputs.
+- LISFLOOD or SFINCS
 
 ## Errors
 
-- Model data not available at `model_id` — raises `MissingModelError`
-- Downstream model results not available at `ds_model_id` — raises `MissingDownstreamResultsError`
-- Water on an invalid boundary cell — raises `WaterPoolingOnEdgeError` (specifies which edge(s) was wet)
-- Solver does not converge within max runtime — raises `NonConvergenceError`
-- Output artifacts cannot be written — raises `WriteFailureError`
+- No custom errors are currently defined for this job
 
 ## Checks
 
-- Results already exist for a scenario — skip that scenario, warning `run_exists` in its `run.json` (same idempotency pattern as `build_model`)
-- `model_id != ds_model_id`
-- `scenarios` not empty; every `q` finite, not NaN, and > 0
-- Downstream domain overlaps current domain
-- Median downstream stage is finite and non-negative
+- If a scenario with the same inputs has already been run and exists on storage, that scenario is skipped.
 - Solver exit code is 0
 
-## Metrics
-
-Recorded per scenario, in that scenario's `run.json` under `properties` (see `run.schema.json`):
-
-- `achieved_bc_value` — the stage the solve actually produced, vs. the nominal target in `scenario.bc_value`
-- `depth_stats` — min/max/mean/median/std of the depth raster
-- `stl_stats` — sampled elevation min/max/mean/median/std, `n_sampled_cells`
-- `volume_convergence`, `iterations`
-- `sim_clock_time_s`, `wall_clock_time_s`
 
 ## Performance
 
-Typical runtime: ~3 minutes × number of scenarios in the batch, solved in parallel — run on AWS Batch (contrast with `build_model_job_contract.md`'s local-run recommendation). Also waits on the downstream reach's Run to finish before `downstream_scenario` is available — see guide.md's Open Questions ("How does worker wait for last scenario of downstream reach to finish?").
+Typical runtime: ~3 minutes × number of scenarios in the batch.

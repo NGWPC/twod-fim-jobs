@@ -7,6 +7,7 @@ from twod_fim_jobs.consts import (
     MINIMUM_REACH_SLOPE,
 )
 from twod_fim_jobs.hydraulic_solvers.common import run_scenario
+from twod_fim_jobs.hydraulic_solvers.identities import get_run_identity_hash
 from twod_fim_jobs.jobs.common import Job
 from twod_fim_jobs.models.build_model import ModelManifest
 from twod_fim_jobs.models.common import (
@@ -181,6 +182,7 @@ def _run_scenario(
         reach_id=model_manifest.reach_id,
         model_id=model_manifest.model_id,
         centerline=model_manifest.assets.centerline,
+        run_identity_hash=get_run_identity_hash(),
     )
     working_dir = tmp_dir / run_scenario_inputs.scenario_dir_name
 

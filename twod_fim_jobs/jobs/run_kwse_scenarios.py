@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 from twod_fim_jobs.hydraulic_solvers.common import run_scenario
+from twod_fim_jobs.hydraulic_solvers.identities import get_run_identity_hash
 from twod_fim_jobs.jobs.common import Job
 from twod_fim_jobs.models.build_model import ModelManifest
 from twod_fim_jobs.models.solvers import FreeBC, QFixBC, RunConfig, TransferBC
@@ -36,6 +37,7 @@ class RunKWSEScenariosJob(Job[RunKWSEScenariosInputs]):
             allow_water_on_edges=inputs.allow_water_on_edges,
             max_simulation_wall_time_seconds=inputs.max_simulation_wall_time_seconds,
         )
+        run_identity_hash = get_run_identity_hash()
         manifests = []
         for scenario in inputs.scenarios:
             ds_scenario_asset = RunScenarioManifest.model_validate_json(
@@ -75,6 +77,7 @@ class RunKWSEScenariosJob(Job[RunKWSEScenariosInputs]):
                 reach_id=model_manifest.reach_id,
                 model_id=model_manifest.model_id,
                 centerline=model_manifest.assets.centerline,
+                run_identity_hash=run_identity_hash,
             )
 
             # Make hotstart
@@ -87,7 +90,10 @@ class RunKWSEScenariosJob(Job[RunKWSEScenariosInputs]):
                 )
                 hot_bc_proxy = [hot_us_bc_proxy, outflow_bc, hot_ds_bc_proxy]
                 hot_scenario_proxy = run_scenario_inputs.model_copy(
-                    update={"boundary_conditions": hot_bc_proxy}
+                    update={
+                        "boundary_conditions": hot_bc_proxy,
+                        "run_identity_hash": scenario.hotstart.identity_hash,
+                    }
                 )
                 hot_scenario_manifest = RunScenarioManifest.model_validate_json(
                     read_json(hot_scenario_proxy.manifest_href)

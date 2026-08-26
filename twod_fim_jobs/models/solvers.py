@@ -242,6 +242,7 @@ class RunScenarioInputs(BaseModel):
     reach_id: int
     model_id: str
     centerline: Asset
+    run_identity_hash: str
 
     @model_validator(mode="after")
     def _validate_boundary_conditions(self) -> "RunScenarioInputs":
@@ -261,12 +262,7 @@ class RunScenarioInputs(BaseModel):
     @property
     def scenario_out_dir(self) -> str:
         """Derive path where this scenario's data will be saved."""
-        from twod_fim_jobs.hydraulic_solvers.identities import get_run_identity_hash
-        # TODO: move this import while avoiding circular deps.
-        # We should have run itentity model defined here and just give it appropriate defaults.
-
-        run_id_hash = get_run_identity_hash()
-        return f"{self.base_out_dir}/{self.reach_id}/{self.model_id}/{run_id_hash}/{self.scenario_dir_name}"
+        return f"{self.base_out_dir}/{self.reach_id}/{self.model_id}/{self.run_identity_hash}/{self.scenario_dir_name}"
 
     @property
     def manifest_href(self) -> str:

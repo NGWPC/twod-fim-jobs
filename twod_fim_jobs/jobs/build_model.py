@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from twod_fim_jobs.consts import (
     ANCHOR_FILENAME,
     DA_FIELD,
+    DEFAULT_CENTERLINE_BUFFER,
     DEM_FILENAME,
     DOMAIN_FILENAME,
     INFLOW_FILENAME,
@@ -93,8 +94,15 @@ class BuildModelJob(Job[BuildModelInputs]):
         cl_inf_intersections = _check_inflow_cl_intersection(reach, inflow_line)
         if cl_inf_intersections:
             job_warnings.append(cl_inf_intersections)
+
+        # Assemble other geometries
+        cl_buffer_dist = (
+            bieger_bankfull_width(float(reach[DA_FIELD].iloc[0]))
+            * DEFAULT_CENTERLINE_BUFFER
+        )
+        cl_buffer = reach.buffer(cl_buffer_dist)
         all_other_geometries = gpd.GeoDataFrame(
-            pd.concat([inflow_line, inputs.other_geometries_gdf])
+            pd.concat([inflow_line, cl_buffer, inputs.other_geometries_gdf])
         )
 
         # Build domain

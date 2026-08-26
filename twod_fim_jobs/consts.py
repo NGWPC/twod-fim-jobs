@@ -47,6 +47,7 @@ DEFAULT_LULC_SOURCE: str = os.environ.get(
     "/vsis3/usgs-landcover/annual-nlcd/c1/v0/cu/mosaic/Annual_NLCD_LndCov_2023_CU_C1V0.tif",
 )
 DEFAULT_DOMAIN_BUFFER: float = 0.0
+DEFAULT_CENTERLINE_BUFFER: float = 10
 DEFAULT_GRID_RESOLUTION: int = 10
 DEFAULT_WALK_US_DIST_PCT: float = 0.1
 DEFAULT_EPSG_CODE: int = int(os.environ.get("DEFAULT_EPSG_CODE", 5070))

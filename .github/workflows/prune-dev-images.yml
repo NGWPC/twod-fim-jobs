@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Must stay in sync with the matrix in build-images.yml. Cleanup is
+        # Must stay in sync with the matrix in build-dev-images.yml. Cleanup is
         # per-package, and each target is published as its own GHCR package.
         target:
           - build_model
@@ -41,7 +41,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           owner: ${{ github.repository_owner }}
-          # build-images.yml publishes to ghcr.io/<owner>/<repo>/<target>,
+          # build-dev-images.yml publishes to ghcr.io/<owner>/<repo>/<target>,
           # so the GHCR package name is "<repo>/<target>".
           package: ${{ github.event.repository.name }}/${{ matrix.target }}
 
@@ -59,12 +59,13 @@ jobs:
           delete-untagged: true
 
           # Takes priority over every other rule. sha-<short-sha> carries no
-          # dots, so it never matches *.*.* and stays eligible for pruning.
+          # dots, so it will not match the version patterns below and will be pruned.
           #   dev     - the floating tag
           #   latest  - latest release
           #   *.*.*   - bare semver (0.1.2, 1.10.3)
+          #   *.*     - major.minor rolling tag (1.2)
           #   v*      - v-prefixed semver (v1.2.3)
-          exclude-tags: dev,latest,*.*.*,v*
+          exclude-tags: dev,latest,*.*.*,*.*,v*
 
           # Post-run check that no multi-arch image was left without its
           # platform children. Cheap insurance.

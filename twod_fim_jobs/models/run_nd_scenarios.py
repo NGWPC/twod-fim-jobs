@@ -47,12 +47,13 @@ class RunNDScenariosInputs(BaseModel):
         description="Discharge increment for adaptive step algorithm in cms",
         examples=[100.0],
     )
-    outflow_area_polygon_path: str = Field(
+
+    # Optional
+    outflow_area_polygon_path: str | None = Field(
+        default=None,
         description="Path to a polygon that determines where normal depth boundary condition will be applied.",
         examples=["s3://twod-fim/version=v1/shared/outflow_area.geojson"],
     )
-
-    # Optional
     volume_convergence_tolerance: float = Field(
         default=DEFAULT_VOLUME_CONVERGENCE_THRESHOLD,
         description="Volume increase in the reach as a percent of inflow below which model is considered steady",

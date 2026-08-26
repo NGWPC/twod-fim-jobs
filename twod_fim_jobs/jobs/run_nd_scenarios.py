@@ -1,10 +1,14 @@
 import copy
 import logging
+import math
 from pathlib import Path
-
+import tempfile
+import geopandas as gpd
 import numpy as np
+from shapely.geometry import Point, Polygon
 from twod_fim_jobs.consts import (
     MINIMUM_REACH_SLOPE,
+    bieger_bankfull_width,
 )
 from twod_fim_jobs.hydraulic_solvers.common import run_scenario
 from twod_fim_jobs.hydraulic_solvers.identities import get_run_identity_hash
@@ -29,8 +33,12 @@ from twod_fim_jobs.models.run_nd_scenarios import (
     RunNDScenariosResult,
     AdaptiveStepComparisonResults,
 )
-from twod_fim_jobs.utils.storage import ASSET_CACHE, read_json
-from twod_fim_jobs.utils.geospatial import Raster, load_dem_and_get_pt_indices
+from twod_fim_jobs.utils.storage import ASSET_CACHE, copy_file, read_json
+from twod_fim_jobs.utils.geospatial import (
+    Raster,
+    ensure_linestring,
+    load_dem_and_get_pt_indices,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -128,12 +136,102 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
 def get_normal_depth_boundary_condition(
     model_manifest: ModelManifest, inputs: RunNDScenariosInputs
 ) -> BoundaryCondition:
+    if inputs.outflow_area_polygon_path is None:
+        outflow_area_polygon_path = derive_outflow_polygon(model_manifest)
+    else:
+        outflow_area_polygon_path = inputs.outflow_area_polygon_path
     geom_asset = Asset(
-        href=inputs.outflow_area_polygon_path,
-        checksum=hash_file(inputs.outflow_area_polygon_path, role_length=16),
+        href=outflow_area_polygon_path,
+        checksum=hash_file(outflow_area_polygon_path, role_length=16),
     )
     slope = get_normal_depth_slope(model_manifest)
     return FreeBC(bc_type="FREE", vector=geom_asset, value=slope)
+
+
+def derive_outflow_polygon(model_manifest: ModelManifest) -> str:
+    """Estimate an acceptable downstream outflow area for a reach."""
+    # Load geometries
+    resolved_domain_path = ASSET_CACHE.materialize_path(model_manifest.assets.domain)
+    resolved_centerline_path = ASSET_CACHE.materialize_path(
+        model_manifest.assets.centerline
+    )
+    domain_gdf = gpd.read_file(resolved_domain_path)
+    centerline_gdf = gpd.read_file(resolved_centerline_path)
+    centerline_geom = ensure_linestring(centerline_gdf.geometry.iloc[0])
+    domain_geom = domain_gdf.geometry.iloc[0]
+
+    # Generate ray for lower 50% of centerline: chord from midpoint to downstream end
+    mid_pt = centerline_geom.interpolate(0.5, normalized=True)
+    ds_pt = Point(centerline_geom.coords[-1])
+    dx = ds_pt.x - mid_pt.x
+    dy = ds_pt.y - mid_pt.y
+    mag = math.sqrt(dx**2 + dy**2)
+    dx, dy = dx / mag, dy / mag  # downstream unit vector
+    perp_x, perp_y = -dy, dx  # lateral unit vector
+
+    # Offset (positive and negative) ray by 10x bieger bankfull width
+    bankfull_w = bieger_bankfull_width(model_manifest.properties.drainage_area_sqkm)
+    offset = 10 * bankfull_w
+    bounds = domain_geom.bounds
+    scale = 2 * math.sqrt((bounds[2] - bounds[0]) ** 2 + (bounds[3] - bounds[1]) ** 2)
+
+    # Project 2 offsets and centerline ray until they hit the domain edge:
+    # build a strip polygon spanning the domain, bounded by the two offset rays
+    strip = Polygon(
+        [
+            (
+                mid_pt.x + perp_x * offset - dx * scale,
+                mid_pt.y + perp_y * offset - dy * scale,
+            ),
+            (
+                mid_pt.x + perp_x * offset + dx * scale,
+                mid_pt.y + perp_y * offset + dy * scale,
+            ),
+            (
+                mid_pt.x - perp_x * offset + dx * scale,
+                mid_pt.y - perp_y * offset + dy * scale,
+            ),
+            (
+                mid_pt.x - perp_x * offset - dx * scale,
+                mid_pt.y - perp_y * offset - dy * scale,
+            ),
+        ]
+    )
+
+    # Clip domain to segment in between rays, using centerline to identify the appropriate half:
+    # the downstream half lies beyond mid_pt in the (dx, dy) direction
+    ds_half = Polygon(
+        [
+            (mid_pt.x + perp_x * 2 * scale, mid_pt.y + perp_y * 2 * scale),
+            (mid_pt.x - perp_x * 2 * scale, mid_pt.y - perp_y * 2 * scale),
+            (
+                mid_pt.x - perp_x * 2 * scale + dx * 2 * scale,
+                mid_pt.y - perp_y * 2 * scale + dy * 2 * scale,
+            ),
+            (
+                mid_pt.x + perp_x * 2 * scale + dx * 2 * scale,
+                mid_pt.y + perp_y * 2 * scale + dy * 2 * scale,
+            ),
+        ]
+    )
+    outflow_zone = domain_geom.intersection(strip).intersection(ds_half)
+
+    # Square buffer clipped domain edge by 2x cell resolution to arrive at outflow polygon
+    outflow_edge = domain_geom.boundary.intersection(outflow_zone)
+    grid_res = model_manifest.inputs.grid_resolution
+    outflow_polygon = outflow_edge.buffer(2 * grid_res, cap_style=3)
+
+    # Publish to dir containing centerline (href may be an S3 URI)
+    centerline_href = model_manifest.assets.centerline.href
+    parent_dir = centerline_href.rsplit("/", 1)[0]
+    publish_path = f"{parent_dir}/outflow_area.geojson"
+    result_gdf = gpd.GeoDataFrame(geometry=[outflow_polygon], crs=domain_gdf.crs)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = str(Path(tmp_dir) / "outflow_area.geojson")
+        result_gdf.to_file(tmp_path, driver="GeoJSON")
+        copy_file(tmp_path, publish_path)
+
+    return publish_path
 
 
 def get_normal_depth_slope(model_manifest: ModelManifest) -> float:

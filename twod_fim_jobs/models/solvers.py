@@ -262,7 +262,7 @@ class RunScenarioInputs(BaseModel):
     @property
     def scenario_out_dir(self) -> str:
         """Derive path where this scenario's data will be saved."""
-        return f"{self.base_out_dir}/{self.reach_id}/{self.model_id}/{self.run_identity_hash}/{self.scenario_dir_name}"
+        return f"{self.base_out_dir}/reach={self.reach_id}/{self.model_id}/{self.run_identity_hash}/{self.scenario_dir_name}"
 
     @property
     def manifest_href(self) -> str:

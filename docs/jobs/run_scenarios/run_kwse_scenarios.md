@@ -91,14 +91,14 @@ Run a hydraulic solver for a set of user-defined scenarios.  A scenario is defin
 
  - Retrieve the model manifest for the reach to be modeled.
  - Iterate over all scenarios. For each scenario,
-  - Check if a scenario with the same inputs has already been run, skip if it has
-  - Create an inflow boundary condition using the provided discharge
-  - Apply a steep normal depth outflow condition along domain edges intersecting the downstream model's inundated area (slope = 0.5 m/m)
-  - Apply water surface elevations from a downstream scenario on a cell-by-cell basis along the downstream scenario's stage transfer line.
-  - If a hot start is specified, locate the depth tif for that scenario and set as the initial model state.
-  - Solve the scenario
-  - Post-process the results to derive a depth grid, inundated area polygon, stage transfer line, and optional zarr for timestep-specific depth/wse.
-  - Publish results to final storage location
+   - Check if a scenario with the same inputs has already been run, skip if it has
+   - Create an inflow boundary condition using the provided discharge
+   - Apply a steep normal depth outflow condition along domain edges intersecting the downstream model's inundated area (slope = 0.5 m/m)
+   - Apply water surface elevations from a downstream scenario on a cell-by-cell basis along the downstream scenario's stage transfer line.
+   - If a hot start is specified, locate the depth tif for that scenario and set as the initial model state.
+   - Solve the scenario
+   - Post-process the results to derive a depth grid, inundated area polygon, stage transfer line, and optional zarr for timestep-specific depth/wse.
+   - Publish results to final storage location
  - Assemble list of generated scenario manifests and warnings, then return
 
 

@@ -89,6 +89,7 @@ def create_test_run_scenario_inputs(
             source_url=None,
             derived=False,
         ),
+        run_identity_hash="a1b2c3d4",
     )
 
 
@@ -159,6 +160,7 @@ def test_publish_scenario_preserves_s3_double_slash(tmp_path: Path) -> None:
             source_url=None,
             derived=False,
         ),
+        run_identity_hash="a1b2c3d4",
     )
 
     # Create mock solve results
@@ -280,6 +282,7 @@ def test_write_model_results_to_s3_works(tmp_path: Path) -> None:
             source_url=None,
             derived=False,
         ),
+        run_identity_hash="a1b2c3d4",
     )
 
     # Create mock solve results

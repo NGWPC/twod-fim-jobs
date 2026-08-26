@@ -46,6 +46,7 @@ def test_end_to_end():
             db_uri=f"sqlite:///{NETWORK_GPKG.resolve()}",
             base_output_path=str((MODEL_ROOT / str(i)).resolve()),
             domain_buffer=1000,
+            grid_resolution=100,
         )
         results = WORKFLOWS["build_model"]().run(inputs)
         build_model_results[i] = results
@@ -61,7 +62,6 @@ def test_end_to_end():
         min_upstream_inflow=Q_LOW,
         max_upstream_inflow=Q_HIGH,
         delta_upstream_inflow=1000,
-        outflow_area_polygon_path=str(OUTLET_ACCEPTABLE_OUTFLOW_AREA),
         volume_convergence_tolerance=0.1,
         allow_water_on_edges=True,
         adaptive_step_algorithm_max_stage_min_acceptable=0.5,

@@ -38,6 +38,9 @@ jobs:
         target:
           - build_model
           - run_nd_scenarios-lisflood-gpu
+          - run_nd_scenarios-lisflood-cpu
+          - run_kwse_scenarios-lisflood-gpu
+          - run_kwse_scenarios-lisflood-cpu
 
     steps:
       - name: Checkout

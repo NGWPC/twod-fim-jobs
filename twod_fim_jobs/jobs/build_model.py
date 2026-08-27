@@ -6,10 +6,12 @@ from urllib.parse import urlparse
 
 import geopandas as gpd
 import pandas as pd
+from pydantic import ValidationError
 
 from twod_fim_jobs.consts import (
     ANCHOR_FILENAME,
     DA_FIELD,
+    DEFAULT_CENTERLINE_BUFFER,
     DEM_FILENAME,
     DOMAIN_FILENAME,
     INFLOW_FILENAME,
@@ -51,7 +53,13 @@ from twod_fim_jobs.utils.geospatial import (
     write_gdf_asset,
 )
 from twod_fim_jobs.utils.hashing import hash_dict, hash_geometry, hash_str
-from twod_fim_jobs.utils.storage import copy_file, query_reach, query_upstream_reach
+from twod_fim_jobs.utils.storage import (
+    check_file_exists,
+    copy_file,
+    query_reach,
+    query_upstream_reach,
+    read_json,
+)
 
 
 class BuildModelJob(Job[BuildModelInputs]):
@@ -86,8 +94,15 @@ class BuildModelJob(Job[BuildModelInputs]):
         cl_inf_intersections = _check_inflow_cl_intersection(reach, inflow_line)
         if cl_inf_intersections:
             job_warnings.append(cl_inf_intersections)
+
+        # Assemble other geometries
+        cl_buffer_dist = (
+            bieger_bankfull_width(float(reach[DA_FIELD].iloc[0]))
+            * DEFAULT_CENTERLINE_BUFFER
+        )
+        cl_buffer = reach.buffer(cl_buffer_dist)
         all_other_geometries = gpd.GeoDataFrame(
-            pd.concat([inflow_line, inputs.other_geometries_gdf])
+            pd.concat([inflow_line, cl_buffer, inputs.other_geometries_gdf])
         )
 
         # Build domain
@@ -116,7 +131,15 @@ class BuildModelJob(Job[BuildModelInputs]):
         identity_hash = hash_dict(identitiy.model_dump(), role_length=8)
         model_id = f"{identity_hash}_{domain.offset_str}"
         model_dir = f"{inputs.base_output_path.rstrip('/')}/{model_id}/"
-        # TODO: Check that model dir doesn't exist.  Exit if it does.
+        manifest_path = tmp_dir / MANIFEST_FILENAME
+        dest_manifest_path = _normalize_href(str(manifest_path), model_dir)
+        if _check_model_built(inputs, dest_manifest_path):
+            return BuildModelResult(
+                identity_hash=identity_hash,
+                model_id=model_id,
+                model_dir=model_dir,
+                warnings=job_warnings,
+            )
 
         # Get DEM
         dem_asset = download_dem(
@@ -191,10 +214,10 @@ class BuildModelJob(Job[BuildModelInputs]):
             assets=assets,
             warnings=job_warnings,
         )
-        manifest_path = tmp_dir / MANIFEST_FILENAME
+
         with open(manifest_path, mode="w") as f:
             f.write(manifest.model_dump_json(indent=4))
-        copy_job[str(manifest_path)] = _normalize_href(str(manifest_path), model_dir)
+        copy_job[str(manifest_path)] = dest_manifest_path
 
         # Write files to storage
         for src, dst in copy_job.items():
@@ -239,3 +262,14 @@ def _create_copy_job(
         copy_job[asset.href] = dest
         new_asset_fields[field_name] = asset.model_copy(update={"href": dest})
     return Assets(**new_asset_fields), copy_job
+
+
+def _check_model_built(inputs: BuildModelInputs, manifest_href: str) -> bool:
+    """Checks if a model with the same inputs has already been built."""
+    if not check_file_exists(manifest_href):
+        return False
+    try:
+        ref = ModelManifest.model_validate_json(read_json(manifest_href))
+        return ref.inputs == inputs
+    except ValidationError:
+        return False

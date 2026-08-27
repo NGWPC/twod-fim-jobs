@@ -1,6 +1,8 @@
 import hashlib
 import json
 from pathlib import Path
+
+import fsspec
 from shapely.geometry.base import BaseGeometry
 from twod_fim_jobs.consts import HASH_ALGORITHM
 
@@ -47,10 +49,13 @@ def hash_geometry(
 def hash_file(
     href: str | Path, algorithm: str = HASH_ALGORITHM, role_length: int | None = None
 ) -> str:
-    """Hash a file."""
-    with open(href, "rb") as f:
-        digest = hashlib.file_digest(f, algorithm)
-    hash_str = digest.hexdigest()
+    """Hash a local or remote file (s3://, https://, etc.)."""
+    hasher = hashlib.new(algorithm)
+    fs, path = fsspec.url_to_fs(str(href))
+    with fs.open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            hasher.update(chunk)
+    hash_str = hasher.hexdigest().lower()
     if role_length:
         hash_str = hash_str[:role_length]
     return hash_str

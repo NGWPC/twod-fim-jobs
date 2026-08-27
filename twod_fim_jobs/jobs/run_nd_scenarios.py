@@ -1,61 +1,46 @@
+import copy
 import logging
-import os
-from datetime import datetime, timezone
+import math
 from pathlib import Path
-
+import tempfile
 import geopandas as gpd
 import numpy as np
-from shapely import LineString, Point, Polygon
-from pydantic import BaseModel
-from twod_fim_jobs.hydraulic_solvers.post_process import post_process_lisflood
+from shapely.geometry import Point, Polygon
 from twod_fim_jobs.consts import (
-    DEFAULT_INITIAL_TSTEP_SECONDS,
-    DEFAULT_MASS_INTERVAL_SECONDS,
-    SCENARIO_MANIFEST_FILENAME,
-    ADAPTIVE_STEP_ALGORITHM_GROW_FACTOR,
-    ADAPTIVE_STEP_ALGORITHM_SHRINK_FACTOR,
-    ADAPTIVE_STEP_ALGORITHM_EXTENT_MAX_ACCEPTABLE,
-    ADAPTIVE_STEP_ALGORITHM_EXTENT_MIN_ACCEPTABLE,
-    ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MAX_ACCEPTABLE,
-    ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MIN_ACCEPTABLE,
-    ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MAX_ACCEPTABLE,
-    ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MIN_ACCEPTABLE,
-    USE_CUDA,
+    MINIMUM_REACH_SLOPE,
+    bieger_bankfull_width,
 )
-from twod_fim_jobs.hydraulic_solvers.run import run_scenario
-from twod_fim_jobs.jobs.common import Job, make_scenario_dir_name, make_scenario_code
-from twod_fim_jobs.models.build_model import Domain, GridProperties, ModelManifest
+from twod_fim_jobs.hydraulic_solvers.common import run_scenario
+from twod_fim_jobs.hydraulic_solvers.identities import get_run_identity_hash
+from twod_fim_jobs.jobs.common import Job
+from twod_fim_jobs.models.build_model import ModelManifest
 from twod_fim_jobs.models.common import (
     Asset,
-    RunConfig,
-    RunIdentity,
-    ScenarioAssets,
-    ScenarioProperties,
-    ScenarioRunInputs,
-    ScenarioRunManifest,
-    ScenarioWorkerManifest,
-    SolverInfo,
 )
+from twod_fim_jobs.models.solvers import (
+    BoundaryCondition,
+    FreeBC,
+    QFixBC,
+    RunConfig,
+    RunScenarioInputs,
+    RunScenarioManifest,
+)
+from twod_fim_jobs.models.warnings import WaterOnEdgeWarning
 from twod_fim_jobs.utils.hashing import hash_file
-from twod_fim_jobs.consts import SupportedSolver, SDR_COMMIT
-from twod_fim_jobs.hydraulic_solvers.versions import get_model_version
 
 from twod_fim_jobs.models.run_nd_scenarios import (
     RunNDScenariosInputs,
     RunNDScenariosResult,
     AdaptiveStepComparisonResults,
 )
-from twod_fim_jobs.utils.storage import copy_file, copy_dir, read_json, write_json
-from twod_fim_jobs.utils.geospatial import Raster, tif_to_asc
-from twod_fim_jobs.utils.hashing import hash_dict
-from twod_fim_jobs.hydraulic_solvers.pre_process import write_nd_model_files
+from twod_fim_jobs.utils.storage import ASSET_CACHE, copy_file, read_json
+from twod_fim_jobs.utils.geospatial import (
+    Raster,
+    ensure_linestring,
+    load_dem_and_get_pt_indices,
+)
 
 logger = logging.getLogger(__name__)
-
-
-class AdaptiveStepAlgorithmStepResult(BaseModel):
-    worker_manifest: ScenarioWorkerManifest
-    comparison_results: AdaptiveStepComparisonResults | None
 
 
 class RunNDScenariosJob(Job[RunNDScenariosInputs]):
@@ -65,296 +50,269 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
 
     def _run(self, inputs: RunNDScenariosInputs, tmp_dir: Path) -> RunNDScenariosResult:
         """Run normal-depth scenarios for a single reach and publish results."""
+        # Initialize
         model_manifest = ModelManifest.model_validate_json(
             read_json(inputs.model_manifest_path)
         )
+        downstream_bc = get_normal_depth_boundary_condition(model_manifest, inputs)
+        delta_us_discharge = copy.copy(inputs.delta_upstream_inflow)
 
-        # Fetch all assets in the `assets` block to local
-        logger.info("Copying model assets to local working directory")
-        for _, asset in model_manifest.assets:
-            copy_file(asset.href, tmp_dir / Path(asset.href).name)
-
-        # Prepare shared run data
-        terrain_asc, roughness_asc = prepare_rasters(model_manifest, tmp_dir)
-        inflow_line, outflow_area, us_point, ds_point = load_geometries(
-            model_manifest, inputs
+        # Start algorithms
+        logger.info(
+            f"Starting adaptive step algorithm for discharge range {inputs.min_upstream_inflow} - {inputs.max_upstream_inflow} w/ delta {delta_us_discharge}"
         )
-        run_config = RunConfig(
-            sim_time_seconds=inputs.max_simulation_length_seconds,
-            save_interval_seconds=inputs.save_interval_seconds,
-            mass_interval_seconds=DEFAULT_MASS_INTERVAL_SECONDS,
-            initial_tstep_seconds=DEFAULT_INITIAL_TSTEP_SECONDS,
-            use_cuda=USE_CUDA,
+        ref_scenario = _run_scenario(
+            inputs.min_upstream_inflow, downstream_bc, model_manifest, inputs, tmp_dir
         )
-
-        # Run adaptive step method
-        scenario_manifests = run_adaptive_step_scenarios(
-            ds_slope=inputs.ds_slope,
-            outflow_area=outflow_area,
-            min_us_discharge=inputs.min_upstream_inflow,
-            max_us_discharge=inputs.max_upstream_inflow,
-            delta_us_discharge=inputs.delta_upstream_inflow,
-            adaptive_step_min_delta_q=inputs.adaptive_step_min_delta_q,
-            inflow_line=inflow_line,
-            us_point=us_point,
-            ds_point=ds_point,
-            domain=model_manifest.domain,
-            grid=model_manifest.properties.grid,
-            terrain_asc=terrain_asc,
-            roughness_asc=roughness_asc,
-            run_config=run_config,
-            out_dir=tmp_dir,
-            convergence_tolerance=inputs.volume_convergence_tolerance,
-            allow_water_on_edges=inputs.allow_water_on_edges,
-            save_zarr=inputs.save_zarr,
-        )
-
-        # Publish models to final location
-        scenario_manifest_paths = [
-            publish_scenario(m.worker_manifest, inputs, model_manifest)
-            for m in scenario_manifests
-        ]
-
-        # Prepare results onject
-        scenario_comparison_results = [m.comparison_results for m in scenario_manifests]
+        current_scenario = ref_scenario
+        scenario_comparison = compare_scenario_changes(current_scenario, inputs, None)
         results = RunNDScenariosResult(
-            scenario_manifest_paths=scenario_manifest_paths,
-            scenario_comparison_results=scenario_comparison_results,
-            warnings=[],
+            scenario_comparison_results=[scenario_comparison], warnings=[]
         )
+        q_trial = current_scenario.us_discharge + delta_us_discharge
+
+        while q_trial < inputs.max_upstream_inflow:
+            logger.info(f"Evaluating trial discharge {round(q_trial, 1)}")
+
+            trial_scenario = _run_scenario(
+                q_trial,
+                downstream_bc,
+                model_manifest,
+                inputs,
+                tmp_dir,
+                hot_start=current_scenario.assets.depth,
+            )
+
+            if trial_scenario.properties.termination_condition == "edge_error":
+                logger.error("Aborting adaptive step algorithm for edge error")
+                results.warnings.append(WaterOnEdgeWarning())
+                return results
+
+            scenario_comparison = compare_scenario_changes(
+                trial_scenario,
+                inputs,
+                ref_scenario,
+                force_accept=(delta_us_discharge <= inputs.adaptive_step_min_delta_q),
+            )
+            results.scenario_comparison_results.append(scenario_comparison)
+
+            if scenario_comparison.result == "reject_high":
+                logger.info(f"Rejecting trial discharge {round(q_trial, 1)}: high")
+                delta_us_discharge *= inputs.adaptive_step_algorithm_shrink_factor
+
+            elif scenario_comparison.result == "accept":
+                logger.info(f"Accepting trial discharge {round(q_trial, 1)}")
+                ref_scenario = trial_scenario
+                current_scenario = trial_scenario
+
+            elif scenario_comparison.result == "reject_low":
+                logger.info(f"Rejecting trial discharge {round(q_trial, 1)}: low")
+                current_scenario = trial_scenario
+                delta_us_discharge *= inputs.adaptive_step_algorithm_grow_factor
+
+            delta_us_discharge = max(
+                inputs.adaptive_step_min_delta_q, delta_us_discharge
+            )
+            q_trial = current_scenario.us_discharge + delta_us_discharge
+
+        trial_scenario = _run_scenario(
+            inputs.max_upstream_inflow,
+            downstream_bc,
+            model_manifest,
+            inputs,
+            tmp_dir,
+            hot_start=current_scenario.assets.depth,
+        )
+        scenario_comparison = compare_scenario_changes(
+            trial_scenario, inputs, ref_scenario, force_accept=True
+        )
+        results.scenario_comparison_results.append(scenario_comparison)
+
+        logger.info("Completed adaptive step algorithm")
 
         return results
 
 
-def prepare_rasters(model_manifest: ModelManifest, tmp_dir: Path) -> tuple[Path, Path]:
-    """Convert terrain and roughness rasters from GeoTIFF to ASC format."""
-    terrain_asc = tif_to_asc(tmp_dir / Path(model_manifest.assets.terrain.href).name)
-    roughness_asc = tif_to_asc(
-        tmp_dir / Path(model_manifest.assets.roughness.href).name
-    )
-    return terrain_asc, roughness_asc
-
-
-def load_geometries(
+def get_normal_depth_boundary_condition(
     model_manifest: ModelManifest, inputs: RunNDScenariosInputs
-) -> tuple[LineString, Polygon, Point, Point]:
-    """Load inflow line, outflow area, and upstream/downstream points from disk."""
-    inflow_line: LineString = gpd.read_file(
-        model_manifest.assets.inflow_line.href
-    ).geometry.iloc[0]
-    outflow_area: Polygon = gpd.read_file(
-        inputs.outflow_area_polygon_path
-    ).geometry.iloc[0]
-    centerline = gpd.read_file(model_manifest.assets.centerline.href).geometry.iloc[0]
-    us_point: Point = Point(centerline.coords[0])
-    ds_point: Point = Point(centerline.coords[-1])
-    return inflow_line, outflow_area, us_point, ds_point
-
-
-def run_adaptive_step_scenarios(
-    ds_slope: float,
-    outflow_area: Polygon,
-    min_us_discharge: float,
-    max_us_discharge: float,
-    delta_us_discharge: float,
-    adaptive_step_min_delta_q: float,
-    inflow_line: LineString,
-    us_point: Point,
-    ds_point: Point,
-    domain: Domain,
-    grid: GridProperties,
-    terrain_asc: Path,
-    roughness_asc: Path,
-    run_config: RunConfig,
-    out_dir: Path,
-    convergence_tolerance: float | None,
-    allow_water_on_edges: bool,
-    save_zarr: bool,
-) -> list[AdaptiveStepAlgorithmStepResult]:
-    """Run scenarios across a discharge range using an adaptive step size algorithm."""
-
-    def _run_scenario(
-        q: float, hotstart_path: Path | None = None
-    ) -> ScenarioWorkerManifest:
-        """Run a single scenario, optionally warm-starting from a previous depth raster."""
-        if hotstart_path is not None:
-            hotstart_asc = tif_to_asc(hotstart_path)
-            _run_config = run_config.model_copy(
-                update={"initial_state_path": hotstart_asc}
-            )
-        else:
-            _run_config = run_config
-        scenario_dir_name = make_scenario_dir_name(q, nd=ds_slope)
-        return process_scenario_worker(
-            ds_slope=ds_slope,
-            outflow_area=outflow_area,
-            us_discharge=q,
-            inflow_line=inflow_line,
-            us_point=us_point,
-            ds_point=ds_point,
-            domain=domain,
-            grid=grid,
-            terrain_asc=terrain_asc,
-            roughness_asc=roughness_asc,
-            run_config=_run_config,
-            out_dir=out_dir / scenario_dir_name,
-            scenario_dir_name=scenario_dir_name,
-            convergence_tolerance=convergence_tolerance,
-            allow_water_on_edges=allow_water_on_edges,
-            save_zarr=save_zarr,
-        )
-
-    logger.info(
-        f"Starting adaptive step algorithm for discharge range {min_us_discharge} - {max_us_discharge} w/ delta {delta_us_discharge}"
+) -> BoundaryCondition:
+    if inputs.outflow_area_polygon_path is None:
+        outflow_area_polygon_path = derive_outflow_polygon(model_manifest)
+    else:
+        outflow_area_polygon_path = inputs.outflow_area_polygon_path
+    geom_asset = Asset(
+        href=outflow_area_polygon_path,
+        checksum=hash_file(outflow_area_polygon_path, role_length=16),
     )
-    ref_scenario = _run_scenario(min_us_discharge)
-    current_scenario = ref_scenario
-    step_results = AdaptiveStepAlgorithmStepResult(
-        worker_manifest=ref_scenario, comparison_results=None
+    slope = get_normal_depth_slope(model_manifest)
+    return FreeBC(bc_type="FREE", vector=geom_asset, value=slope)
+
+
+def derive_outflow_polygon(model_manifest: ModelManifest) -> str:
+    """Estimate an acceptable downstream outflow area for a reach."""
+    # Load geometries
+    resolved_domain_path = ASSET_CACHE.materialize_path(model_manifest.assets.domain)
+    resolved_centerline_path = ASSET_CACHE.materialize_path(
+        model_manifest.assets.centerline
     )
-    scenarios: list[AdaptiveStepAlgorithmStepResult] = [step_results]
-    q_trial = current_scenario.us_discharge + delta_us_discharge
+    domain_gdf = gpd.read_file(resolved_domain_path)
+    centerline_gdf = gpd.read_file(resolved_centerline_path)
+    centerline_geom = ensure_linestring(centerline_gdf.geometry.iloc[0])
+    domain_geom = domain_gdf.geometry.iloc[0]
 
-    while q_trial < max_us_discharge:
-        logger.info(f"Evaluating trial discharge {round(q_trial, 1)}")
+    # Generate ray for lower 50% of centerline: chord from midpoint to downstream end
+    mid_pt = centerline_geom.interpolate(0.5, normalized=True)
+    ds_pt = Point(centerline_geom.coords[-1])
+    dx = ds_pt.x - mid_pt.x
+    dy = ds_pt.y - mid_pt.y
+    mag = math.sqrt(dx**2 + dy**2)
+    dx, dy = dx / mag, dy / mag  # downstream unit vector
+    perp_x, perp_y = -dy, dx  # lateral unit vector
 
-        trial_scenario = _run_scenario(
-            q_trial, hotstart_path=current_scenario.depth_path
-        )
-        if trial_scenario.termination_condition == "edge_error":
-            logger.error("Aborting adaptive step algorithm for edge error")
-            raise RuntimeError(
-                "Terminated adaptive step algorithm because edge_error termination condition was hit"
-            )
+    # Offset (positive and negative) ray by 10x bieger bankfull width
+    bankfull_w = bieger_bankfull_width(model_manifest.properties.drainage_area_sqkm)
+    offset = 10 * bankfull_w
+    bounds = domain_geom.bounds
+    scale = 2 * math.sqrt((bounds[2] - bounds[0]) ** 2 + (bounds[3] - bounds[1]) ** 2)
 
-        scenario_comparison = compare_scenario_changes(
-            ref_scenario,
-            trial_scenario,
-            force_accept=(delta_us_discharge <= adaptive_step_min_delta_q),
-        )
-
-        step_results = AdaptiveStepAlgorithmStepResult(
-            worker_manifest=trial_scenario, comparison_results=scenario_comparison
-        )
-        scenarios.append(step_results)
-
-        if scenario_comparison.result == "reject_high":
-            logger.info(f"Rejecting trial discharge {round(q_trial, 1)}: high")
-            delta_us_discharge *= ADAPTIVE_STEP_ALGORITHM_SHRINK_FACTOR
-
-        elif scenario_comparison.result == "accept":
-            logger.info(f"Accepting trial discharge {round(q_trial, 1)}")
-            ref_scenario = trial_scenario
-            current_scenario = trial_scenario
-
-        elif scenario_comparison.result == "reject_low":
-            logger.info(f"Rejecting trial discharge {round(q_trial, 1)}: low")
-            current_scenario = trial_scenario
-            delta_us_discharge *= ADAPTIVE_STEP_ALGORITHM_GROW_FACTOR
-
-        delta_us_discharge = max(adaptive_step_min_delta_q, delta_us_discharge)
-        q_trial = current_scenario.us_discharge + delta_us_discharge
-
-    trial_scenario = _run_scenario(
-        max_us_discharge, hotstart_path=current_scenario.depth_path
-    )
-    step_results = AdaptiveStepAlgorithmStepResult(
-        worker_manifest=trial_scenario, comparison_results=None
-    )
-    scenarios.append(step_results)
-
-    logger.info("Completed adaptive step algorithm")
-    return scenarios
-
-
-def process_scenario_worker(
-    ds_slope: float,
-    outflow_area: Polygon,
-    us_discharge: float,
-    inflow_line: LineString,
-    us_point: Point,
-    ds_point: Point,
-    domain: Domain,
-    grid: GridProperties,
-    terrain_asc: Path,
-    roughness_asc: Path,
-    run_config: RunConfig,
-    out_dir: Path,
-    scenario_dir_name: str,
-    convergence_tolerance: float | None,
-    allow_water_on_edges: bool,
-    save_zarr: bool,
-) -> ScenarioWorkerManifest:
-    """Prepare files, run simulation, and post-process a single KWSE scenario."""
-    logger.info(
-        f"Processing normal depth run with slope={round(ds_slope, 6)} and inflow={round(us_discharge, 1)}"
-    )
-    # Build hydraulic solver files for scenario.
-    paths = write_nd_model_files(
-        domain,
-        grid,
-        terrain_asc,
-        roughness_asc,
-        inflow_line,
-        outflow_area,
-        ds_slope,
-        us_discharge,
-        run_config,
-        out_dir,
+    # Project 2 offsets and centerline ray until they hit the domain edge:
+    # build a strip polygon spanning the domain, bounded by the two offset rays
+    strip = Polygon(
+        [
+            (
+                mid_pt.x + perp_x * offset - dx * scale,
+                mid_pt.y + perp_y * offset - dy * scale,
+            ),
+            (
+                mid_pt.x + perp_x * offset + dx * scale,
+                mid_pt.y + perp_y * offset + dy * scale,
+            ),
+            (
+                mid_pt.x - perp_x * offset + dx * scale,
+                mid_pt.y - perp_y * offset + dy * scale,
+            ),
+            (
+                mid_pt.x - perp_x * offset - dx * scale,
+                mid_pt.y - perp_y * offset - dy * scale,
+            ),
+        ]
     )
 
-    # Get indices of us and ds point on terrain raster
-    raster = Raster(terrain_asc)
-    us_col, us_row = ~raster.transform * (us_point.x, us_point.y)
-    ds_col, ds_row = ~raster.transform * (ds_point.x, ds_point.y)
-    us_inds = (int(np.floor(us_row)), int(np.floor(us_col)))
-    ds_inds = (int(np.floor(ds_row)), int(np.floor(ds_col)))
-    endpoint_indices = (us_inds, ds_inds)
+    # Clip domain to segment in between rays, using centerline to identify the appropriate half:
+    # the downstream half lies beyond mid_pt in the (dx, dy) direction
+    ds_half = Polygon(
+        [
+            (mid_pt.x + perp_x * 2 * scale, mid_pt.y + perp_y * 2 * scale),
+            (mid_pt.x - perp_x * 2 * scale, mid_pt.y - perp_y * 2 * scale),
+            (
+                mid_pt.x - perp_x * 2 * scale + dx * 2 * scale,
+                mid_pt.y - perp_y * 2 * scale + dy * 2 * scale,
+            ),
+            (
+                mid_pt.x + perp_x * 2 * scale + dx * 2 * scale,
+                mid_pt.y + perp_y * 2 * scale + dy * 2 * scale,
+            ),
+        ]
+    )
+    outflow_zone = domain_geom.intersection(strip).intersection(ds_half)
 
-    # Initialize simulation and watch
-    scenario_diagnostics, termination_condition, wall_time = run_scenario(
-        paths["par_path"],
-        us_discharge,
-        convergence_tolerance,
-        run_config.save_interval_seconds,
-        endpoint_indices,
-        raster.data,
-        allow_water_on_edges,
+    # Square buffer clipped domain edge by 2x cell resolution to arrive at outflow polygon
+    outflow_edge = domain_geom.boundary.intersection(outflow_zone)
+    grid_res = model_manifest.inputs.grid_resolution
+    outflow_polygon = outflow_edge.buffer(2 * grid_res, cap_style=3)
+
+    # Publish to dir containing centerline (href may be an S3 URI)
+    centerline_href = model_manifest.assets.centerline.href
+    parent_dir = centerline_href.rsplit("/", 1)[0]
+    publish_path = f"{parent_dir}/outflow_area.geojson"
+    result_gdf = gpd.GeoDataFrame(geometry=[outflow_polygon], crs=domain_gdf.crs)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = str(Path(tmp_dir) / "outflow_area.geojson")
+        result_gdf.to_file(tmp_path, driver="GeoJSON")
+        copy_file(tmp_path, publish_path)
+
+    return publish_path
+
+
+def get_normal_depth_slope(model_manifest: ModelManifest) -> float:
+    dem_array, endpoint_indices = load_dem_and_get_pt_indices(
+        model_manifest.assets.centerline, model_manifest.assets.terrain
+    )
+    length = model_manifest.properties.length_m
+    delta_e = abs(dem_array[endpoint_indices[0]] - dem_array[endpoint_indices[1]])
+    slope = delta_e / length
+    return max(slope, MINIMUM_REACH_SLOPE)
+
+
+def _run_scenario(
+    us_inflow: float,
+    ds_bc: BoundaryCondition,
+    model_manifest: ModelManifest,
+    inputs: RunNDScenariosInputs,
+    tmp_dir: Path,
+    hot_start: Asset | None = None,
+):
+    # Define Configuration
+    run_config = RunConfig(
+        sim_time_seconds=inputs.max_simulation_length_seconds,
+        save_interval_seconds=inputs.save_interval_seconds,
+        volume_convergence_tolerance=inputs.volume_convergence_tolerance,
+        allow_water_on_edges=inputs.allow_water_on_edges,
+        max_simulation_wall_time_seconds=inputs.max_simulation_wall_time_seconds,
     )
 
-    # Post-process results
-    processed = post_process_lisflood(
-        out_dir, us_point, terrain_asc, save_zarr, run_config.save_interval_seconds
+    # Make boundary conditions
+    inflow_bc = QFixBC(
+        bc_type="QFIX", vector=model_manifest.assets.inflow_line, value=us_inflow
     )
+    bcs = [inflow_bc, ds_bc]
 
-    # Initialize scenario scenario manifest
-    return ScenarioWorkerManifest(
-        nominal_wse=processed.nominal_wse,
-        ds_wse=None,
-        ds_slope=ds_slope,
-        us_discharge=us_discharge,
-        allow_water_on_edges=allow_water_on_edges,
-        dir_name=scenario_dir_name,
-        depth_path=processed.depth_path,
-        inundation_polygon_path=processed.inundation_polygon_path,
-        stl_path=processed.stl_path,
-        scenario_diagnostics=scenario_diagnostics,
-        termination_condition=termination_condition,
-        runtime_seconds=wall_time,
-        sim_duration_seconds=processed.sim_time,
-        zarr_path=processed.zarr_path,
+    # Make run inputs
+    run_scenario_inputs = RunScenarioInputs(
+        domain=model_manifest.domain,
+        grid_properties=model_manifest.properties.grid,
+        terrain=model_manifest.assets.terrain,
+        roughness=model_manifest.assets.roughness,
+        boundary_conditions=bcs,
+        hot_start=hot_start,
         run_config=run_config,
+        base_out_dir=inputs.model_results_base_path,
+        reach_id=model_manifest.reach_id,
+        model_id=model_manifest.model_id,
+        centerline=model_manifest.assets.centerline,
+        run_identity_hash=get_run_identity_hash(),
     )
+    working_dir = tmp_dir / run_scenario_inputs.scenario_dir_name
+
+    # Execute run
+    scenario_manifest = run_scenario(run_scenario_inputs, working_dir)
+
+    return scenario_manifest
 
 
 def compare_scenario_changes(
-    ref_scenario: ScenarioWorkerManifest,
-    trial_scenario: ScenarioWorkerManifest,
-    force_accept: bool,
+    trial_scenario: RunScenarioManifest,
+    inputs: RunNDScenariosInputs,
+    ref_scenario: RunScenarioManifest | None = None,
+    force_accept: bool = False,
 ) -> AdaptiveStepComparisonResults:
     """Compare depth and extent changes between a reference and trial scenario to accept or reject the step."""
-    ref_raster = Raster(ref_scenario.depth_path)
-    trial_raster = Raster(trial_scenario.depth_path)
+    if ref_scenario is None:
+        return AdaptiveStepComparisonResults(
+            ref_scenario_manifest=None,
+            trial_scenario_manifest=trial_scenario.self_href,
+            max_stage_diff=0,
+            median_stage_diff=0,
+            extent_diff=0,
+            result="accept",
+        )
+    # Materialize assets
+    resolved_ref_depth = ASSET_CACHE.materialize_path(ref_scenario.assets.depth)
+    resolved_tria_depth = ASSET_CACHE.materialize_path(trial_scenario.assets.depth)
+
+    # Load data
+    ref_raster = Raster(resolved_ref_depth)
+    trial_raster = Raster(resolved_tria_depth)
     ref_raster.data = np.clip(ref_raster.data, 0, None)
     trial_raster.data = np.clip(trial_raster.data, 0, None)
     comparison_mask = (ref_raster.data > 0) | (trial_raster.data > 0)
@@ -369,16 +327,18 @@ def compare_scenario_changes(
 
     # reject_high takes priority: any criterion over its ceiling means the step was too large
     if (
-        max_depth_diff > ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MAX_ACCEPTABLE
-        or median_depth_diff > ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MAX_ACCEPTABLE
-        or extent_diff > ADAPTIVE_STEP_ALGORITHM_EXTENT_MAX_ACCEPTABLE
+        max_depth_diff > inputs.adaptive_step_algorithm_max_stage_max_acceptable
+        or median_depth_diff
+        > inputs.adaptive_step_algorithm_median_stage_max_acceptable
+        or extent_diff > inputs.adaptive_step_algorithm_extent_max_acceptable
     ):
         result = "reject_high"
 
     elif (
-        ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MIN_ACCEPTABLE <= max_depth_diff
-        or ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MIN_ACCEPTABLE <= median_depth_diff
-        or ADAPTIVE_STEP_ALGORITHM_EXTENT_MIN_ACCEPTABLE <= extent_diff
+        inputs.adaptive_step_algorithm_max_stage_min_acceptable <= max_depth_diff
+        or inputs.adaptive_step_algorithm_median_stage_min_acceptable
+        <= median_depth_diff
+        or inputs.adaptive_step_algorithm_extent_min_acceptable <= extent_diff
     ):
         result = "accept"
     else:
@@ -388,135 +348,10 @@ def compare_scenario_changes(
         result = "accept"
 
     return AdaptiveStepComparisonResults(
-        ref_us_discharge=ref_scenario.us_discharge,
-        trial_us_discharge=trial_scenario.us_discharge,
+        ref_scenario_manifest=ref_scenario.self_href,
+        trial_scenario_manifest=trial_scenario.self_href,
         max_stage_diff=max_depth_diff,
         median_stage_diff=median_depth_diff,
         extent_diff=extent_diff,
         result=result,
     )
-
-
-def get_run_identity(solver: SupportedSolver) -> RunIdentity:
-    "Make canonical identity for solver and sdr commit id."
-    version = get_model_version(solver)
-    return RunIdentity(
-        sdr_commit_id=SDR_COMMIT,
-        solver=SolverInfo(name=solver.value, version=version),
-    )
-
-
-def publish_scenario(
-    manifest: ScenarioWorkerManifest,
-    job_inputs: RunNDScenariosInputs,
-    model_manifest: ModelManifest,
-) -> str:
-    """Copy scenario assets to model_results_base_path, write the manifest JSON, and return its path."""
-    # NOTE: Doing manual path construction because PurePosixPath was dropping s3:// to s3:/
-    # TODO: Investigate better path management.
-    identity = get_run_identity(job_inputs.solver_enum)
-    run_identity_hash = hash_dict(identity.model_dump(), role_length=8)
-    scenario_code = make_scenario_code("ND", manifest.ds_slope, manifest.us_discharge)
-
-    # Handle S3 and other cloud paths by using string concatenation to preserve scheme
-    base_path = job_inputs.model_results_base_path.rstrip("/")
-    dest_dir_str = f"{base_path}/{run_identity_hash}/{manifest.dir_name}"
-
-    # Build destination paths using string concatenation for S3 compatibility
-    dest_depth_str = f"{dest_dir_str}/{manifest.depth_path.name}"
-    dest_inun_str = f"{dest_dir_str}/{manifest.inundation_polygon_path.name}"
-    dest_stl_str = f"{dest_dir_str}/{manifest.stl_path.name}"
-
-    dest_depth = dest_depth_str
-    dest_inun = dest_inun_str
-    dest_stl = dest_stl_str
-    copy_file(manifest.depth_path, dest_depth)
-    copy_file(manifest.inundation_polygon_path, dest_inun)
-    copy_file(manifest.stl_path, dest_stl)
-
-    dest_zarr = None
-    if manifest.zarr_path is not None:
-        dest_zarr = f"{dest_dir_str}/{manifest.zarr_path.name}"
-        copy_dir(manifest.zarr_path, dest_zarr)
-
-    if manifest.run_config.initial_state_path is not None:
-        shared_parent = Path(
-            os.path.commonpath(
-                [str(manifest.run_config.initial_state_path), str(manifest.depth_path)]
-            )
-        )
-        # Build hotstart path using string concatenation for S3 compatibility
-        relative_part = manifest.run_config.initial_state_path.relative_to(
-            shared_parent
-        )
-        hotstart_path = Path(f"{dest_dir_str}/../{relative_part}".replace("\\", "/"))
-    else:
-        hotstart_path = None
-
-    final_manifest = ScenarioRunManifest(
-        created_at=datetime.now(timezone.utc),
-        reach_id=model_manifest.reach_id,
-        identity=identity,
-        identity_hash=run_identity_hash,
-        scenario_code=scenario_code,
-        model_id=model_manifest.model_id,
-        inputs=ScenarioRunInputs(
-            ds_slope=manifest.ds_slope,
-            ds_wse=manifest.ds_wse,
-            us_discharge=manifest.us_discharge,
-            scenario_dir_name=manifest.dir_name,
-            volume_convergence_tolerance=job_inputs.volume_convergence_tolerance,
-            allow_water_on_edges=manifest.allow_water_on_edges,
-            outflow_area_polygon_path=job_inputs.outflow_area_polygon_path,
-            model_manifest_path=job_inputs.model_manifest_path,
-            inflow_line_path=model_manifest.assets.inflow_line.href,
-            centerline_path=model_manifest.assets.centerline.href,
-            domain=model_manifest.domain,
-            grid=model_manifest.properties.grid,
-            run_config=manifest.run_config.model_copy(
-                update={"initial_state_path": hotstart_path}
-            ),
-            terrain_path=model_manifest.assets.terrain.href,
-            roughness_path=model_manifest.assets.roughness.href,
-            model_results_base_path=job_inputs.model_results_base_path,
-            out_dir=dest_dir_str,
-        ),
-        properties=ScenarioProperties(
-            nominal_wse=manifest.nominal_wse,
-            scenario_diagnostics=manifest.scenario_diagnostics,
-            termination_condition=manifest.termination_condition,
-            sim_duration_seconds=manifest.sim_duration_seconds,
-            runtime_seconds=manifest.runtime_seconds,
-        ),
-        assets=ScenarioAssets(
-            # hash local files before they're no longer accessible; use S3 paths as hrefs
-            depth=Asset(
-                href=dest_depth,
-                checksum=hash_file(manifest.depth_path, role_length=16),
-                source_url=None,
-                derived=True,
-            ),
-            inundation_polygon=Asset(
-                href=dest_inun,
-                checksum=hash_file(manifest.inundation_polygon_path, role_length=16),
-                source_url=None,
-                derived=True,
-            ),
-            stage_transfer_line=Asset(
-                href=dest_stl,
-                checksum=hash_file(manifest.stl_path, role_length=16),
-                source_url=None,
-                derived=True,
-            ),
-            # zarr is a directory; checksum is a sentinel value
-            zarr_store=Asset(
-                href=dest_zarr, checksum="0" * 16, source_url=None, derived=True
-            )
-            if dest_zarr is not None
-            else None,
-        ),
-    )
-
-    manifest_dest = f"{dest_dir_str}/{SCENARIO_MANIFEST_FILENAME}"
-    write_json(manifest_dest, final_manifest.model_dump_json())
-    return manifest_dest

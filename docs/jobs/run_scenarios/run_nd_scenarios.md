@@ -16,22 +16,28 @@ Iteratively runs the model for a reach using a normal depth downstream boundary 
 | `min_upstream_inflow` | `number` | Minimum of the target discharge range in cms |
 | `max_upstream_inflow` | `number` | Maximum of the target discharge range in cms |
 | `delta_upstream_inflow` | `number` | Discharge increment for adaptive step algorithm in cms |
-| `ds_slope` | `number` | Slope value to apply for the downstream boundary condition in m/m |
-| `outflow_area_polygon_path` | `string` | Path to a polygon that determines where normal depth boundary condition will be applied. |
 
 ### Optional
 
 | Name | Type | Default | Description |
 | --- | --- | --- | --- |
-| `solver` | `string` | "lisflood" | Hydraulic solver used (e.g., lisflood or sfincs) |
-| `volume_convergence_tolerance` | `number` | 0 | Volume increase in the reach as a percent of inflow below which model is considered steady |
+| `outflow_area_polygon_path` | `string` | null | Path to a polygon that determines where normal depth boundary condition will be applied. |
+| `volume_convergence_tolerance` | `number` | 0.001 | Volume increase in the reach as a percent of inflow below which model is considered steady |
 | `allow_water_on_edges` | `boolean` | false | Whether to ignore or terminate when water pools on an invalid edge |
 | `max_simulation_length_seconds` | `number` | 86400 | Maximum time (in model seconds) that a model will be allowed to run before it is forcefully terminated |
 | `save_interval_seconds` | `number` | 3600.0 | Frequency (in model seconds) with which a model will export depth rasters |
-| `max_simulation_wall_time_minutes` | `number` | null | Maximum time (in wall time) that a model will be allowed to run before it is forcefully terminated |
+| `max_simulation_wall_time_seconds` | `number` | 10000000000.0 | Maximum time (in wall time) that a model will be allowed to run before it is forcefully terminated |
 | `adaptive_step_min_delta_q` | `number` | 10.0 | Minimum sensitivity for Q in adaptive step algorithm.  If delta_q at the min and algorithm would reject high, trial is accepted instead. |
 | `save_velocity` | `boolean` | false | Whether or not to generate and save velocity tifs |
 | `save_zarr` | `boolean` | false | Whether or not to generate and save a zarr file with wse and depth at each print interval |
+| `adaptive_step_algorithm_shrink_factor` | `number` | 0.5 | Multiplier applied to the discharge step size when a trial scenario is rejected for producing too large a change |
+| `adaptive_step_algorithm_grow_factor` | `number` | 1.5 | Multiplier applied to the discharge step size when a trial scenario is accepted or rejected for producing too small a change |
+| `adaptive_step_algorithm_max_stage_min_acceptable` | `number` | 0.75 | Minimum 95th-percentile depth difference (m) between consecutive discharge scenarios required to accept the step |
+| `adaptive_step_algorithm_max_stage_max_acceptable` | `number` | 1.25 | Maximum 95th-percentile depth difference (m) between consecutive discharge scenarios before rejection |
+| `adaptive_step_algorithm_median_stage_min_acceptable` | `number` | 0.25 | Minimum median depth difference (m) between consecutive discharge scenarios required to accept the step |
+| `adaptive_step_algorithm_median_stage_max_acceptable` | `number` | 0.75 | Maximum median depth difference (m) between consecutive discharge scenarios before rejection |
+| `adaptive_step_algorithm_extent_min_acceptable` | `number` | 0.075 | Minimum fractional change in inundated area between consecutive discharge scenarios required to accept the step |
+| `adaptive_step_algorithm_extent_max_acceptable` | `number` | 0.125 | Maximum fractional change in inundated area between consecutive discharge scenarios before rejection |
 <!-- /AUTO:inputs_table -->
 
 ## Artifacts
@@ -50,7 +56,6 @@ Iteratively runs the model for a reach using a normal depth downstream boundary 
 <!-- AUTO:result_table -->
 | Name | Type | Description |
 | --- | --- | --- |
-| `scenario_manifest_paths` | `list[string]` | Paths to the scenario_manifest.json file for each completed scenario |
 | `scenario_comparison_results` | `list[AdaptiveStepComparisonResults]` | Adaptive step comparison results for each accepted scenario; None for the baseline and max-discharge scenarios |
 | `warnings` | `list[JobWarning]` |  |
 <!-- /AUTO:result_table -->

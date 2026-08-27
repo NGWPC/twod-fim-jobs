@@ -4,7 +4,8 @@ from typing import Iterator, Literal
 from pydantic import BaseModel, ConfigDict
 
 import twod_fim_jobs
-from twod_fim_jobs.models.common import Asset, JobWarning
+from twod_fim_jobs.models.common import Asset
+from twod_fim_jobs.models.warnings import JobWarning
 
 
 import geopandas as gpd

@@ -7,7 +7,7 @@
         "href": {
           "description": "Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.",
           "examples": [
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif"
+            "s3://bucket/prefix/file.ext"
           ],
           "title": "Href",
           "type": "string"
@@ -30,9 +30,10 @@
               "type": "null"
             }
           ],
+          "default": null,
           "description": "External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.",
           "examples": [
-            "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt"
+            "https://bucket.s3.amazonaws.com/prefix/source.ext"
           ],
           "title": "Source Url"
         },
@@ -65,8 +66,7 @@
       },
       "required": [
         "href",
-        "checksum",
-        "source_url"
+        "checksum"
       ],
       "title": "Asset",
       "type": "object"
@@ -119,14 +119,28 @@
           "type": "integer"
         },
         "worst_violating_wse": {
-          "description": "WSE of the edge cell furthest from wse_0 within the violation window; nan if no violations",
-          "title": "Worst Violating Wse",
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "WSE of the edge cell furthest from wse_0 within the violation window; None if no violations",
+          "title": "Worst Violating Wse"
         },
         "closest_edge_margin": {
-          "description": "Minimum distance of any wetted non-violating edge cell WSE to the nearest range boundary; nan if all wetted edge cells are violating",
-          "title": "Closest Edge Margin",
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Minimum distance of any wetted non-violating edge cell WSE to the nearest range boundary; None if all wetted edge cells are violating",
+          "title": "Closest Edge Margin"
         },
         "error": {
           "anyOf": [
@@ -288,6 +302,29 @@
       "title": "Domain",
       "type": "object"
     },
+    "FreeBC": {
+      "properties": {
+        "vector": {
+          "$ref": "#/$defs/Asset"
+        },
+        "bc_type": {
+          "const": "FREE",
+          "default": "FREE",
+          "title": "Bc Type",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "vector",
+        "value"
+      ],
+      "title": "FreeBC",
+      "type": "object"
+    },
     "GridProperties": {
       "additionalProperties": false,
       "description": "Grid dimensions of the model domain.",
@@ -318,6 +355,29 @@
       "title": "GridProperties",
       "type": "object"
     },
+    "HFixBC": {
+      "properties": {
+        "vector": {
+          "$ref": "#/$defs/Asset"
+        },
+        "bc_type": {
+          "const": "HFIX",
+          "default": "HFIX",
+          "title": "Bc Type",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "vector",
+        "value"
+      ],
+      "title": "HFixBC",
+      "type": "object"
+    },
     "JobWarning": {
       "properties": {
         "message": {
@@ -329,6 +389,29 @@
         "message"
       ],
       "title": "JobWarning",
+      "type": "object"
+    },
+    "QFixBC": {
+      "properties": {
+        "vector": {
+          "$ref": "#/$defs/Asset"
+        },
+        "bc_type": {
+          "const": "QFIX",
+          "default": "QFIX",
+          "title": "Bc Type",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "vector",
+        "value"
+      ],
+      "title": "QFixBC",
       "type": "object"
     },
     "RunConfig": {
@@ -349,6 +432,7 @@
           "type": "number"
         },
         "mass_interval_seconds": {
+          "default": 60.0,
           "examples": [
             60.0
           ],
@@ -356,6 +440,7 @@
           "type": "number"
         },
         "initial_tstep_seconds": {
+          "default": 0.5,
           "examples": [
             0.5
           ],
@@ -363,7 +448,7 @@
           "type": "number"
         },
         "use_cuda": {
-          "default": false,
+          "default": true,
           "examples": [
             true
           ],
@@ -378,28 +463,45 @@
           "title": "Use Elevoff",
           "type": "boolean"
         },
-        "initial_state_path": {
-          "anyOf": [
-            {
-              "format": "path",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
+        "volume_convergence_tolerance": {
+          "default": 0.001,
+          "description": "Volume increase in the reach as a percent of inflow below which model is considered steady",
           "examples": [
-            null
+            0.1
           ],
-          "title": "Initial State Path"
+          "title": "Volume Convergence Tolerance",
+          "type": "number"
+        },
+        "allow_water_on_edges": {
+          "default": false,
+          "description": "Whether to ignore or terminate when water pools on an invalid edge",
+          "examples": [
+            false
+          ],
+          "title": "Allow Water On Edges",
+          "type": "boolean"
+        },
+        "max_simulation_wall_time_seconds": {
+          "examples": [
+            36000.0
+          ],
+          "title": "Max Simulation Wall Time Seconds",
+          "type": "number"
+        },
+        "save_zarr": {
+          "default": false,
+          "description": "Whether or not to generate and save a zarr file with wse and depth at each print interval",
+          "examples": [
+            false
+          ],
+          "title": "Save Zarr",
+          "type": "boolean"
         }
       },
       "required": [
         "sim_time_seconds",
         "save_interval_seconds",
-        "mass_interval_seconds",
-        "initial_tstep_seconds"
+        "max_simulation_wall_time_seconds"
       ],
       "title": "RunConfig",
       "type": "object"
@@ -416,8 +518,8 @@
           "type": "string"
         },
         "solver": {
-          "$ref": "#/$defs/SolverInfo",
-          "description": "Solver name and version"
+          "$ref": "#/$defs/SupportedSolver",
+          "description": "Solver name"
         }
       },
       "required": [
@@ -425,6 +527,140 @@
         "solver"
       ],
       "title": "RunIdentity",
+      "type": "object"
+    },
+    "RunScenarioInputs": {
+      "properties": {
+        "domain": {
+          "$ref": "#/$defs/Domain"
+        },
+        "grid_properties": {
+          "$ref": "#/$defs/GridProperties"
+        },
+        "terrain": {
+          "$ref": "#/$defs/Asset"
+        },
+        "roughness": {
+          "$ref": "#/$defs/Asset"
+        },
+        "boundary_conditions": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "FREE": "#/$defs/FreeBC",
+                "HFIX": "#/$defs/HFixBC",
+                "QFIX": "#/$defs/QFixBC",
+                "TRANSFER": "#/$defs/TransferBC"
+              },
+              "propertyName": "bc_type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/QFixBC"
+              },
+              {
+                "$ref": "#/$defs/HFixBC"
+              },
+              {
+                "$ref": "#/$defs/FreeBC"
+              },
+              {
+                "$ref": "#/$defs/TransferBC"
+              }
+            ]
+          },
+          "title": "Boundary Conditions",
+          "type": "array"
+        },
+        "hot_start": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Asset"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "run_config": {
+          "$ref": "#/$defs/RunConfig"
+        },
+        "base_out_dir": {
+          "title": "Base Out Dir",
+          "type": "string"
+        },
+        "reach_id": {
+          "title": "Reach Id",
+          "type": "integer"
+        },
+        "model_id": {
+          "title": "Model Id",
+          "type": "string"
+        },
+        "centerline": {
+          "$ref": "#/$defs/Asset"
+        },
+        "run_identity_hash": {
+          "title": "Run Identity Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "domain",
+        "grid_properties",
+        "terrain",
+        "roughness",
+        "boundary_conditions",
+        "hot_start",
+        "run_config",
+        "base_out_dir",
+        "reach_id",
+        "model_id",
+        "centerline",
+        "run_identity_hash"
+      ],
+      "title": "RunScenarioInputs",
+      "type": "object"
+    },
+    "RunScenarioResults": {
+      "description": "Convenience holder for solver results.",
+      "properties": {
+        "convergence_results": {
+          "description": "Convergence status after each raster output",
+          "items": {
+            "$ref": "#/$defs/ConvergenceResult"
+          },
+          "title": "Convergence Results",
+          "type": "array"
+        },
+        "termination_condition": {
+          "$ref": "#/$defs/TerminationCondition",
+          "description": "The reason the simulation ended."
+        },
+        "wall_time": {
+          "description": "How long the model ran in wall time",
+          "title": "Wall Time",
+          "type": "number"
+        },
+        "nominal_wse": {
+          "description": "Nominal water surface elevation achieved at the reach upstream point",
+          "title": "Nominal Wse",
+          "type": "number"
+        },
+        "sim_time": {
+          "description": "Simulation time (model time)in seconds at the final timestep",
+          "title": "Sim Time",
+          "type": "number"
+        }
+      },
+      "required": [
+        "convergence_results",
+        "termination_condition",
+        "wall_time",
+        "nominal_wse",
+        "sim_time"
+      ],
+      "title": "RunScenarioResults",
       "type": "object"
     },
     "ScenarioAssets": {
@@ -463,255 +699,63 @@
       "title": "ScenarioAssets",
       "type": "object"
     },
-    "ScenarioProperties": {
-      "additionalProperties": false,
-      "properties": {
-        "nominal_wse": {
-          "description": "Nominal water surface elevation measured along the reach's u/s stage transfer line",
-          "examples": [
-            100.5
-          ],
-          "title": "Nominal Wse",
-          "type": "number"
-        },
-        "scenario_diagnostics": {
-          "description": "Diagnostics for each model print interval",
-          "items": {
-            "$ref": "#/$defs/ConvergenceResult"
-          },
-          "title": "Scenario Diagnostics",
-          "type": "array"
-        },
-        "termination_condition": {
-          "$ref": "#/$defs/TerminationCondition",
-          "description": "How the scenario run was terminated"
-        },
-        "sim_duration_seconds": {
-          "description": "Simulated time elapsed at termination, in seconds",
-          "examples": [
-            36000.0
-          ],
-          "title": "Sim Duration Seconds",
-          "type": "number"
-        },
-        "runtime_seconds": {
-          "description": "Wall-clock time for the scenario run, in seconds",
-          "examples": [
-            120.5
-          ],
-          "title": "Runtime Seconds",
-          "type": "number"
-        }
-      },
-      "required": [
-        "nominal_wse",
-        "scenario_diagnostics",
-        "termination_condition",
-        "sim_duration_seconds",
-        "runtime_seconds"
+    "SupportedSolver": {
+      "enum": [
+        "sfincs",
+        "lisflood"
       ],
-      "title": "ScenarioProperties",
-      "type": "object"
-    },
-    "ScenarioRunInputs": {
-      "additionalProperties": false,
-      "properties": {
-        "ds_slope": {
-          "description": "Normal-depth slope for the downstream boundary condition",
-          "examples": [
-            0.01
-          ],
-          "title": "Ds Slope",
-          "type": "number"
-        },
-        "ds_wse": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Nominal water surface elevation along the downstream stage trnasfer line",
-          "examples": [
-            100.5
-          ],
-          "title": "Ds Wse"
-        },
-        "us_discharge": {
-          "description": "Upstream inflow discharge in cms",
-          "examples": [
-            1000.0
-          ],
-          "title": "Us Discharge",
-          "type": "number"
-        },
-        "scenario_dir_name": {
-          "description": "Output directory name for this scenario's assets",
-          "examples": [
-            "nd=1.0E02/q=1000"
-          ],
-          "title": "Scenario Dir Name",
-          "type": "string"
-        },
-        "volume_convergence_tolerance": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Volume convergence threshold; None disables the check",
-          "examples": [
-            0.1
-          ],
-          "title": "Volume Convergence Tolerance"
-        },
-        "allow_water_on_edges": {
-          "description": "Whether to ignore or terminate when water pools on an invalid edge",
-          "examples": [
-            false
-          ],
-          "title": "Allow Water On Edges",
-          "type": "boolean"
-        },
-        "outflow_area_polygon_path": {
-          "description": "Path to polygon marking where the normal-depth boundary condition is applied",
-          "examples": [
-            "s3://twod-fim/version=v1/shared/outflow_area.geojson"
-          ],
-          "title": "Outflow Area Polygon Path",
-          "type": "string"
-        },
-        "model_manifest_path": {
-          "description": "Path to model manifest for the build_model job for this reach",
-          "examples": [
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/model.json"
-          ],
-          "title": "Model Manifest Path",
-          "type": "string"
-        },
-        "inflow_line_path": {
-          "description": "Path to lineString defining the upstream inflow boundary",
-          "examples": [
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/inflow.geojson"
-          ],
-          "title": "Inflow Line Path",
-          "type": "string"
-        },
-        "centerline_path": {
-          "description": "Path to the reach centerline used to determine WSE sample points for domain expansion criteria",
-          "examples": [
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/reach.geojson"
-          ],
-          "title": "Centerline Path",
-          "type": "string"
-        },
-        "domain": {
-          "$ref": "#/$defs/Domain",
-          "description": "Domain configuration for the hydraulic model"
-        },
-        "grid": {
-          "$ref": "#/$defs/GridProperties",
-          "description": "Grid properties for the hydraulic model"
-        },
-        "run_config": {
-          "$ref": "#/$defs/RunConfig",
-          "description": "Solver runtime configuration"
-        },
-        "terrain_path": {
-          "description": "Path to the terrain raster",
-          "examples": [
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif"
-          ],
-          "title": "Terrain Path",
-          "type": "string"
-        },
-        "roughness_path": {
-          "description": "Path to the roughness raster",
-          "examples": [
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/roughness.tif"
-          ],
-          "title": "Roughness Path",
-          "type": "string"
-        },
-        "model_results_base_path": {
-          "description": "Base directory to which identity hash and scenario point are appended to make the out directory",
-          "examples": [
-            "s3://twod-fim/version=v1/results"
-          ],
-          "title": "Model Results Base Path",
-          "type": "string"
-        },
-        "out_dir": {
-          "description": "Directory where solver output files are written",
-          "examples": [
-            "s3://twod-fim/version=v1/results/nd=1.0E02/q=1000"
-          ],
-          "title": "Out Dir",
-          "type": "string"
-        }
-      },
-      "required": [
-        "ds_slope",
-        "us_discharge",
-        "scenario_dir_name",
-        "volume_convergence_tolerance",
-        "allow_water_on_edges",
-        "outflow_area_polygon_path",
-        "model_manifest_path",
-        "inflow_line_path",
-        "centerline_path",
-        "domain",
-        "grid",
-        "run_config",
-        "terrain_path",
-        "roughness_path",
-        "model_results_base_path",
-        "out_dir"
-      ],
-      "title": "ScenarioRunInputs",
-      "type": "object"
-    },
-    "SolverInfo": {
-      "additionalProperties": false,
-      "properties": {
-        "name": {
-          "description": "Solver name",
-          "examples": [
-            "lisflood"
-          ],
-          "title": "Name",
-          "type": "string"
-        },
-        "version": {
-          "description": "Solver version string",
-          "examples": [
-            "8.0.0"
-          ],
-          "title": "Version",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name",
-        "version"
-      ],
-      "title": "SolverInfo",
-      "type": "object"
+      "title": "SupportedSolver",
+      "type": "string"
     },
     "TerminationCondition": {
+      "description": "Reason that a solver run ended.",
       "enum": [
         "volume_convergence",
         "edge_error",
-        "max_simulation_time"
+        "max_simulation_time",
+        "max_wall_time"
       ],
       "title": "TerminationCondition",
       "type": "string"
+    },
+    "TransferBC": {
+      "properties": {
+        "vector": {
+          "$ref": "#/$defs/Asset"
+        },
+        "bc_type": {
+          "const": "TRANSFER",
+          "default": "TRANSFER",
+          "title": "Bc Type",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "transfer_depths": {
+          "$ref": "#/$defs/Asset"
+        },
+        "transfer_els": {
+          "$ref": "#/$defs/Asset"
+        },
+        "grid_properties": {
+          "$ref": "#/$defs/GridProperties"
+        },
+        "domain": {
+          "$ref": "#/$defs/Domain"
+        }
+      },
+      "required": [
+        "vector",
+        "value",
+        "transfer_depths",
+        "transfer_els",
+        "grid_properties",
+        "domain"
+      ],
+      "title": "TransferBC",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -763,11 +807,12 @@
       "type": "string"
     },
     "scenario_code": {
-      "description": "Scenario identifier: bc_type + bc_value (integer, optional 1 decimal digit) + 'Q' + integer discharge",
+      "description": "Scenario identifier: bc_type + bc_value (decimal or scientific notation) + 'Q' + integer discharge",
       "examples": [
-        "KWSE200.2Q200"
+        "KWSE200.2Q200",
+        "ND1.0E04Q1000"
       ],
-      "pattern": "^[A-Z]+\\d+(\\.\\d)?Q\\d+$",
+      "pattern": "^[A-Z]+(\\d+(\\.\\d+)?E[+\\-]?\\d+|\\d+(\\.\\d+)?)Q\\d+$",
       "title": "Scenario Code",
       "type": "string"
     },
@@ -784,12 +829,20 @@
       "$ref": "#/$defs/RunIdentity",
       "description": "Canonical identity of the solver environment used for this run."
     },
+    "self_href": {
+      "description": "Location of this scenario manifest's json",
+      "examples": [
+        "s3://twod-fim/version=v1/results/nd=1.0E02/q=1000/scenario_manifest.json"
+      ],
+      "title": "Self Href",
+      "type": "string"
+    },
     "inputs": {
-      "$ref": "#/$defs/ScenarioRunInputs",
+      "$ref": "#/$defs/RunScenarioInputs",
       "description": "Inputs used to run the model"
     },
     "properties": {
-      "$ref": "#/$defs/ScenarioProperties",
+      "$ref": "#/$defs/RunScenarioResults",
       "description": "Computed values during the run."
     },
     "assets": {
@@ -816,10 +869,11 @@
     "scenario_code",
     "model_id",
     "identity",
+    "self_href",
     "inputs",
     "properties",
     "assets"
   ],
-  "title": "ScenarioRunManifest",
+  "title": "RunScenarioManifest",
   "type": "object"
 }

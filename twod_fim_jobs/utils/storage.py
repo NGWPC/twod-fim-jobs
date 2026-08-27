@@ -1,15 +1,18 @@
+import logging
 import os
 from typing import IO, cast
 from urllib.parse import urlparse
 import json
 import shutil
 import fsspec
-
+from pathlib import Path
 import geopandas as gpd
 from sqlalchemy.exc import ArgumentError, OperationalError
 from sqlalchemy import create_engine, inspect, text
 from twod_fim_jobs.consts import (
+    ASSET_CACHE_DIR,
     DA_FIELD,
+    MAX_ASSET_CACHE_SIZE_GB,
     REACH_FIELDS,
     REACH_TABLE,
     REACH_ID_FIELD,
@@ -22,6 +25,9 @@ from twod_fim_jobs.exceptions import (
     ReachDatasetUnavailable,
     WriteFailureError,
 )
+from twod_fim_jobs.models.common import Asset
+
+logger = logging.getLogger(__name__)
 
 
 def validate_db_connection(db_uri: str, layer: str, fields: list[str]) -> None:
@@ -109,9 +115,10 @@ def query_reach(
     return gdf
 
 
-def check_model_exists(model_uri: str) -> bool:
-    # TODO: Implement this
-    return False
+def check_file_exists(uri: str) -> bool:
+    """Check whether a local or remote file exists."""
+    fs, path = fsspec.core.url_to_fs(uri)
+    return fs.exists(path)
 
 
 def copy_file(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:
@@ -160,3 +167,51 @@ def write_json(path: str, content: str, indent: int | None = 4) -> None:
             cast(IO[str], f).write(content)
     except Exception as e:
         raise WriteFailureError(str(e)) from e
+
+
+class AssetCache:
+    """Manages pulling remote assets to local cache."""
+
+    def __init__(self, cache_root: Path):
+        """Initialize class."""
+        self.cache_root = cache_root
+
+    def materialize_path(self, asset: Asset) -> Path:
+        """Return local path to an asset, caching from remote, if necessary."""
+        parsed = urlparse(asset.href)
+        if not parsed.scheme or parsed.scheme in {"", "file"}:
+            return Path(asset.href)
+        return self._cache_asset(asset)
+
+    def _cache_asset(self, asset: Asset) -> Path:
+        """Copy a remote asset to cache_root."""
+        filename = Path(urlparse(asset.href).path).name
+        cached_path = self.cache_root / asset.checksum / filename
+
+        if cached_path.exists():
+            return cached_path
+
+        max_bytes = int(MAX_ASSET_CACHE_SIZE_GB) * 1024**3
+        self._evict_to_fit(max_bytes)
+
+        cached_path.parent.mkdir(parents=True, exist_ok=True)
+        copy_file(asset.href, cached_path)
+        return cached_path
+
+    def _evict_to_fit(self, max_bytes: int) -> None:
+        """Remove oldest cached files until total cache size is under max_bytes."""
+        if not self.cache_root.exists():
+            return
+        files = sorted(self.cache_root.rglob("*"), key=lambda p: p.stat().st_mtime)
+        total = sum(p.stat().st_size for p in files if p.is_file())
+        for path in files:
+            if total <= max_bytes:
+                break
+            if path.is_file():
+                size = path.stat().st_size
+                path.unlink()
+                logger.info("Evicted cached asset: %s", path)
+                total -= size
+
+
+ASSET_CACHE = AssetCache(Path(ASSET_CACHE_DIR))

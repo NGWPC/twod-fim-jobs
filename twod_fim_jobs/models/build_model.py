@@ -183,7 +183,7 @@ class BuildModelInputs(BaseModel):
     domain_buffer: float = Field(
         default=DEFAULT_DOMAIN_BUFFER,
         ge=0,
-        description="How far to buffer the bounding box on model geometries",
+        description="An additional buffer for the model domain. Since the reach centerline will already be buffered by 10x bankfull width to generate the domain, 0 is typically appropriate.",
         examples=[100.0],
     )
     grid_resolution: float = Field(

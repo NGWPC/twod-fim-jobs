@@ -1,16 +1,26 @@
 import os
 from enum import Enum
 
+
+def _env_flag(name: str, default: str) -> bool:
+    """Read a boolean environment variable in a case-insensitive way."""
+    return os.environ.get(name, default).strip().lower() in (
+        "true",
+        "1",
+        "yes",
+        "y",
+        "t",
+    )
+
+
 # -------------------- GENERAL --------------------
 SDR_COMMIT = "826a602ddcaf58bf4081dc04b65ba15b82cc8c8a"
 HASH_ALGORITHM = "sha256"
-PRINT_SEPEX_STYLE_RESULTS: bool = os.environ.get(
-    "PRINT_SEPEX_STYLE_RESULTS", "True"
-).lower() in ("true", "1", "yes")
+PRINT_SEPEX_STYLE_RESULTS: bool = _env_flag("PRINT_SEPEX_STYLE_RESULTS", "True")
 
 
 # -------------------- SOLVERS --------------------
-USE_CUDA: bool = bool(os.environ.get("USE_CUDA", True))
+USE_CUDA: bool = _env_flag("USE_CUDA", "True")
 STABILITY_WAIT: float = float(os.environ.get("STABILITY_WAIT", 0.1))
 
 

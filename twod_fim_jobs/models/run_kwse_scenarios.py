@@ -31,7 +31,7 @@ class HotStart(BaseModel):
 class KWSEScenario(BaseModel):
     """Definition of KWSE scenario configuration."""
 
-    upstream_discharge: float = Field(
+    upstream_discharge: int = Field(
         description="Flows applied at the top of the reach in cms", examples=[1000.0]
     )
     bc_value: float = Field(

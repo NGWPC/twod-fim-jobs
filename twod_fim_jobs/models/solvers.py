@@ -3,7 +3,13 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 import twod_fim_jobs
 from twod_fim_jobs.consts import (
@@ -134,22 +140,34 @@ class _BCBase(BaseModel):
 
 class QFixBC(_BCBase):
     bc_type: Literal["QFIX"] = "QFIX"
-    value: int
+    value: int = Field(
+        description="Inflow along this boundary condition into the model in cms.",
+        examples=[260],
+    )
 
 
 class HFixBC(_BCBase):
     bc_type: Literal["HFIX"] = "HFIX"
-    value: float
+    value: float = Field(
+        description="Fixed water surface elevation to apply along a geometry.",
+        examples=[122.3],
+    )
 
 
 class FreeBC(_BCBase):
     bc_type: Literal["FREE"] = "FREE"
-    value: float
+    value: float = Field(
+        description="Normal depth slope in m/m to apply along a this geometry.",
+        examples=[0.00043],
+    )
 
 
 class TransferBC(_BCBase):
     bc_type: Literal["TRANSFER"] = "TRANSFER"
-    value: float
+    value: float = Field(
+        description="Nominal water surface elevation along the STL for the provided transfer depth asset.",
+        examples=[122.3],
+    )
     transfer_depths: Asset
     transfer_els: Asset
     grid_properties: GridProperties
@@ -216,12 +234,20 @@ class RunScenarioResults(BaseModel):
     termination_condition: TerminationCondition = Field(
         description="The reason the simulation ended."
     )
-    wall_time: float = Field(description="How long the model ran in wall time")
+    wall_time: float = Field(
+        description="How long the model ran in wall time", examples=[960.0]
+    )
     nominal_wse: float = Field(
-        description="Nominal water surface elevation achieved at the reach upstream point"
+        description="Nominal water surface elevation achieved at the reach upstream point",
+        examples=[121.2],
+    )
+    us_discharge: int = Field(
+        description="Total upstream inflow discharge for this scenario, in whole cms",
+        examples=[1000],
     )
     sim_time: float = Field(
-        description="Simulation time (model time)in seconds at the final timestep"
+        description="Simulation time (model time)in seconds at the final timestep",
+        examples=[960.0],
     )
 
     @field_validator("nominal_wse")
@@ -239,11 +265,25 @@ class RunScenarioInputs(BaseModel):
     boundary_conditions: list[BoundaryCondition]
     hot_start: Asset | None
     run_config: RunConfig
-    base_out_dir: str
-    reach_id: int
-    model_id: str
+    base_out_dir: str = Field(
+        description="Path where results will be saved",
+        examples=["s3://twod-fim/version=v1/results"],
+    )
+    reach_id: int = Field(
+        description="Primary key for the reach in the reach network",
+        examples=[1257410937935512],
+    )
+    model_id: str = Field(
+        pattern=r"^[0-9a-f]{8}_N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
+        description="<identity_hash>+<domain_code>. Also the folder name.",
+        examples=["fceb20c6_N164S214E230W107"],
+    )
     centerline: Asset
-    run_identity_hash: str
+    run_identity_hash: str = Field(
+        pattern=r"^[0-9a-f]{8}$",
+        description="Hash of the run identity object.",
+        examples=["fceb20c6"],
+    )
 
     @model_validator(mode="after")
     def _validate_boundary_conditions(self) -> "RunScenarioInputs":
@@ -356,7 +396,7 @@ class RunScenarioManifest(BaseModel):
     )
     identity_hash: str = Field(
         pattern=r"^[0-9a-f]{8}$",
-        description="Hash of the identity object. Stable across domain changes; results group under it.",
+        description="Hash of the run identity object.",
         examples=["fceb20c6"],
     )
     scenario_code: str = Field(
@@ -390,9 +430,4 @@ class RunScenarioManifest(BaseModel):
         default=[],
         description="Non-fatal check results; the scenario run still completes and writes scenario.json.",
         examples=[[]],
-    )
-
-    us_discharge: int = Field(
-        description="Total upstream inflow discharge for this scenario, in whole cms",
-        examples=[1000],
     )

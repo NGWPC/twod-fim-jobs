@@ -16,7 +16,7 @@
     "dem_source": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",  // Connection string for the DEM dataset
     "lulc_source": "/vsis3/usgs-landcover/annual-nlcd/c1/v0/cu/mosaic/Annual_NLCD_LndCov_2023_CU_C1V0.tif",  // Connection string for the LULC source dataset
     "other_geometries": ["POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"],  // A list of geometries that will be included when making the model domain bounding box
-    "domain_buffer": 100.0,  // How far to buffer the bounding box on model geometries
+    "domain_buffer": 100.0,  // An additional buffer for the model domain. Since the reach centerline will already be buffered by 10x bankfull width to generate the domain, 0 is typically appropriate.
     "grid_resolution": 10.0,  // Resolution that grid will snap to and that DEM and roughness will resample to
     "walk_us_dist_pct": 0.25,  // How far to walk up the upstream mainstem centerline to place the inflow boundary condition, as percent of upstream centerline length
     "epsg_code": 5070,  // EPSG integer for all georeferenced output artifacts

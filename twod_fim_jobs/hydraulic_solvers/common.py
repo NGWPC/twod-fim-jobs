@@ -121,6 +121,7 @@ def publish_scenario(
         termination_condition=solve_scenario_results.termination_condition,
         wall_time=solve_scenario_results.wall_time,
         nominal_wse=processed.nominal_wse,
+        us_discharge=run_scenario_inputs.inflow,
         sim_time=processed.sim_time,
     )
 
@@ -133,7 +134,6 @@ def publish_scenario(
         model_id=run_scenario_inputs.model_id,
         identity=get_run_identity(),
         self_href=run_scenario_inputs.manifest_href,
-        us_discharge=run_scenario_inputs.inflow,
         inputs=run_scenario_inputs,
         properties=run_scenario_results,
         assets=assets,

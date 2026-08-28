@@ -24,7 +24,7 @@ Initialize a model for a single reach by generating the terrain, roughness, geom
 | `dem_source` | `string` | "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt" | Connection string for the DEM dataset |
 | `lulc_source` | `string` | "/vsis3/usgs-landcover/annual-nlcd/c1/v0/cu/mosaic/Annual_NLCD_LndCov_2023_CU_C1V0.tif" | Connection string for the LULC source dataset |
 | `other_geometries` | `list[string]` |  | A list of geometries that will be included when making the model domain bounding box |
-| `domain_buffer` | `number` | 0.0 | How far to buffer the bounding box on model geometries |
+| `domain_buffer` | `number` | 0.0 | An additional buffer for the model domain. Since the reach centerline will already be buffered by 10x bankfull width to generate the domain, 0 is typically appropriate. |
 | `grid_resolution` | `number` | 10 | Resolution that grid will snap to and that DEM and roughness will resample to |
 | `walk_us_dist_pct` | `number` | 0.1 | How far to walk up the upstream mainstem centerline to place the inflow boundary condition, as percent of upstream centerline length |
 | `epsg_code` | `integer` | 5070 | EPSG integer for all georeferenced output artifacts |

@@ -86,7 +86,7 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
         results = RunNDScenariosResult(
             scenario_comparison_results=[scenario_comparison], warnings=[]
         )
-        q_trial = current_scenario.us_discharge + delta_us_discharge
+        q_trial = current_scenario.properties.us_discharge + delta_us_discharge
 
         while q_trial < inputs.max_upstream_inflow:
             logger.info(f"Evaluating trial discharge {q_trial}")
@@ -134,7 +134,7 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
             delta_us_discharge = max(
                 inputs.adaptive_step_min_delta_q, delta_us_discharge
             )
-            q_trial = current_scenario.us_discharge + delta_us_discharge
+            q_trial = current_scenario.properties.us_discharge + delta_us_discharge
 
         trial_scenario = _run_scenario(
             inputs.max_upstream_inflow,

@@ -93,10 +93,6 @@ class Properties(BaseModel):
         description="Length of the reach centerline for this model",
         examples=[2340.5],
     )
-    slope: float | None = Field(
-        description="Slope along the reach centerline for this model",
-        examples=[0.0012],
-    )
     downstream_reach_id: int | None = Field(
         description="ID of the reach downstream of this model's reach",
         examples=[1257410937935513],

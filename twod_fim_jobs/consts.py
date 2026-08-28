@@ -59,13 +59,11 @@ REACH_ID_FIELD: str = os.environ.get("REACH_ID_FIELD", "reach_id")
 REACH_TO_ID_FIELD: str = os.environ.get("REACH_TO_ID_FIELD", "reach_to_id")
 DA_FIELD: str = os.environ.get("DA_FIELD", "total_da_sqkm")
 STREAM_ORDER_FIELD: str = os.environ.get("STREAM_ORDER_FIELD", "stream_order")
-SLOPE_FIELD: str = os.environ.get("SLOPE_FIELD", "slope")
 REACH_FIELDS = [
     REACH_ID_FIELD,
     REACH_TO_ID_FIELD,
     DA_FIELD,
     STREAM_ORDER_FIELD,
-    SLOPE_FIELD,
     "geom",
 ]
 DEFAULT_LULC_LOOKUP = {

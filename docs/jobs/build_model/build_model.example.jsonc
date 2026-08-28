@@ -51,7 +51,6 @@
     "upstream_reach_ids": [1257410937935510],  // Reach IDs in the network db of any reaches tributary to this model's reach
     "stream_order": 4,  // Strahler order of the reach for this model
     "length_m": 2340.5,  // Length of the reach centerline for this model
-    "slope": 0.0012,  // Slope along the reach centerline for this model
     "downstream_reach_id": 1257410937935513,  // ID of the reach downstream of this model's reach
     "upstream_mainstem_reach_id": 1257410937935510  // ID of the reach with the largest drainage area of the reaches draining to this reach
   },

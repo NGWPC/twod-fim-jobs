@@ -544,21 +544,6 @@
           ],
           "title": "Length M"
         },
-        "slope": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Slope along the reach centerline for this model",
-          "examples": [
-            0.0012
-          ],
-          "title": "Slope"
-        },
         "downstream_reach_id": {
           "anyOf": [
             {
@@ -597,7 +582,6 @@
         "upstream_reach_ids",
         "stream_order",
         "length_m",
-        "slope",
         "downstream_reach_id",
         "upstream_mainstem_reach_id"
       ],

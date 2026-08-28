@@ -21,7 +21,6 @@ from twod_fim_jobs.consts import (
     REACH_ID_FIELD,
     ROUGHNESS_FILENAME,
     SDR_COMMIT,
-    SLOPE_FIELD,
     STREAM_ORDER_FIELD,
     bieger_bankfull_width,
 )
@@ -195,7 +194,6 @@ class BuildModelJob(Job[BuildModelInputs]):
             upstream_reach_ids=us_reaches,
             stream_order=reach[STREAM_ORDER_FIELD].iloc[0],
             length_m=round(reach.length.iloc[0], 2),
-            slope=round(reach[SLOPE_FIELD].iloc[0], 7),
             downstream_reach_id=reach[REACH_ID_FIELD].iloc[0],
             upstream_mainstem_reach_id=us_mainstem_id,
         )

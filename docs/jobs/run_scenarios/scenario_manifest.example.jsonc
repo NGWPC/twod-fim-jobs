@@ -46,7 +46,7 @@
           "derived": true
         },
         "bc_type": "QFIX",
-        "value": "<required: number>"
+        "value": "<required: integer>"
       }
     ],
     "hot_start": {
@@ -117,5 +117,6 @@
     },
     "zarr_store": null
   },
-  "warnings": []  // Non-fatal check results; the scenario run still completes and writes scenario.json.
+  "warnings": [],  // Non-fatal check results; the scenario run still completes and writes scenario.json.
+  "us_discharge": 1000  // Total upstream inflow discharge for this scenario, in whole cms
 }

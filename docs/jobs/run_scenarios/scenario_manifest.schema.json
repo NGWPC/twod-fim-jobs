@@ -404,7 +404,7 @@
         },
         "value": {
           "title": "Value",
-          "type": "number"
+          "type": "integer"
         }
       },
       "required": [
@@ -860,6 +860,14 @@
       },
       "title": "Warnings",
       "type": "array"
+    },
+    "us_discharge": {
+      "description": "Total upstream inflow discharge for this scenario, in whole cms",
+      "examples": [
+        1000
+      ],
+      "title": "Us Discharge",
+      "type": "integer"
     }
   },
   "required": [
@@ -872,7 +880,8 @@
     "self_href",
     "inputs",
     "properties",
-    "assets"
+    "assets",
+    "us_discharge"
   ],
   "title": "RunScenarioManifest",
   "type": "object"

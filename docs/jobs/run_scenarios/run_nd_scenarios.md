@@ -13,9 +13,9 @@ Iteratively runs the model for a reach using a normal depth downstream boundary 
 | --- | --- | --- |
 | `model_manifest_path` | `string` | Path where the model manifest json is saved |
 | `model_results_base_path` | `string` | Path where results will be saved |
-| `min_upstream_inflow` | `number` | Minimum of the target discharge range in cms |
-| `max_upstream_inflow` | `number` | Maximum of the target discharge range in cms |
-| `delta_upstream_inflow` | `number` | Discharge increment for adaptive step algorithm in cms |
+| `min_upstream_inflow` | `integer` | Minimum of the target discharge range in whole cms |
+| `max_upstream_inflow` | `integer` | Maximum of the target discharge range in whole cms |
+| `delta_upstream_inflow` | `integer` | Discharge increment for adaptive step algorithm in whole cms |
 
 ### Optional
 
@@ -27,7 +27,7 @@ Iteratively runs the model for a reach using a normal depth downstream boundary 
 | `max_simulation_length_seconds` | `number` | 86400 | Maximum time (in model seconds) that a model will be allowed to run before it is forcefully terminated |
 | `save_interval_seconds` | `number` | 3600.0 | Frequency (in model seconds) with which a model will export depth rasters |
 | `max_simulation_wall_time_seconds` | `number` | 10000000000.0 | Maximum time (in wall time) that a model will be allowed to run before it is forcefully terminated |
-| `adaptive_step_min_delta_q` | `number` | 10.0 | Minimum sensitivity for Q in adaptive step algorithm.  If delta_q at the min and algorithm would reject high, trial is accepted instead. |
+| `adaptive_step_min_delta_q` | `integer` | 10 | Minimum sensitivity for Q in adaptive step algorithm.  If delta_q at the min and algorithm would reject high, trial is accepted instead. |
 | `save_velocity` | `boolean` | false | Whether or not to generate and save velocity tifs |
 | `save_zarr` | `boolean` | false | Whether or not to generate and save a zarr file with wse and depth at each print interval |
 | `adaptive_step_algorithm_shrink_factor` | `number` | 0.5 | Multiplier applied to the discharge step size when a trial scenario is rejected for producing too large a change |

@@ -35,17 +35,17 @@ class RunNDScenariosInputs(BaseModel):
         description="Path where results will be saved",
         examples=["s3://twod-fim/version=v1/results"],
     )
-    min_upstream_inflow: float = Field(
-        description="Minimum of the target discharge range in cms",
-        examples=[100.0],
+    min_upstream_inflow: int = Field(
+        description="Minimum of the target discharge range in whole cms",
+        examples=[100],
     )
-    max_upstream_inflow: float = Field(
-        description="Maximum of the target discharge range in cms",
-        examples=[5000.0],
+    max_upstream_inflow: int = Field(
+        description="Maximum of the target discharge range in whole cms",
+        examples=[5000],
     )
-    delta_upstream_inflow: float = Field(
-        description="Discharge increment for adaptive step algorithm in cms",
-        examples=[100.0],
+    delta_upstream_inflow: int = Field(
+        description="Discharge increment for adaptive step algorithm in whole cms",
+        examples=[100],
     )
 
     # Optional
@@ -79,7 +79,7 @@ class RunNDScenariosInputs(BaseModel):
         description="Maximum time (in wall time) that a model will be allowed to run before it is forcefully terminated",
         examples=[60.0],
     )
-    adaptive_step_min_delta_q: float = Field(
+    adaptive_step_min_delta_q: int = Field(
         default=ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q,
         description="Minimum sensitivity for Q in adaptive step algorithm.  If delta_q at the min and algorithm would reject high, trial is accepted instead.",
         examples=[10],

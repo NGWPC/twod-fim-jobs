@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
 import twod_fim_jobs
 from twod_fim_jobs.consts import (
     DEFAULT_ELEVOFF,
@@ -14,9 +15,9 @@ from twod_fim_jobs.consts import (
     USE_CUDA,
     SupportedSolver,
 )
+from twod_fim_jobs.models.common import Asset, Domain, GridProperties
 from twod_fim_jobs.models.warnings import JobWarning
-from twod_fim_jobs.models.common import Asset, GridProperties, Domain
-from twod_fim_jobs.utils.naming import get_scenario_dir_name, get_scenario_code
+from twod_fim_jobs.utils.naming import get_scenario_code, get_scenario_dir_name
 
 
 class SolverInfo(BaseModel):
@@ -133,7 +134,7 @@ class _BCBase(BaseModel):
 
 class QFixBC(_BCBase):
     bc_type: Literal["QFIX"] = "QFIX"
-    value: float
+    value: int
 
 
 class HFixBC(_BCBase):
@@ -305,9 +306,9 @@ class RunScenarioInputs(BaseModel):
         return get_scenario_code(kwse_value, nd_value, q_value)
 
     @property
-    def inflow(self) -> float:
-        """Total inflow to model."""
-        return sum([i.value for i in self.q_bcs])
+    def inflow(self) -> int:
+        """Total inflow to model, in whole cms."""
+        return sum(i.value for i in self.q_bcs)
 
 
 ### SCENARIO MANIFEST CLASSES ###
@@ -391,7 +392,7 @@ class RunScenarioManifest(BaseModel):
         examples=[[]],
     )
 
-    @property
-    def us_discharge(self) -> float:
-        """Sum of inflow discharges."""
-        return self.inputs.inflow
+    us_discharge: int = Field(
+        description="Total upstream inflow discharge for this scenario, in whole cms",
+        examples=[1000],
+    )

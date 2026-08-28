@@ -133,6 +133,7 @@ def publish_scenario(
         model_id=run_scenario_inputs.model_id,
         identity=get_run_identity(),
         self_href=run_scenario_inputs.manifest_href,
+        us_discharge=run_scenario_inputs.inflow,
         inputs=run_scenario_inputs,
         properties=run_scenario_results,
         assets=assets,

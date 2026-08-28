@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -7,6 +8,8 @@ from pydantic import BaseModel
 
 from twod_fim_jobs.jobs.common import Job
 from twod_fim_jobs.utils.storage import copy_file
+
+logger = logging.getLogger(__name__)
 
 
 class HealthInputs(BaseModel):
@@ -42,7 +45,7 @@ class HealthWorkflow(Job[HealthInputs]):
         ):
             importlib.import_module(module_info.name)
 
-        print("Health check passed.")
+        logger.info("Health check passed.")
 
         if inputs.test_write_uri is not None:
             tmp_path = tmp_dir / "health_check.txt"

@@ -49,7 +49,14 @@ def run_lisflood(parfile_path: Path, pipe_out_logs: bool = True) -> subprocess.P
 
         def _stream(pipe, log_fn):
             for line in pipe:
-                log_fn(line.rstrip())
+                # Blank lines are dropped rather than relayed. The solver prints
+                # them as spacing, but a log record with an empty message
+                # serializes to {"msg": ""}, which SEPEX cannot tell from a line
+                # it failed to parse — it falls back to showing the raw JSON with
+                # a zero timestamp. Nothing is lost: they carry no information.
+                text = line.rstrip()
+                if text:
+                    log_fn(text)
             pipe.close()
 
         threading.Thread(

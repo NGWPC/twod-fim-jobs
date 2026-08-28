@@ -72,7 +72,7 @@ class Properties(BaseModel):
 
     grid: GridProperties
     drainage_area_sqkm: float = Field(
-        description="From the reach DB; missing/invalid raises InvalidAttributeError (no model.json written).",
+        description="From the reach network; missing/invalid raises InvalidAttributeError (no model.json written).",
         gt=0,
         examples=[142.7],
     )
@@ -82,7 +82,7 @@ class Properties(BaseModel):
         examples=[35.2],
     )
     upstream_reach_ids: list[int] = Field(
-        description="Reach IDs in the network db of any reaches tributary to this model's reach",
+        description="Reach IDs of any reaches tributary to this model's reach",
         examples=[[1257410937935510]],
     )
     stream_order: int | None = Field(
@@ -92,10 +92,6 @@ class Properties(BaseModel):
     length_m: float | None = Field(
         description="Length of the reach centerline for this model",
         examples=[2340.5],
-    )
-    slope: float | None = Field(
-        description="Slope along the reach centerline for this model",
-        examples=[0.0012],
     )
     downstream_reach_id: int | None = Field(
         description="ID of the reach downstream of this model's reach",
@@ -140,12 +136,24 @@ class BuildModelInputs(BaseModel):
 
     # Required
     reach_id: int = Field(
-        description="Primary key for the reach in the reach db",
+        description="Primary key for the reach in the reach network",
         examples=[1257410937935512],
     )
-    db_uri: str = Field(
-        description="Connection string for the refactored hydrofabric",
-        examples=["sqlite:///tests/build_model/data/reach_network.gpkg"],
+    reach_network_path: str = Field(
+        description="Path to the reach network GeoParquet, sorted by reach_id",
+        examples=["s3://twod-fim/version=v1/reference_data/reach_network.parquet"],
+    )
+    upstream_reach_ids: list[int] = Field(
+        default_factory=list,
+        description="Ids of the reaches draining into this one",
+        examples=[[1257410937935511, 1257410937935510]],
+    )
+    upstream_mainstem_reach_id: int | None = Field(
+        default=None,
+        description=(
+            "Upstream reach with the largest drainage area; null for a headwater"
+        ),
+        examples=[1257410937935511],
     )
     base_output_path: str = Field(
         description="Path where output artifacts will be written",
@@ -175,7 +183,7 @@ class BuildModelInputs(BaseModel):
     domain_buffer: float = Field(
         default=DEFAULT_DOMAIN_BUFFER,
         ge=0,
-        description="How far to buffer the bounding box on model geometries",
+        description="An additional buffer for the model domain. Since the reach centerline will already be buffered by 10x bankfull width to generate the domain, 0 is typically appropriate.",
         examples=[100.0],
     )
     grid_resolution: float = Field(
@@ -278,7 +286,7 @@ class ModelManifest(BaseModel):
         examples=["2026-08-06T22:17:07.406819Z"],
     )
     reach_id: int = Field(
-        description="Primary key for the reach in the reach db",
+        description="Primary key for the reach in the reach network",
         examples=[1257410937935512],
     )
     identity_hash: str = Field(

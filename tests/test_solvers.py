@@ -397,6 +397,7 @@ def test_check_model_skips_when_run_exists() -> None:
             termination_condition=TerminationCondition.VOLUME_CONVERGENCE,
             wall_time=100.0,
             nominal_wse=1.0,
+            us_discharge=100,
             sim_time=100.0,
         ),
         warnings=[],
@@ -427,7 +428,7 @@ def test_check_run_exists_returns_none_when_manifest_not_found() -> None:
     run_scenario_inputs = create_test_run_scenario_inputs(
         base_out_dir="/nonexistent/path",
         reach_id=11111,
-        model_id="nonexistent-model",
+        model_id="00000000_N0S0E0W0",
     )
 
     # Mock that the manifest file does not exist

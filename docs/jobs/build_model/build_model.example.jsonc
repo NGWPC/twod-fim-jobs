@@ -3,18 +3,20 @@
   "hash_algo": "sha256",  // Hash function for every hash/checksum in this document. Truncation length is per-field (see build_model-design.md).
   "twod_fim_version": "0.1.0",  // Producer software version (provenance).
   "created_at": "2026-08-06T22:17:07.406819Z",  // Build completion time (UTC). model.json is written last.
-  "reach_id": 1257410937935512,  // Primary key for the reach in the reach db
+  "reach_id": 1257410937935512,  // Primary key for the reach in the reach network
   "identity_hash": "fceb20c6",  // Hash of the identity object. Stable across domain changes; results group under it.
   "domain_code": "N164S214E230W107",  // Domain realization: grid-snapped N/S/E/W offsets in CRS units from the anchor. A grid-reference code, not a hash.
   "model_id": "fceb20c6_N164S214E230W107",  // <identity_hash>+<domain_code>. Also the folder name.
   "inputs": {
-    "reach_id": 1257410937935512,  // Primary key for the reach in the reach db
-    "db_uri": "sqlite:///tests/build_model/data/reach_network.gpkg",  // Connection string for the refactored hydrofabric
+    "reach_id": 1257410937935512,  // Primary key for the reach in the reach network
+    "reach_network_path": "s3://twod-fim/version=v1/reference_data/reach_network.parquet",  // Path to the reach network GeoParquet, sorted by reach_id
+    "upstream_reach_ids": [1257410937935511, 1257410937935510],  // Ids of the reaches draining into this one
+    "upstream_mainstem_reach_id": 1257410937935511,  // Upstream reach with the largest drainage area; null for a headwater
     "base_output_path": "s3://twod-fim/version=v1/models/",  // Path where output artifacts will be written
     "dem_source": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",  // Connection string for the DEM dataset
     "lulc_source": "/vsis3/usgs-landcover/annual-nlcd/c1/v0/cu/mosaic/Annual_NLCD_LndCov_2023_CU_C1V0.tif",  // Connection string for the LULC source dataset
     "other_geometries": ["POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"],  // A list of geometries that will be included when making the model domain bounding box
-    "domain_buffer": 100.0,  // How far to buffer the bounding box on model geometries
+    "domain_buffer": 100.0,  // An additional buffer for the model domain. Since the reach centerline will already be buffered by 10x bankfull width to generate the domain, 0 is typically appropriate.
     "grid_resolution": 10.0,  // Resolution that grid will snap to and that DEM and roughness will resample to
     "walk_us_dist_pct": 0.25,  // How far to walk up the upstream mainstem centerline to place the inflow boundary condition, as percent of upstream centerline length
     "epsg_code": 5070,  // EPSG integer for all georeferenced output artifacts
@@ -46,12 +48,11 @@
       "rows": 378,  // Number of rows in the model domain
       "cols": 337  // Number of columns in the model domain
     },
-    "drainage_area_sqkm": 142.7,  // From the reach DB; missing/invalid raises InvalidAttributeError (no model.json written).
+    "drainage_area_sqkm": 142.7,  // From the reach network; missing/invalid raises InvalidAttributeError (no model.json written).
     "bankfull_width_m": 35.2,  // Estimated bankfull width (pre-multiplier) used to build the inflow.
-    "upstream_reach_ids": [1257410937935510],  // Reach IDs in the network db of any reaches tributary to this model's reach
+    "upstream_reach_ids": [1257410937935510],  // Reach IDs of any reaches tributary to this model's reach
     "stream_order": 4,  // Strahler order of the reach for this model
     "length_m": 2340.5,  // Length of the reach centerline for this model
-    "slope": 0.0012,  // Slope along the reach centerline for this model
     "downstream_reach_id": 1257410937935513,  // ID of the reach downstream of this model's reach
     "upstream_mainstem_reach_id": 1257410937935510  // ID of the reach with the largest drainage area of the reaches draining to this reach
   },
@@ -59,42 +60,42 @@
     "terrain": {
       "href": "s3://bucket/prefix/file.ext",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
       "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
-      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
+      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or reach network file). null for purely computed assets.
       "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
       "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
     },
     "roughness": {
       "href": "s3://bucket/prefix/file.ext",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
       "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
-      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
+      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or reach network file). null for purely computed assets.
       "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
       "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
     },
     "centerline": {
       "href": "s3://bucket/prefix/file.ext",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
       "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
-      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
+      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or reach network file). null for purely computed assets.
       "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
       "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
     },
     "inflow_line": {
       "href": "s3://bucket/prefix/file.ext",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
       "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
-      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
+      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or reach network file). null for purely computed assets.
       "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
       "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
     },
     "reach_centroid": {
       "href": "s3://bucket/prefix/file.ext",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
       "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
-      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
+      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or reach network file). null for purely computed assets.
       "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
       "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
     },
     "domain": {
       "href": "s3://bucket/prefix/file.ext",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
       "checksum": "a1b2c3d4e5f6a7b8",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
-      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.
+      "source_url": "https://bucket.s3.amazonaws.com/prefix/source.ext",  // External provenance URL (DEM/land-cover endpoint, or reach network file). null for purely computed assets.
       "retrieved": "2026-08-06T22:17:07.406819Z",  // When the source was fetched, if applicable.
       "derived": true  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
     }

@@ -1,11 +1,13 @@
 import copy
 import logging
 import math
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
 import geopandas as gpd
 import numpy as np
 from shapely.geometry import Point, Polygon
+
 from twod_fim_jobs.consts import (
     MINIMUM_REACH_SLOPE,
     bieger_bankfull_width,
@@ -17,6 +19,11 @@ from twod_fim_jobs.models.build_model import ModelManifest
 from twod_fim_jobs.models.common import (
     Asset,
 )
+from twod_fim_jobs.models.run_nd_scenarios import (
+    AdaptiveStepComparisonResults,
+    RunNDScenariosInputs,
+    RunNDScenariosResult,
+)
 from twod_fim_jobs.models.solvers import (
     BoundaryCondition,
     FreeBC,
@@ -26,21 +33,31 @@ from twod_fim_jobs.models.solvers import (
     RunScenarioManifest,
 )
 from twod_fim_jobs.models.warnings import WaterOnEdgeWarning
-from twod_fim_jobs.utils.hashing import hash_file
-
-from twod_fim_jobs.models.run_nd_scenarios import (
-    RunNDScenariosInputs,
-    RunNDScenariosResult,
-    AdaptiveStepComparisonResults,
-)
-from twod_fim_jobs.utils.storage import ASSET_CACHE, copy_file, read_json
 from twod_fim_jobs.utils.geospatial import (
     Raster,
     ensure_linestring,
     load_dem_and_get_pt_indices,
 )
+from twod_fim_jobs.utils.hashing import hash_file
+from twod_fim_jobs.utils.storage import ASSET_CACHE, copy_file, read_json
 
 logger = logging.getLogger(__name__)
+
+
+def _scale_delta(delta: int, factor: float) -> int:
+    """Grow or shrink the discharge step, keeping it a whole number of cms.
+
+    Discharge is integral throughout this system: the bounds and the step are
+    authored as integers, the folder a scenario is written to is named by the
+    discharge, and the library records the set of discharges that were run. The
+    shrink and grow factors are ratios rather than flows, so scaling has to be
+    rounded back or the step — and every discharge derived from it — drifts off
+    the integers.
+
+    Rounded to at least 1 so a small step cannot scale to zero and stall the
+    sweep at one discharge.
+    """
+    return max(1, round(delta * factor))
 
 
 class RunNDScenariosJob(Job[RunNDScenariosInputs]):
@@ -69,10 +86,10 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
         results = RunNDScenariosResult(
             scenario_comparison_results=[scenario_comparison], warnings=[]
         )
-        q_trial = current_scenario.us_discharge + delta_us_discharge
+        q_trial = current_scenario.properties.us_discharge + delta_us_discharge
 
         while q_trial < inputs.max_upstream_inflow:
-            logger.info(f"Evaluating trial discharge {round(q_trial, 1)}")
+            logger.info(f"Evaluating trial discharge {q_trial}")
 
             trial_scenario = _run_scenario(
                 q_trial,
@@ -97,23 +114,27 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
             results.scenario_comparison_results.append(scenario_comparison)
 
             if scenario_comparison.result == "reject_high":
-                logger.info(f"Rejecting trial discharge {round(q_trial, 1)}: high")
-                delta_us_discharge *= inputs.adaptive_step_algorithm_shrink_factor
+                logger.info(f"Rejecting trial discharge {q_trial}: high")
+                delta_us_discharge = _scale_delta(
+                    delta_us_discharge, inputs.adaptive_step_algorithm_shrink_factor
+                )
 
             elif scenario_comparison.result == "accept":
-                logger.info(f"Accepting trial discharge {round(q_trial, 1)}")
+                logger.info(f"Accepting trial discharge {q_trial}")
                 ref_scenario = trial_scenario
                 current_scenario = trial_scenario
 
             elif scenario_comparison.result == "reject_low":
-                logger.info(f"Rejecting trial discharge {round(q_trial, 1)}: low")
+                logger.info(f"Rejecting trial discharge {q_trial}: low")
                 current_scenario = trial_scenario
-                delta_us_discharge *= inputs.adaptive_step_algorithm_grow_factor
+                delta_us_discharge = _scale_delta(
+                    delta_us_discharge, inputs.adaptive_step_algorithm_grow_factor
+                )
 
             delta_us_discharge = max(
                 inputs.adaptive_step_min_delta_q, delta_us_discharge
             )
-            q_trial = current_scenario.us_discharge + delta_us_discharge
+            q_trial = current_scenario.properties.us_discharge + delta_us_discharge
 
         trial_scenario = _run_scenario(
             inputs.max_upstream_inflow,
@@ -245,7 +266,7 @@ def get_normal_depth_slope(model_manifest: ModelManifest) -> float:
 
 
 def _run_scenario(
-    us_inflow: float,
+    us_inflow: int,
     ds_bc: BoundaryCondition,
     model_manifest: ModelManifest,
     inputs: RunNDScenariosInputs,

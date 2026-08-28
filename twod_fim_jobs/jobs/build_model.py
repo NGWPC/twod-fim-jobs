@@ -21,11 +21,9 @@ from twod_fim_jobs.consts import (
     REACH_ID_FIELD,
     ROUGHNESS_FILENAME,
     SDR_COMMIT,
-    SLOPE_FIELD,
     STREAM_ORDER_FIELD,
     bieger_bankfull_width,
 )
-
 from twod_fim_jobs.jobs.common import Job
 from twod_fim_jobs.models.build_model import (
     Assets,
@@ -36,12 +34,12 @@ from twod_fim_jobs.models.build_model import (
     ModelManifest,
     Properties,
 )
+from twod_fim_jobs.models.common import Asset
 from twod_fim_jobs.models.warnings import (
     CenterlineInflowMultiIntersectionWarning,
     JobWarning,
     LargeDomainAreaWarning,
 )
-from twod_fim_jobs.models.common import Asset
 from twod_fim_jobs.utils.geospatial import (
     build_model_domain,
     download_dem,
@@ -57,7 +55,6 @@ from twod_fim_jobs.utils.storage import (
     check_file_exists,
     copy_file,
     query_reach,
-    query_upstream_reach,
     read_json,
 )
 
@@ -72,17 +69,19 @@ class BuildModelJob(Job[BuildModelInputs]):
         # Initialize empty warnings
         job_warnings: list[JobWarning] = []
 
-        # Query database for relevant geometries
-        reach = query_reach(inputs.reach_id, inputs.db_uri, inputs.epsg_code)
-        reach = ensure_linestring(reach)
-        us_reaches, us_mainstem = query_upstream_reach(
-            inputs.reach_id, inputs.db_uri, inputs.epsg_code
+        # Read the reaches this model needs from the network file.
+        reach = query_reach(
+            inputs.reach_id, inputs.reach_network_path, inputs.epsg_code
         )
-        if not us_mainstem.empty:
-            us_mainstem_id = us_mainstem[REACH_ID_FIELD].iloc[0]
+        reach = ensure_linestring(reach)
+        us_reaches = list(inputs.upstream_reach_ids)
+        us_mainstem_id = inputs.upstream_mainstem_reach_id
+        us_mainstem = gpd.GeoDataFrame()
+        if us_mainstem_id is not None:
+            us_mainstem = query_reach(
+                us_mainstem_id, inputs.reach_network_path, inputs.epsg_code
+            )
             us_mainstem = ensure_linestring(us_mainstem)
-        else:
-            us_mainstem_id = None
 
         # Make inflow line and validate
         inflow_line = make_inflow_line(
@@ -164,16 +163,18 @@ class BuildModelJob(Job[BuildModelInputs]):
         )
 
         # Write vector artifacts
-        cl_asset = write_gdf_asset(reach, tmp_dir / REACH_FILENAME, inputs.db_uri)
+        cl_asset = write_gdf_asset(
+            reach, tmp_dir / REACH_FILENAME, inputs.reach_network_path
+        )
         inflow_asset = write_gdf_asset(
-            inflow_line, tmp_dir / INFLOW_FILENAME, inputs.db_uri
+            inflow_line, tmp_dir / INFLOW_FILENAME, inputs.reach_network_path
         )
         anchor_gdf, domain_gdf = export_domain_gdfs(domain, inputs.authority_str)
         anchor_asset = write_gdf_asset(
-            anchor_gdf, tmp_dir / ANCHOR_FILENAME, inputs.db_uri
+            anchor_gdf, tmp_dir / ANCHOR_FILENAME, inputs.reach_network_path
         )
         domain_asset = write_gdf_asset(
-            domain_gdf, tmp_dir / DOMAIN_FILENAME, inputs.db_uri
+            domain_gdf, tmp_dir / DOMAIN_FILENAME, inputs.reach_network_path
         )
 
         # Compile assets
@@ -195,7 +196,6 @@ class BuildModelJob(Job[BuildModelInputs]):
             upstream_reach_ids=us_reaches,
             stream_order=reach[STREAM_ORDER_FIELD].iloc[0],
             length_m=round(reach.length.iloc[0], 2),
-            slope=round(reach[SLOPE_FIELD].iloc[0], 7),
             downstream_reach_id=reach[REACH_ID_FIELD].iloc[0],
             upstream_mainstem_reach_id=us_mainstem_id,
         )

@@ -31,7 +31,7 @@
             }
           ],
           "default": null,
-          "description": "External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.",
+          "description": "External provenance URL (DEM/land-cover endpoint, or reach network file). null for purely computed assets.",
           "examples": [
             "https://bucket.s3.amazonaws.com/prefix/source.ext"
           ],
@@ -314,6 +314,10 @@
           "type": "string"
         },
         "value": {
+          "description": "Normal depth slope in m/m to apply along a this geometry.",
+          "examples": [
+            0.00043
+          ],
           "title": "Value",
           "type": "number"
         }
@@ -367,6 +371,10 @@
           "type": "string"
         },
         "value": {
+          "description": "Fixed water surface elevation to apply along a geometry.",
+          "examples": [
+            122.3
+          ],
           "title": "Value",
           "type": "number"
         }
@@ -403,8 +411,12 @@
           "type": "string"
         },
         "value": {
+          "description": "Inflow along this boundary condition into the model in cms.",
+          "examples": [
+            260
+          ],
           "title": "Value",
-          "type": "number"
+          "type": "integer"
         }
       },
       "required": [
@@ -586,14 +598,27 @@
           "$ref": "#/$defs/RunConfig"
         },
         "base_out_dir": {
+          "description": "Path where results will be saved",
+          "examples": [
+            "s3://twod-fim/version=v1/results"
+          ],
           "title": "Base Out Dir",
           "type": "string"
         },
         "reach_id": {
+          "description": "Primary key for the reach in the reach network",
+          "examples": [
+            1257410937935512
+          ],
           "title": "Reach Id",
           "type": "integer"
         },
         "model_id": {
+          "description": "<identity_hash>+<domain_code>. Also the folder name.",
+          "examples": [
+            "fceb20c6_N164S214E230W107"
+          ],
+          "pattern": "^[0-9a-f]{8}_N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
           "title": "Model Id",
           "type": "string"
         },
@@ -601,6 +626,11 @@
           "$ref": "#/$defs/Asset"
         },
         "run_identity_hash": {
+          "description": "Hash of the run identity object.",
+          "examples": [
+            "fceb20c6"
+          ],
+          "pattern": "^[0-9a-f]{8}$",
           "title": "Run Identity Hash",
           "type": "string"
         }
@@ -639,16 +669,33 @@
         },
         "wall_time": {
           "description": "How long the model ran in wall time",
+          "examples": [
+            960.0
+          ],
           "title": "Wall Time",
           "type": "number"
         },
         "nominal_wse": {
           "description": "Nominal water surface elevation achieved at the reach upstream point",
+          "examples": [
+            121.2
+          ],
           "title": "Nominal Wse",
           "type": "number"
         },
+        "us_discharge": {
+          "description": "Total upstream inflow discharge for this scenario, in whole cms",
+          "examples": [
+            1000
+          ],
+          "title": "Us Discharge",
+          "type": "integer"
+        },
         "sim_time": {
           "description": "Simulation time (model time)in seconds at the final timestep",
+          "examples": [
+            960.0
+          ],
           "title": "Sim Time",
           "type": "number"
         }
@@ -658,6 +705,7 @@
         "termination_condition",
         "wall_time",
         "nominal_wse",
+        "us_discharge",
         "sim_time"
       ],
       "title": "RunScenarioResults",
@@ -730,6 +778,10 @@
           "type": "string"
         },
         "value": {
+          "description": "Nominal water surface elevation along the STL for the provided transfer depth asset.",
+          "examples": [
+            122.3
+          ],
           "title": "Value",
           "type": "number"
         },
@@ -790,7 +842,7 @@
       "type": "string"
     },
     "reach_id": {
-      "description": "Primary key for the reach in the reach db",
+      "description": "Primary key for the reach in the reach network",
       "examples": [
         1257410937935512
       ],
@@ -798,7 +850,7 @@
       "type": "integer"
     },
     "identity_hash": {
-      "description": "Hash of the identity object. Stable across domain changes; results group under it.",
+      "description": "Hash of the run identity object.",
       "examples": [
         "fceb20c6"
       ],

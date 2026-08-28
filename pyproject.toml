@@ -24,7 +24,7 @@ dependencies = [
 dev = [
     "pytest>=9.0.3,<10",
     "ruff>=0.15.17,<0.16",
-    "pyright>=1.1.410,<2",
+    "pyright[nodejs]>=1.1.410,<2",
 ]
 
 [tool.pixi.dependencies]

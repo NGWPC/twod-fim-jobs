@@ -61,7 +61,7 @@ class Asset(BaseModel):
     )
     source_url: str | None = Field(
         default=None,
-        description="External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.",
+        description="External provenance URL (DEM/land-cover endpoint, or reach network file). null for purely computed assets.",
         examples=["https://bucket.s3.amazonaws.com/prefix/source.ext"],
     )
     retrieved: datetime | None = Field(

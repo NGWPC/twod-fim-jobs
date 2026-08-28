@@ -1,16 +1,26 @@
 import os
 from enum import Enum
 
+
+def _env_flag(name: str, default: str) -> bool:
+    """Read a boolean environment variable in a case-insensitive way."""
+    return os.environ.get(name, default).strip().lower() in (
+        "true",
+        "1",
+        "yes",
+        "y",
+        "t",
+    )
+
+
 # -------------------- GENERAL --------------------
 SDR_COMMIT = "826a602ddcaf58bf4081dc04b65ba15b82cc8c8a"
 HASH_ALGORITHM = "sha256"
-PRINT_SEPEX_STYLE_RESULTS: bool = os.environ.get(
-    "PRINT_SEPEX_STYLE_RESULTS", "True"
-).lower() in ("true", "1", "yes")
+PRINT_SEPEX_STYLE_RESULTS: bool = _env_flag("PRINT_SEPEX_STYLE_RESULTS", "True")
 
 
 # -------------------- SOLVERS --------------------
-USE_CUDA: bool = bool(os.environ.get("USE_CUDA", True))
+USE_CUDA: bool = _env_flag("USE_CUDA", "True")
 STABILITY_WAIT: float = float(os.environ.get("STABILITY_WAIT", 0.1))
 
 
@@ -59,15 +69,14 @@ REACH_ID_FIELD: str = os.environ.get("REACH_ID_FIELD", "reach_id")
 REACH_TO_ID_FIELD: str = os.environ.get("REACH_TO_ID_FIELD", "reach_to_id")
 DA_FIELD: str = os.environ.get("DA_FIELD", "total_da_sqkm")
 STREAM_ORDER_FIELD: str = os.environ.get("STREAM_ORDER_FIELD", "stream_order")
-SLOPE_FIELD: str = os.environ.get("SLOPE_FIELD", "slope")
 REACH_FIELDS = [
     REACH_ID_FIELD,
     REACH_TO_ID_FIELD,
     DA_FIELD,
     STREAM_ORDER_FIELD,
-    SLOPE_FIELD,
-    "geom",
+    "geometry",
 ]
+REACH_FIELDS_PARQUET = list(REACH_FIELDS)
 DEFAULT_LULC_LOOKUP = {
     11: 0.04,
     21: 0.04,
@@ -136,6 +145,6 @@ ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MIN_ACCEPTABLE: float = 0.25
 ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MAX_ACCEPTABLE: float = 0.75
 ADAPTIVE_STEP_ALGORITHM_EXTENT_MIN_ACCEPTABLE: float = 0.075
 ADAPTIVE_STEP_ALGORITHM_EXTENT_MAX_ACCEPTABLE: float = 0.125
-ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q: float = float(
+ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q: int = int(
     os.environ.get("ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q", 10)
 )

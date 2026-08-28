@@ -121,6 +121,7 @@ def publish_scenario(
         termination_condition=solve_scenario_results.termination_condition,
         wall_time=solve_scenario_results.wall_time,
         nominal_wse=processed.nominal_wse,
+        us_discharge=run_scenario_inputs.inflow,
         sim_time=processed.sim_time,
     )
 

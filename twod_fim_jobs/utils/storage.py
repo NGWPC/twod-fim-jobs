@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 import fsspec
 import geopandas as gpd
+import pyarrow as pa
 
 from twod_fim_jobs.consts import (
     ASSET_CACHE_DIR,
@@ -46,6 +47,10 @@ def read_reaches(
     except FileNotFoundError as e:
         raise ReachDatasetUnavailable(
             f"Reach network not found: {reach_network_path}"
+        ) from e
+    except pa.lib.ArrowInvalid as e:
+        raise InvalidAttributeError(
+            f"Reach network {reach_network_path} is missing required fields: {e}"
         ) from e
     except Exception as e:
         raise ReachDatasetUnavailable(

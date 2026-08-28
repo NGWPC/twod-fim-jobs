@@ -21,9 +21,9 @@ from twod_fim_jobs.models.warnings import (
 )
 
 ROOT = Path(__file__).parent
-SMALL_NETWORK = ROOT / "data" / "reach_network.gpkg"
-SMALL_NETWORK_BAD_ATTRIBUTES = ROOT / "data" / "reach_network_bad_attr.gpkg"
-SMALL_NETWORK_DUPLICATE_ID = ROOT / "data" / "reach_network_duplicates.gpkg"
+SMALL_NETWORK = ROOT / "data" / "reach_network.parquet"
+SMALL_NETWORK_BAD_ATTRIBUTES = ROOT / "data" / "reach_network_bad_attr.parquet"
+SMALL_NETWORK_DUPLICATE_ID = ROOT / "data" / "reach_network_duplicates.parquet"
 ADDITIONAL_GEOMETRY_STR = (
     "LineString (-2061815.1006158 2807427.37585646, -2055051.17482305 2811274.51580549)"
 )
@@ -36,7 +36,7 @@ ADDITIONAL_GEOMETRY_STR = (
 def build_model_input():
     return BuildModelInputs(
         reach_id=1257410962372414,
-        db_uri=f"sqlite:///{SMALL_NETWORK.resolve()}",
+        reach_network_path=str(SMALL_NETWORK.resolve()),
         base_output_path="/tmp/test-output",
     )
 
@@ -45,7 +45,7 @@ def build_model_input():
 def build_model_input_headwater():
     return BuildModelInputs(
         reach_id=1257411073114277,
-        db_uri=f"sqlite:///{SMALL_NETWORK.resolve()}",
+        reach_network_path=str(SMALL_NETWORK.resolve()),
         base_output_path="/tmp/test-output",
     )
 
@@ -54,7 +54,7 @@ def build_model_input_headwater():
 def build_model_input_bad_connection():
     return BuildModelInputs(
         reach_id=1257410962372414,
-        db_uri="sqlite:////FAKE_PATH",
+        reach_network_path="FAKE_PATH",
         base_output_path="/tmp/test-output",
     )
 
@@ -63,7 +63,7 @@ def build_model_input_bad_connection():
 def build_model_input_bad_attributes():
     return BuildModelInputs(
         reach_id=1257410962372414,
-        db_uri=f"sqlite:///{SMALL_NETWORK_BAD_ATTRIBUTES.resolve()}",
+        reach_network_path=str(SMALL_NETWORK_BAD_ATTRIBUTES.resolve()),
         base_output_path="/tmp/test-output",
     )
 
@@ -72,7 +72,7 @@ def build_model_input_bad_attributes():
 def build_model_input_missing_reach():
     return BuildModelInputs(
         reach_id=1,
-        db_uri=f"sqlite:///{SMALL_NETWORK.resolve()}",
+        reach_network_path=str(SMALL_NETWORK.resolve()),
         base_output_path="/tmp/test-output",
     )
 
@@ -81,7 +81,7 @@ def build_model_input_missing_reach():
 def build_model_input_duplicate_ids():
     return BuildModelInputs(
         reach_id=1257410962372414,
-        db_uri=f"sqlite:///{SMALL_NETWORK_DUPLICATE_ID.resolve()}",
+        reach_network_path=str(SMALL_NETWORK_DUPLICATE_ID.resolve()),
         base_output_path="/tmp/test-output",
     )
 
@@ -90,7 +90,7 @@ def build_model_input_duplicate_ids():
 def build_model_input_w_extra_geometries():
     return BuildModelInputs(
         reach_id=1257410962372414,
-        db_uri=f"sqlite:///{SMALL_NETWORK.resolve()}",
+        reach_network_path=str(SMALL_NETWORK.resolve()),
         base_output_path="/tmp/test-output",
         other_geometries=[ADDITIONAL_GEOMETRY_STR],
     )
@@ -100,7 +100,7 @@ def build_model_input_w_extra_geometries():
 def build_model_input_w_bad_extra_geometries():
     return BuildModelInputs(
         reach_id=1257410962372414,
-        db_uri=f"sqlite:///{SMALL_NETWORK.resolve()}",
+        reach_network_path=str(SMALL_NETWORK.resolve()),
         base_output_path="/tmp/test-output",
         other_geometries=["BAD"],
     )
@@ -134,7 +134,7 @@ def test_inputs_missing_required_arg_raises():
     with pytest.raises(ValidationError):
         BuildModelInputs(
             reach_id=1257410962372414,
-            db_uri=f"sqlite:///{SMALL_NETWORK.resolve()}",
+            reach_network_path=f"sqlite:///{SMALL_NETWORK.resolve()}",
         )
 
 

@@ -31,7 +31,7 @@
             }
           ],
           "default": null,
-          "description": "External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.",
+          "description": "External provenance URL (DEM/land-cover endpoint, or reach network file). null for purely computed assets.",
           "examples": [
             "https://bucket.s3.amazonaws.com/prefix/source.ext"
           ],
@@ -116,20 +116,50 @@
       "description": "Inputs for the build_model workflow.",
       "properties": {
         "reach_id": {
-          "description": "Primary key for the reach in the reach db",
+          "description": "Primary key for the reach in the reach network",
           "examples": [
             1257410937935512
           ],
           "title": "Reach Id",
           "type": "integer"
         },
-        "db_uri": {
-          "description": "Connection string for the refactored hydrofabric",
+        "reach_network_path": {
+          "description": "Path to the reach network GeoParquet, sorted by reach_id",
           "examples": [
-            "sqlite:///tests/build_model/data/reach_network.gpkg"
+            "s3://twod-fim/version=v1/reference_data/reach_network.parquet"
           ],
-          "title": "Db Uri",
+          "title": "Reach Network Path",
           "type": "string"
+        },
+        "upstream_reach_ids": {
+          "description": "Ids of the reaches draining into this one",
+          "examples": [
+            [
+              1257410937935511,
+              1257410937935510
+            ]
+          ],
+          "items": {
+            "type": "integer"
+          },
+          "title": "Upstream Reach Ids",
+          "type": "array"
+        },
+        "upstream_mainstem_reach_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Upstream reach with the largest drainage area; null for a headwater",
+          "examples": [
+            1257410937935511
+          ],
+          "title": "Upstream Mainstem Reach Id"
         },
         "base_output_path": {
           "description": "Path where output artifacts will be written",
@@ -257,7 +287,7 @@
       },
       "required": [
         "reach_id",
-        "db_uri",
+        "reach_network_path",
         "base_output_path"
       ],
       "title": "BuildModelInputs",
@@ -484,7 +514,7 @@
           "$ref": "#/$defs/GridProperties"
         },
         "drainage_area_sqkm": {
-          "description": "From the reach DB; missing/invalid raises InvalidAttributeError (no model.json written).",
+          "description": "From the reach network; missing/invalid raises InvalidAttributeError (no model.json written).",
           "examples": [
             142.7
           ],
@@ -502,7 +532,7 @@
           "type": "number"
         },
         "upstream_reach_ids": {
-          "description": "Reach IDs in the network db of any reaches tributary to this model's reach",
+          "description": "Reach IDs of any reaches tributary to this model's reach",
           "examples": [
             [
               1257410937935510
@@ -622,7 +652,7 @@
       "type": "string"
     },
     "reach_id": {
-      "description": "Primary key for the reach in the reach db",
+      "description": "Primary key for the reach in the reach network",
       "examples": [
         1257410937935512
       ],

@@ -31,7 +31,7 @@
             }
           ],
           "default": null,
-          "description": "External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.",
+          "description": "External provenance URL (DEM/land-cover endpoint, or reach network file). null for purely computed assets.",
           "examples": [
             "https://bucket.s3.amazonaws.com/prefix/source.ext"
           ],
@@ -790,7 +790,7 @@
       "type": "string"
     },
     "reach_id": {
-      "description": "Primary key for the reach in the reach db",
+      "description": "Primary key for the reach in the reach network",
       "examples": [
         1257410937935512
       ],

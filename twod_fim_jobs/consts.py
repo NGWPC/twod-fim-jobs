@@ -64,8 +64,9 @@ REACH_FIELDS = [
     REACH_TO_ID_FIELD,
     DA_FIELD,
     STREAM_ORDER_FIELD,
-    "geom",
+    "geometry",
 ]
+REACH_FIELDS_PARQUET = list(REACH_FIELDS)
 DEFAULT_LULC_LOOKUP = {
     11: 0.04,
     21: 0.04,

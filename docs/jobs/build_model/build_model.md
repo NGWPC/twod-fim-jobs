@@ -11,14 +11,16 @@ Initialize a model for a single reach by generating the terrain, roughness, geom
 
 | Name | Type | Description |
 | --- | --- | --- |
-| `reach_id` | `integer` | Primary key for the reach in the reach db |
-| `db_uri` | `string` | Connection string for the refactored hydrofabric |
+| `reach_id` | `integer` | Primary key for the reach in the reach network |
+| `reach_network_path` | `string` | Path to the reach network GeoParquet, sorted by reach_id |
 | `base_output_path` | `string` | Path where output artifacts will be written |
 
 ### Optional
 
 | Name | Type | Default | Description |
 | --- | --- | --- | --- |
+| `upstream_reach_ids` | `list[integer]` |  | Ids of the reaches draining into this one |
+| `upstream_mainstem_reach_id` | `integer` | null | Upstream reach with the largest drainage area; null for a headwater |
 | `dem_source` | `string` | "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt" | Connection string for the DEM dataset |
 | `lulc_source` | `string` | "/vsis3/usgs-landcover/annual-nlcd/c1/v0/cu/mosaic/Annual_NLCD_LndCov_2023_CU_C1V0.tif" | Connection string for the LULC source dataset |
 | `other_geometries` | `list[string]` |  | A list of geometries that will be included when making the model domain bounding box |
@@ -32,7 +34,9 @@ Initialize a model for a single reach by generating the terrain, roughness, geom
 
 ## Processing Scope
 
-- Retrieve reach and upstream reach geometries from the hydrofabric.
+- Read this reach's geometry, and the upstream reaches, from the reach network GeoParquet.
+- Fetch both by `reach_id`, which the file is sorted by: the reader skips to the row group whose recorded min/max covers the id instead of scanning full netwrok.
+- Take `upstream_reach_ids` and `upstream_mainstem_reach_id` from the caller. Finding them through this file means looking by `reach_to_id`, which the file is not indexed by.
 - Estimate bankfull width.
 - Generate inflow geometry.
 - Define the model domain.
@@ -85,7 +89,7 @@ Initialize a model for a single reach by generating the terrain, roughness, geom
 - Source raster datasets are unavailable - raises DatasetUnavailableError
 - Raster processing fails - raises RasterProcessingError
 - Output artifacts cannot be written - raises WriteFailureError
-- Drainage area missing or invalid in reach db - raises InvalidAttributeError
+- Drainage area missing or invalid in the reach network - raises InvalidAttributeError
 
 ## Checks
 

@@ -350,7 +350,7 @@ class RunScenarioManifest(BaseModel):
         examples=["2026-08-06T22:17:07.406819Z"],
     )
     reach_id: int = Field(
-        description="Primary key for the reach in the reach db",
+        description="Primary key for the reach in the reach network",
         examples=[1257410937935512],
     )
     identity_hash: str = Field(

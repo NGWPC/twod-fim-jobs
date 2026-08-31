@@ -620,8 +620,10 @@ def compute_wse_contour(
     # Extract contour
     contour, wse_val = extract_contour(smooth_wse, wse_pt, dem.transform)
     if clip_poly is not None:
-        clip_geom = gpd.read_file(clip_poly).geometry.iloc[0]
-        contour = contour.intersection(clip_geom)
+        clip_geom = gpd.read_file(clip_poly)
+        if not clip_geom.empty:
+            clip_geom = clip_geom.geometry.iloc[0]
+            contour = contour.intersection(clip_geom)
 
     gdf = gpd.GeoDataFrame(
         {"wse": [wse_val]},

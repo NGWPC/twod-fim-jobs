@@ -37,5 +37,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.70.2
+          cache: true
+
       - name: Run Docker E2E tests
         run: pixi run test-e2e-cpu

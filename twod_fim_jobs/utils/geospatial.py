@@ -281,9 +281,11 @@ def _extract_raster(
                 "dtype": "float32",
                 "compress": "deflate",
                 "predictor": 3,
-                "tiled": True,
+                "tiled": False,
             }
         )
+        profile.pop("blockxsize", None)
+        profile.pop("blockysize", None)
 
         # Reproject into memory
         data = np.empty(
@@ -324,7 +326,9 @@ def download_dem(
     def noop(data):
         return data
 
-    return extract_raster(src_path, out_path, bbox, cols, rows, dst_crs, noop)
+    return extract_raster(
+        src_path, out_path, bbox, cols, rows, dst_crs, value_transform=noop
+    )
 
 
 def download_roughness(
@@ -345,7 +349,7 @@ def download_roughness(
         cols,
         rows,
         dst_crs,
-        lambda x: manning_lut[x.astype(np.uint8)],
+        value_transform=lambda x: manning_lut[x.astype(np.uint8)],
     )
 
 

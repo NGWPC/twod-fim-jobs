@@ -80,12 +80,13 @@ def run_docker_job(image: str, payload: dict, gpu: bool = False) -> dict:
         f"{os.getuid()}:{os.getgid()}",
         "-v",
         f"{repo_root}:{repo_root}",
-        "--env-file",
-        str(repo_root / ".env"),
     ]
 
     if os.environ.get(USE_GPU_ENV_VAR, "false").lower() == "true":
         cmd.extend(["--gpus", "all"])
+
+    if os.path.exists(str(repo_root / ".env")):
+        cmd.extend(["--env-file", str(repo_root / ".env")])
 
     cmd.append(image)
     cmd.append(json.dumps(payload))

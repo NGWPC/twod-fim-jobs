@@ -35,7 +35,7 @@ Run a hydraulic solver for a set of user-defined scenarios.  A scenario is defin
 
 | Name | Type | Description |
 | --- | --- | --- |
-| `upstream_discharge` | `integer` | Flows applied at the top of the reach in cms |
+| `upstream_discharge` | `integer` | Flows applied at the top of the reach in cms. Must be greater than 0 |
 | `bc_value` | `number` | Nominal water surface elevation at the bottom of the reach |
 | `downstream_Scenario` | `string` | Path to the scenario manifest json for the model providing downstrem WSE forcing |
 

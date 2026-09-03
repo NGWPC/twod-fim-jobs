@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   test-package:
     name: Test Package (Python ${{ matrix.python-version }})
@@ -23,19 +26,25 @@ jobs:
           cache: pip
 
       - name: Install package
-        run: pip install .
+        run: pip install ".[dev]"
+
+      - name: Run tests
+        run: python -m pytest -m "not e2e"
 
       - name: Run health check
         run: twod_fim_jobs health {}
 
   test-docker:
-    name: Test Docker Build
+    name: End to End Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build Docker image
-        run: docker build --target health -t twod-fim-jobs:ci .
+      - name: Install pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.70.2
+          cache: true
 
-      - name: Run health check in Docker
-        run: docker run --rm twod-fim-jobs:ci '{}'
+      - name: Run Docker E2E tests
+        run: pixi run test-e2e-cpu

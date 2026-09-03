@@ -101,7 +101,14 @@ class BuildModelJob(Job[BuildModelInputs]):
         )
         cl_buffer = reach.buffer(cl_buffer_dist)
         all_other_geometries = gpd.GeoDataFrame(
-            pd.concat([inflow_line, cl_buffer, inputs.other_geometries_gdf])
+            pd.concat(
+                [
+                    inflow_line,
+                    gpd.GeoDataFrame(geometry=cl_buffer, crs=reach.crs),
+                    inputs.other_geometries_gdf,
+                ],
+                ignore_index=True,
+            )
         )
 
         # Build domain

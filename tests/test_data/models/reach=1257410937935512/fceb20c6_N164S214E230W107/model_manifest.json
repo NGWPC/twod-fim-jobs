@@ -83,42 +83,42 @@
   },
   "assets": {
     "terrain": {
-      "href": "tests/run_scenarios/data/1257410937935512/fceb20c6_N164S214E230W107/dem.tif",
+      "href": "tests/test_data/models/reach=1257410937935512/fceb20c6_N164S214E230W107/dem.tif",
       "checksum": "2bac00e4ad39b5d9",
       "source_url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",
       "retrieved": "2026-08-05T14:36:32.298756",
       "derived": false
     },
     "roughness": {
-      "href": "tests/run_scenarios/data/1257410937935512/fceb20c6_N164S214E230W107/roughness.tif",
+      "href": "tests/test_data/models/reach=1257410937935512/fceb20c6_N164S214E230W107/roughness.tif",
       "checksum": "351db28050fdd595",
       "source_url": "/vsis3/usgs-landcover/annual-nlcd/c1/v0/cu/mosaic/Annual_NLCD_LndCov_2023_CU_C1V0.tif",
       "retrieved": "2026-08-05T14:36:35.609562",
       "derived": false
     },
     "centerline": {
-      "href": "tests/run_scenarios/data/1257410937935512/fceb20c6_N164S214E230W107/reach.geojson",
+      "href": "tests/test_data/models/reach=1257410937935512/fceb20c6_N164S214E230W107/reach.geojson",
       "checksum": "7dfa7b26efc9688b",
       "source_url": "sqlite:///tests/build_model/data/reach_network.gpkg",
       "retrieved": "2026-08-05T14:36:44.179220",
       "derived": false
     },
     "inflow_line": {
-      "href": "tests/run_scenarios/data/1257410937935512/fceb20c6_N164S214E230W107/inflow.geojson",
+      "href": "tests/test_data/models/reach=1257410937935512/fceb20c6_N164S214E230W107/inflow.geojson",
       "checksum": "d7e12795c14a7ca0",
       "source_url": "sqlite:///tests/build_model/data/reach_network.gpkg",
       "retrieved": "2026-08-05T14:36:44.181339",
       "derived": false
     },
     "reach_centroid": {
-      "href": "tests/run_scenarios/data/1257410937935512/fceb20c6_N164S214E230W107/anchor.geojson",
+      "href": "tests/test_data/models/reach=1257410937935512/fceb20c6_N164S214E230W107/anchor.geojson",
       "checksum": "3486ed8fefe0fa8c",
       "source_url": "sqlite:///tests/build_model/data/reach_network.gpkg",
       "retrieved": "2026-08-05T14:36:44.185922",
       "derived": false
     },
     "domain": {
-      "href": "tests/run_scenarios/data/1257410937935512/fceb20c6_N164S214E230W107/domain.geojson",
+      "href": "tests/test_data/models/reach=1257410937935512/fceb20c6_N164S214E230W107/domain.geojson",
       "checksum": "d95331a077080a7a",
       "source_url": "sqlite:///tests/build_model/data/reach_network.gpkg",
       "retrieved": "2026-08-05T14:36:44.187673",

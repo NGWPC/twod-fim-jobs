@@ -13,9 +13,9 @@ Iteratively runs the model for a reach using a normal depth downstream boundary 
 | --- | --- | --- |
 | `model_manifest_path` | `string` | Path where the model manifest json is saved |
 | `model_results_base_path` | `string` | Path where results will be saved |
-| `min_upstream_inflow` | `integer` | Minimum of the target discharge range in whole cms |
+| `min_upstream_inflow` | `integer` | Minimum of the target discharge range in whole cms. Must be greater than 0 |
 | `max_upstream_inflow` | `integer` | Maximum of the target discharge range in whole cms |
-| `delta_upstream_inflow` | `integer` | Discharge increment for adaptive step algorithm in whole cms |
+| `delta_upstream_inflow` | `integer` | Discharge increment for adaptive step algorithm in whole cms. Must be greater than 0 |
 
 ### Optional
 

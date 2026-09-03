@@ -36,7 +36,8 @@ class RunNDScenariosInputs(BaseModel):
         examples=["s3://twod-fim/version=v1/results"],
     )
     min_upstream_inflow: int = Field(
-        description="Minimum of the target discharge range in whole cms",
+        gt=0,
+        description="Minimum of the target discharge range in whole cms. Must be greater than 0",
         examples=[100],
     )
     max_upstream_inflow: int = Field(
@@ -44,7 +45,8 @@ class RunNDScenariosInputs(BaseModel):
         examples=[5000],
     )
     delta_upstream_inflow: int = Field(
-        description="Discharge increment for adaptive step algorithm in whole cms",
+        gt=0,
+        description="Discharge increment for adaptive step algorithm in whole cms. Must be greater than 0",
         examples=[100],
     )
 

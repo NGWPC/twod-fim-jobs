@@ -281,9 +281,11 @@ def _extract_raster(
                 "dtype": "float32",
                 "compress": "deflate",
                 "predictor": 3,
-                "tiled": True,
+                "tiled": False,
             }
         )
+        profile.pop("blockxsize", None)
+        profile.pop("blockysize", None)
 
         # Reproject into memory
         data = np.empty(
@@ -324,7 +326,9 @@ def download_dem(
     def noop(data):
         return data
 
-    return extract_raster(src_path, out_path, bbox, cols, rows, dst_crs, noop)
+    return extract_raster(
+        src_path, out_path, bbox, cols, rows, dst_crs, value_transform=noop
+    )
 
 
 def download_roughness(
@@ -345,7 +349,7 @@ def download_roughness(
         cols,
         rows,
         dst_crs,
-        lambda x: manning_lut[x.astype(np.uint8)],
+        value_transform=lambda x: manning_lut[x.astype(np.uint8)],
     )
 
 
@@ -620,8 +624,10 @@ def compute_wse_contour(
     # Extract contour
     contour, wse_val = extract_contour(smooth_wse, wse_pt, dem.transform)
     if clip_poly is not None:
-        clip_geom = gpd.read_file(clip_poly).geometry.iloc[0]
-        contour = contour.intersection(clip_geom)
+        clip_geom = gpd.read_file(clip_poly)
+        if not clip_geom.empty:
+            clip_geom = clip_geom.geometry.iloc[0]
+            contour = contour.intersection(clip_geom)
 
     gdf = gpd.GeoDataFrame(
         {"wse": [wse_val]},

@@ -132,6 +132,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/57/5b/28365212062939d213802e5e5fe855cdb231e1c2a93254ba1690066504e3/xarray-2026.7.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/59/a8/bd530cc264e62ddbc1d1bb7225823992e6f2432c664693e9281bb6b9c359/geopandas-1.1.4-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/5a/cc/06253936f4a7fa2e0f48dfe6d851d9c56df896a9ab09ac019d70b760619c/pytest_mock-3.15.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/5c/cd/86fe9e659e9699f62f8dd5ecd8c6725474334b23cab8aa71d82b5f56f1a4/botocore-1.43.56-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl
@@ -2045,6 +2046,7 @@ packages:
   - numcodecs>=0.16.5,<0.17
   - xarray>=2026.7.0,<2027
   - pytest>=9.0.3,<10 ; extra == 'dev'
+  - pytest-mock>=3.14,<4 ; extra == 'dev'
   - ruff>=0.15.17,<0.16 ; extra == 'dev'
   - pyright[nodejs]>=1.1.410,<2 ; extra == 'dev'
   requires_python: '>=3.12'
@@ -2324,6 +2326,16 @@ packages:
   - pre-commit ; extra == 'dev'
   - ruff ; extra == 'dev'
   requires_python: '>=3.10'
+- pypi: https://files.pythonhosted.org/packages/5a/cc/06253936f4a7fa2e0f48dfe6d851d9c56df896a9ab09ac019d70b760619c/pytest_mock-3.15.1-py3-none-any.whl
+  name: pytest-mock
+  version: 3.15.1
+  sha256: 0a25e2eb88fe5168d535041d09a4529a188176ae608a6d249ee65abc0949630d
+  requires_dist:
+  - pytest>=6.2.5
+  - pre-commit ; extra == 'dev'
+  - pytest-asyncio ; extra == 'dev'
+  - tox ; extra == 'dev'
+  requires_python: '>=3.9'
 - pypi: https://files.pythonhosted.org/packages/5c/cd/86fe9e659e9699f62f8dd5ecd8c6725474334b23cab8aa71d82b5f56f1a4/botocore-1.43.56-py3-none-any.whl
   name: botocore
   version: 1.43.56

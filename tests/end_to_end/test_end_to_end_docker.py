@@ -5,12 +5,20 @@ from pathlib import Path
 
 import pytest
 
-from twod_fim_jobs.consts import MANIFEST_FILENAME
+from twod_fim_jobs.consts import DEPTH_FILENAME, MANIFEST_FILENAME
 from twod_fim_jobs.models.solvers import RunScenarioManifest
 from twod_fim_jobs.utils.storage import read_json
 
-NETWORK_GPKG = Path(__file__).parent / "build_model" / "data" / "reach_network.gpkg"
-OUT_DIR = Path(__file__).parent / "end_to_end_data"
+NETWORK_PATH = (
+    Path(__file__).parents[1] / "test_data" / "reference_data" / "reach_network.parquet"
+)
+LULC_PATH = (
+    Path(__file__).parents[1]
+    / "test_data"
+    / "reference_data"
+    / "e2e_lulc_subset_coarse.tif"
+)
+OUT_DIR = Path(__file__).parents[1] / "end_to_end_data"
 MODEL_ROOT = OUT_DIR / "models"
 RESULTS_ROOT = OUT_DIR / "results"
 
@@ -22,18 +30,48 @@ REACHES = [REACH_1, REACH_2, REACH_3]
 Q_LOW = 18500  # 5-yr
 Q_HIGH = 24000  # 500-yr
 
-OUTLET_ACCEPTABLE_OUTFLOW_AREA = (
-    Path(__file__).parent / "run_scenarios" / "data" / "outflow_area.geojson"
-)
 
-BUILD_MODEL_IMAGE = "twod-fim-jobs:build_model"
-RUN_ND_IMAGE = "twod-fim-jobs:run_nd_scenarios"
-RUN_KWSE_IMAGE = "twod-fim-jobs:run_kwse_scenarios"
+BUILD_MODEL_IMAGE_ENV_VAR = "E2E_BUILD_MODEL_IMAGE"
+RUN_ND_IMAGE_ENV_VAR = "E2E_ND_IMAGE"
+RUN_KWSE_IMAGE_ENV_VAR = "E2E_KWSE_IMAGE"
+USE_GPU_ENV_VAR = "E2E_USE_GPU"
+
+
+@pytest.fixture()
+def validate_e2e_image() -> dict[str, str]:
+    """Validate and return the Docker images configured for the E2E test."""
+    image_env_vars = {
+        "build_model": BUILD_MODEL_IMAGE_ENV_VAR,
+        "run_nd": RUN_ND_IMAGE_ENV_VAR,
+        "run_kwse": RUN_KWSE_IMAGE_ENV_VAR,
+    }
+    images = {}
+
+    for job_name, env_var in image_env_vars.items():
+        image = os.environ.get(env_var)
+        if not image:
+            pytest.fail(f"{env_var} must be set before running Docker E2E tests")
+
+        result = subprocess.run(
+            ["docker", "image", "inspect", image],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            pytest.fail(
+                f"Docker image configured by {env_var} is unavailable: {image}\n"
+                f"{result.stderr.strip()}"
+            )
+
+        images[job_name] = image
+
+    return images
 
 
 def run_docker_job(image: str, payload: dict, gpu: bool = False) -> dict:
     """Execute a Docker container and return parsed JSON result."""
-    repo_root = Path(__file__).parent.parent
+    repo_root = Path(__file__).parents[2]
     cmd = [
         "docker",
         "run",
@@ -42,12 +80,13 @@ def run_docker_job(image: str, payload: dict, gpu: bool = False) -> dict:
         f"{os.getuid()}:{os.getgid()}",
         "-v",
         f"{repo_root}:{repo_root}",
-        "--env-file",
-        str(repo_root / ".env"),
     ]
 
-    if gpu:
+    if os.environ.get(USE_GPU_ENV_VAR, "false").lower() == "true":
         cmd.extend(["--gpus", "all"])
+
+    if os.path.exists(str(repo_root / ".env")):
+        cmd.extend(["--env-file", str(repo_root / ".env")])
 
     cmd.append(image)
     cmd.append(json.dumps(payload))
@@ -71,8 +110,40 @@ def run_docker_job(image: str, payload: dict, gpu: bool = False) -> dict:
     return json.loads(output)
 
 
+def export_discharge_vrts(results_root: Path) -> list[Path]:
+    """Create one relative-path VRT combining each discharge across reaches."""
+    depth_paths_by_discharge: dict[str, list[Path]] = {}
+    for depth_path in sorted(results_root.rglob(DEPTH_FILENAME)):
+        discharge = depth_path.parent.name
+        if discharge.startswith("q="):
+            depth_paths_by_discharge.setdefault(discharge, []).append(depth_path)
+
+    vrt_paths = []
+    for discharge, depth_paths in sorted(depth_paths_by_discharge.items()):
+        vrt_path = results_root / f"{discharge}.vrt"
+        relative_depth_paths = [
+            depth_path.relative_to(results_root).as_posix()
+            for depth_path in depth_paths
+        ]
+        subprocess.run(
+            [
+                "gdalbuildvrt",
+                "-overwrite",
+                "-pixel-function",
+                "max",
+                vrt_path.name,
+                *relative_depth_paths,
+            ],
+            cwd=results_root,
+            check=True,
+        )
+        vrt_paths.append(vrt_path)
+
+    return vrt_paths
+
+
 @pytest.mark.e2e
-def test_end_to_end_docker():
+def test_end_to_end_docker(validate_e2e_image):
     """End-to-end test using Docker containers."""
     # Ensure output directories exist
     MODEL_ROOT.mkdir(parents=True, exist_ok=True)
@@ -80,19 +151,24 @@ def test_end_to_end_docker():
 
     # Run build model for all three reaches
     build_model_results = {}
-    for i in REACHES:
-        output_path = MODEL_ROOT / str(i)
+    for ind, reach_id in enumerate(REACHES):
+        output_path = MODEL_ROOT / str(reach_id)
         output_path.mkdir(parents=True, exist_ok=True)
+        us_reach = REACHES[ind + 1] if ind + 1 < len(REACHES) else None
+        us_list = [us_reach] if us_reach is not None else []
 
         payload = {
-            "reach_id": i,
-            "db_uri": f"sqlite:///{NETWORK_GPKG.resolve()}",
+            "reach_id": reach_id,
+            "reach_network_path": str(NETWORK_PATH.resolve()),
+            "upstream_reach_ids": us_list,
+            "upstream_mainstem_reach_id": us_reach,
             "base_output_path": str(output_path.resolve()),
-            "domain_buffer": 1000,
+            "grid_resolution": 100,
+            "lulc_source": str(LULC_PATH.resolve()),
         }
-        build_model_results[i] = run_docker_job(BUILD_MODEL_IMAGE, payload)[
-            "plugin_results"
-        ]
+        build_model_results[reach_id] = run_docker_job(
+            validate_e2e_image["build_model"], payload
+        )["plugin_results"]
 
     # Run ND for most downstream reach
     build_results = build_model_results[REACH_1]
@@ -105,7 +181,6 @@ def test_end_to_end_docker():
         "min_upstream_inflow": Q_LOW,
         "max_upstream_inflow": Q_HIGH,
         "delta_upstream_inflow": 1000,
-        "outflow_area_polygon_path": str(OUTLET_ACCEPTABLE_OUTFLOW_AREA.resolve()),
         "volume_convergence_tolerance": 0.1,
         "allow_water_on_edges": True,
         "adaptive_step_algorithm_max_stage_min_acceptable": 0.5,
@@ -115,7 +190,7 @@ def test_end_to_end_docker():
         "adaptive_step_algorithm_extent_min_acceptable": 0.075,
         "adaptive_step_algorithm_extent_max_acceptable": 0.2,
     }
-    results = run_docker_job(RUN_ND_IMAGE, payload, gpu=True)["plugin_results"]
+    results = run_docker_job(validate_e2e_image["run_nd"], payload)["plugin_results"]
 
     # Build KWSE scenarios
     scenarios = []
@@ -130,12 +205,12 @@ def test_end_to_end_docker():
         else:
             hot_start = None
         scenario = {
-            "upstream_discharge": manifest.us_discharge,
+            "upstream_discharge": manifest.properties.us_discharge,
             "bc_value": manifest.properties.nominal_wse,
             "downstream_Scenario": i["trial_scenario_manifest"],
             "hotstart": hot_start,
         }
-        last_q = manifest.us_discharge
+        last_q = manifest.properties.us_discharge
         last_wse = manifest.properties.nominal_wse
         scenarios.append(scenario)
 
@@ -151,7 +226,9 @@ def test_end_to_end_docker():
         "volume_convergence_tolerance": 0.1,
         "allow_water_on_edges": True,
     }
-    results = run_docker_job(RUN_KWSE_IMAGE, payload, gpu=True)["plugin_results"]
+    results = run_docker_job(validate_e2e_image["run_kwse"], payload)["plugin_results"]
+
+    export_discharge_vrts(RESULTS_ROOT)
 
     # Build KWSE scenarios
     scenarios = []
@@ -164,12 +241,12 @@ def test_end_to_end_docker():
         else:
             hot_start = None
         scenario = {
-            "upstream_discharge": manifest.us_discharge,
+            "upstream_discharge": manifest.properties.us_discharge,
             "bc_value": manifest.properties.nominal_wse,
             "downstream_Scenario": i,
             "hotstart": hot_start,
         }
-        last_q = manifest.us_discharge
+        last_q = manifest.properties.us_discharge
         last_wse = manifest.properties.nominal_wse
         scenarios.append(scenario)
 
@@ -185,4 +262,4 @@ def test_end_to_end_docker():
         "volume_convergence_tolerance": 0.1,
         "allow_water_on_edges": True,
     }
-    results = run_docker_job(RUN_KWSE_IMAGE, payload, gpu=True)["plugin_results"]
+    results = run_docker_job(validate_e2e_image["run_kwse"], payload)["plugin_results"]

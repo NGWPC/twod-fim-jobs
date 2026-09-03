@@ -17,8 +17,14 @@ from twod_fim_jobs.models.run_nd_scenarios import (
 
 
 ROOT = Path(__file__).parent
-TEST_MODEL_DATA = ROOT / "data" / "1257410937935512" / "fceb20c6_N164S214E230W107"
-TEST_OUTFLOW_GEOJSON = ROOT / "data" / "outflow_area.geojson"
+TEST_MODEL_DATA = (
+    ROOT
+    / "test_data"
+    / "models"
+    / "reach=1257410937935512"
+    / "fceb20c6_N164S214E230W107"
+)
+TEST_OUTFLOW_GEOJSON = ROOT / "test_data" / "shared" / "outflow_area.geojson"
 
 
 ### FIXTURES ###
@@ -78,7 +84,9 @@ def run_nd_inputs_bad_outflow(
 ### TESTS ###
 
 
-def test_end_to_end(run_nd_inputs_small_range: RunNDScenariosInputs) -> None:
+def test_end_to_end(
+    run_nd_inputs_small_range: RunNDScenariosInputs, mock_run_lisflood
+) -> None:
     """End-to-end test that executes workflow and validates results and output location."""
     job = RunNDScenariosJob()
     result = job.run(run_nd_inputs_small_range.model_dump())
@@ -131,3 +139,6 @@ def test_missing_outflow_polygon_raises(
     job = RunNDScenariosJob()
     with pytest.raises(FileNotFoundError):
         job.run(run_nd_inputs_bad_outflow.model_dump())
+
+
+# TODO: add test that both supplied and non supplied outflow area polygons are supported.

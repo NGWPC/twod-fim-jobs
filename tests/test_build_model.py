@@ -1,6 +1,8 @@
 from pathlib import Path
+import json
 
 import geopandas as gpd
+import pandas as pd
 import pytest
 from pydantic import ValidationError
 from shapely.geometry import LineString
@@ -19,17 +21,87 @@ from twod_fim_jobs.models.warnings import (
     LargeDomainAreaWarning,
     CenterlineInflowMultiIntersectionWarning,
 )
+from datetime import datetime
+import numpy as np
+import pytest_mock
+import rasterio
+from rasterio.crs import CRS
+from rasterio.transform import from_bounds
+
+from twod_fim_jobs.models.common import Asset
+from twod_fim_jobs.utils.storage import read_json
+
 
 ROOT = Path(__file__).parent
-SMALL_NETWORK = ROOT / "data" / "reach_network.parquet"
-SMALL_NETWORK_BAD_ATTRIBUTES = ROOT / "data" / "reach_network_bad_attr.parquet"
-SMALL_NETWORK_DUPLICATE_ID = ROOT / "data" / "reach_network_duplicates.parquet"
+SMALL_NETWORK = ROOT / "test_data" / "reference_data" / "reach_network.parquet"
+SMALL_NETWORK_BAD_ATTRIBUTES = (
+    ROOT / "test_data" / "reference_data" / "reach_network_bad_attr.parquet"
+)
+SMALL_NETWORK_DUPLICATE_ID = (
+    ROOT / "test_data" / "reference_data" / "reach_network_duplicates.parquet"
+)
 ADDITIONAL_GEOMETRY_STR = (
     "LineString (-2061815.1006158 2807427.37585646, -2055051.17482305 2811274.51580549)"
 )
 
 
 ### FIXTURES ###
+
+
+@pytest.fixture(scope="session")
+def tiny_geotiff(tmp_path_factory) -> Path:
+    """A minimal 10x10 float32 GeoTIFF in EPSG:5070 used as a stand-in source raster."""
+    path = tmp_path_factory.mktemp("raster_data") / "tiny.tif"
+    rows, cols = 10, 10
+    bbox = (-2_100_000.0, 2_750_000.0, -2_050_000.0, 2_800_000.0)
+    transform = from_bounds(*bbox, cols, rows)
+    profile = {
+        "driver": "GTiff",
+        "dtype": "float32",
+        "width": cols,
+        "height": rows,
+        "count": 1,
+        "crs": CRS.from_epsg(5070),
+        "transform": transform,
+        "nodata": -9999.0,
+    }
+    data = np.arange(rows * cols, dtype="float32").reshape(rows, cols)
+    with rasterio.open(path, "w", **profile) as dst:
+        dst.write(data, 1)
+    return path
+
+
+def _make_extract_raster_mock(tmp_path: Path):
+    """Return a mock that writes a valid GeoTIFF to out_path and returns an Asset."""
+
+    def _fake_extract_raster(src_path, out_path, bbox, cols, rows, dst_crs, **kwargs):
+        transform = from_bounds(*bbox, cols, rows)
+        profile = {
+            "driver": "GTiff",
+            "dtype": "float32",
+            "width": cols,
+            "height": rows,
+            "count": 1,
+            "crs": CRS.from_string(dst_crs),
+            "transform": transform,
+            "nodata": -9999.0,
+        }
+        data = np.zeros((rows, cols), dtype="float32")
+        with rasterio.open(out_path, "w", **profile) as dst:
+            dst.write(data, 1)
+        return Asset.from_file(str(out_path), str(src_path), datetime.now())
+
+    return _fake_extract_raster
+
+
+@pytest.fixture
+def mock_extract_raster(mocker: pytest_mock.MockerFixture, tmp_path: Path):
+    """Patch extract_raster at the jobs.build_model import site to avoid remote I/O."""
+    fake = _make_extract_raster_mock(tmp_path)
+    return mocker.patch(
+        "twod_fim_jobs.utils.geospatial.extract_raster",
+        side_effect=fake,
+    )
 
 
 @pytest.fixture
@@ -109,20 +181,42 @@ def build_model_input_w_bad_extra_geometries():
 ### TESTS ###
 
 
-def test_end_to_end(build_model_input):
-    """End to end test that should run without failure and produce no warnings."""
+def test_end_to_end(build_model_input, tmp_path, mock_extract_raster):
+    """Build a model without warnings and include the centerline buffer in its domain."""
     workflow = BuildModelJob()
-    result = workflow.run(build_model_input)
+    model_input = build_model_input.model_copy(
+        update={"base_output_path": str(tmp_path)}
+    )
+    result = workflow.run(model_input)
     assert result.warnings == [], f"Unexpected warnings: {result.warnings}"
+    manifest_path = tmp_path / result.model_id / "model_manifest.json"
+    manifest = json.loads(read_json(manifest_path))
+
+    domain_bbox = manifest["domain"]["bbox"]
+    centerline_bbox = manifest["assets"]["centerline"]["href"]
+    inflow_bbox = manifest["assets"]["inflow_line"]["href"]
+    centerline = gpd.read_file(centerline_bbox)
+    inflow = gpd.read_file(inflow_bbox)
+    without_buffer = gpd.GeoDataFrame(
+        geometry=pd.concat([centerline.geometry, inflow.geometry], ignore_index=True),
+        crs=centerline.crs,
+    ).total_bounds
+
+    assert domain_bbox[0] < without_buffer[0]
+    assert domain_bbox[1] < without_buffer[1]
+    assert domain_bbox[2] > without_buffer[2]
+    assert domain_bbox[3] > without_buffer[3]
 
 
-def test_end_to_end_w_other_geom(build_model_input_w_extra_geometries):
+def test_end_to_end_w_other_geom(
+    build_model_input_w_extra_geometries, mock_extract_raster
+):
     """End to end test that should run without failure."""
     workflow = BuildModelJob()
     workflow.run(build_model_input_w_extra_geometries)
 
 
-def test_end_to_end_headwater(build_model_input_headwater):
+def test_end_to_end_headwater(build_model_input_headwater, mock_extract_raster):
     """End to end test that should run without failure and produce no warnings."""
     workflow = BuildModelJob()
     result = workflow.run(build_model_input_headwater)
@@ -220,7 +314,9 @@ def test_normalize_href(href, new_base_path, expected):
     assert _normalize_href(href, new_base_path) == expected
 
 
-def test_large_domain_area_warning_emitted(build_model_input, monkeypatch):
+def test_large_domain_area_warning_emitted(
+    build_model_input, mock_extract_raster, monkeypatch
+):
     """When domain area exceeds the threshold a LargeDomainAreaWarning is in the result."""
     # Force threshold to zero so any domain triggers the warning.
     monkeypatch.setattr(

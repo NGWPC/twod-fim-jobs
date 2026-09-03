@@ -7,9 +7,16 @@ FROM ghcr.io/prefix-dev/pixi:0.70.2-bookworm AS builder
 WORKDIR /app
 
 COPY pyproject.toml pixi.lock load_env.sh ./
+
+# Resolve dependencies without installing the local package yet.
+RUN --mount=type=cache,target=/root/.cache/rattler \
+    pixi install --frozen --environment prod --skip twod-fim-jobs
+
 COPY twod_fim_jobs ./twod_fim_jobs
 
-RUN pixi install --frozen --environment prod
+# Reinstall the local package after copying source so code changes are included.
+RUN --mount=type=cache,target=/root/.cache/rattler \
+    pixi reinstall --frozen --environment prod twod-fim-jobs
 
 
 # ============================================================================

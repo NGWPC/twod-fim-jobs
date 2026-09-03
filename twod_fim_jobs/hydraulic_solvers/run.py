@@ -73,7 +73,9 @@ def watch_run(
     )
 
     running = True
-    new_files = []
+    new_files = sorted(
+        set(working_dir.glob(f"{DEFAULT_RESROOT_LISFLOOD}-????.wd")).difference(seen)
+    )
     t0 = time.perf_counter()
     elapsed_wall_time = 0
     termination_condition = TerminationCondition.MAX_SIMULATION_TIME

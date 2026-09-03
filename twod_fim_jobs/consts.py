@@ -1,5 +1,6 @@
 import os
 from enum import Enum
+from pathlib import Path
 
 
 def _env_flag(name: str, default: str) -> bool:
@@ -35,7 +36,12 @@ SCENARIO_SOLVER: SupportedSolver = SupportedSolver(
 
 
 # -------------------- ASSET CACHE --------------------
-ASSET_CACHE_DIR = os.environ.get("ASSET_CACHE_DIR", "/.cache")
+ASSET_CACHE_DIR = Path(
+    os.environ.get(
+        "ASSET_CACHE_DIR",
+        Path.home() / ".cache" / "twod-fim-jobs",
+    )
+)
 MAX_ASSET_CACHE_SIZE_GB = os.environ.get("MAX_ASSET_CACHE_SIZE_GB", 4)
 
 

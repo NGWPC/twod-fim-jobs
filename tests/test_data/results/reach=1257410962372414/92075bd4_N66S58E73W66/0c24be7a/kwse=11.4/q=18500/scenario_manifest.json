@@ -152,72 +152,15 @@
         "run_identity_hash": "0c24be7a"
     },
     "properties": {
-        "convergence_results": [
-            {
-                "volume_convergence": 1.0,
-                "boundary_check": null,
-                "model_running": true
-            },
-            {
-                "volume_convergence": 0.5686428546905518,
-                "boundary_check": {
-                    "wse_0": 13.106999397277832,
-                    "wse_1": 11.629999160766602,
-                    "wse_range": 1.4770002365112305,
-                    "n_wetted_edge_cells": 154,
-                    "n_violating_edge_cells": 37,
-                    "n_violating_top": 0,
-                    "n_violating_bottom": 36,
-                    "n_violating_left": 0,
-                    "n_violating_right": 1,
-                    "worst_violating_wse": 12.920137405395508,
-                    "closest_edge_margin": 0.005248069763183594,
-                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
-                },
-                "model_running": true
-            },
-            {
-                "volume_convergence": 0.11456961184740067,
-                "boundary_check": {
-                    "wse_0": 12.95300006866455,
-                    "wse_1": 11.629999160766602,
-                    "wse_range": 1.3230009078979492,
-                    "n_wetted_edge_cells": 154,
-                    "n_violating_edge_cells": 38,
-                    "n_violating_top": 0,
-                    "n_violating_bottom": 38,
-                    "n_violating_left": 0,
-                    "n_violating_right": 0,
-                    "worst_violating_wse": 12.763137817382812,
-                    "closest_edge_margin": 0.00032138824462890625,
-                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
-                },
-                "model_running": true
-            },
-            {
-                "volume_convergence": 0.020342102274298668,
-                "boundary_check": {
-                    "wse_0": 12.924999237060547,
-                    "wse_1": 11.629999160766602,
-                    "wse_range": 1.2950000762939453,
-                    "n_wetted_edge_cells": 154,
-                    "n_violating_edge_cells": 38,
-                    "n_violating_top": 0,
-                    "n_violating_bottom": 38,
-                    "n_violating_left": 0,
-                    "n_violating_right": 0,
-                    "worst_violating_wse": 12.738137245178223,
-                    "closest_edge_margin": 0.0013217926025390625,
-                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
-                },
-                "model_running": true
-            }
-        ],
         "termination_condition": "volume_convergence",
         "wall_time": 30.989306716999636,
         "nominal_wse": 12.8,
         "us_discharge": 18500,
-        "sim_time": 14400.0
+        "sim_time": 14400.0,
+        "volume_convergence": 0.020342102274298668,
+        "max_depth": 2.0,
+        "median_depth": 0.5,
+        "extent_percent": 0.25
     },
     "assets": {
         "depth": {

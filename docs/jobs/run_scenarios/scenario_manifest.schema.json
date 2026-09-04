@@ -71,145 +71,6 @@
       "title": "Asset",
       "type": "object"
     },
-    "BoundaryCheckResult": {
-      "properties": {
-        "wse_0": {
-          "description": "WSE at the upstream endpoint cell",
-          "title": "Wse 0",
-          "type": "number"
-        },
-        "wse_1": {
-          "description": "WSE at the downstream endpoint cell",
-          "title": "Wse 1",
-          "type": "number"
-        },
-        "wse_range": {
-          "description": "wse_0 - wse_1; the width of the valid WSE window",
-          "title": "Wse Range",
-          "type": "number"
-        },
-        "n_wetted_edge_cells": {
-          "description": "Number of edge cells with any water (non-nan WSE)",
-          "title": "N Wetted Edge Cells",
-          "type": "integer"
-        },
-        "n_violating_edge_cells": {
-          "description": "Number of edge cells whose WSE falls within [wse_1, wse_0]",
-          "title": "N Violating Edge Cells",
-          "type": "integer"
-        },
-        "n_violating_top": {
-          "description": "Violating cells on the top edge (row 0)",
-          "title": "N Violating Top",
-          "type": "integer"
-        },
-        "n_violating_bottom": {
-          "description": "Violating cells on the bottom edge (last row)",
-          "title": "N Violating Bottom",
-          "type": "integer"
-        },
-        "n_violating_left": {
-          "description": "Violating cells on the left edge (col 0, interior rows)",
-          "title": "N Violating Left",
-          "type": "integer"
-        },
-        "n_violating_right": {
-          "description": "Violating cells on the right edge (last col, interior rows)",
-          "title": "N Violating Right",
-          "type": "integer"
-        },
-        "worst_violating_wse": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "WSE of the edge cell furthest from wse_0 within the violation window; None if no violations",
-          "title": "Worst Violating Wse"
-        },
-        "closest_edge_margin": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Minimum distance of any wetted non-violating edge cell WSE to the nearest range boundary; None if all wetted edge cells are violating",
-          "title": "Closest Edge Margin"
-        },
-        "error": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Error message if a boundary violation was detected, else None",
-          "title": "Error"
-        }
-      },
-      "required": [
-        "wse_0",
-        "wse_1",
-        "wse_range",
-        "n_wetted_edge_cells",
-        "n_violating_edge_cells",
-        "n_violating_top",
-        "n_violating_bottom",
-        "n_violating_left",
-        "n_violating_right",
-        "worst_violating_wse",
-        "closest_edge_margin"
-      ],
-      "title": "BoundaryCheckResult",
-      "type": "object"
-    },
-    "ConvergenceResult": {
-      "properties": {
-        "volume_convergence": {
-          "description": "Ratio of net volume change to total inflow volume over the last mass interval; lower is more converged.",
-          "examples": [
-            0.02
-          ],
-          "title": "Volume Convergence",
-          "type": "number"
-        },
-        "boundary_check": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/BoundaryCheckResult"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Edge-boundary violation diagnostics; None if the check was not performed."
-        },
-        "model_running": {
-          "description": "True if the solver was still running at this print interval; False if it had already terminated.",
-          "examples": [
-            true
-          ],
-          "title": "Model Running",
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "volume_convergence",
-        "model_running"
-      ],
-      "title": "ConvergenceResult",
-      "type": "object"
-    },
     "Domain": {
       "additionalProperties": false,
       "description": "Computed domain realization.",
@@ -655,13 +516,13 @@
     "RunScenarioResults": {
       "description": "Convenience holder for solver results.",
       "properties": {
-        "convergence_results": {
-          "description": "Convergence status after each raster output",
-          "items": {
-            "$ref": "#/$defs/ConvergenceResult"
-          },
-          "title": "Convergence Results",
-          "type": "array"
+        "volume_convergence": {
+          "description": "Ratio of net volume change to total inflow volume over the last mass interval; lower is more converged.",
+          "examples": [
+            0.02
+          ],
+          "title": "Volume Convergence",
+          "type": "number"
         },
         "termination_condition": {
           "$ref": "#/$defs/TerminationCondition",
@@ -698,15 +559,42 @@
           ],
           "title": "Sim Time",
           "type": "number"
+        },
+        "max_depth": {
+          "description": "Maximum flood depth in the final depth raster.",
+          "examples": [
+            10.0
+          ],
+          "title": "Max Depth",
+          "type": "number"
+        },
+        "median_depth": {
+          "description": "Median flood depth in the final depth raster.",
+          "examples": [
+            1.3
+          ],
+          "title": "Median Depth",
+          "type": "number"
+        },
+        "extent_percent": {
+          "description": "Ratio of inundated area to model domain area.",
+          "examples": [
+            0.23
+          ],
+          "title": "Extent Percent",
+          "type": "number"
         }
       },
       "required": [
-        "convergence_results",
+        "volume_convergence",
         "termination_condition",
         "wall_time",
         "nominal_wse",
         "us_discharge",
-        "sim_time"
+        "sim_time",
+        "max_depth",
+        "median_depth",
+        "extent_percent"
       ],
       "title": "RunScenarioResults",
       "type": "object"

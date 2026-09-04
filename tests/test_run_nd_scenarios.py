@@ -18,11 +18,7 @@ from twod_fim_jobs.models.run_nd_scenarios import (
 
 ROOT = Path(__file__).parent
 TEST_MODEL_DATA = (
-    ROOT
-    / "test_data"
-    / "models"
-    / "reach=1257410937935512"
-    / "10850311_N48S45E47W42"
+    ROOT / "test_data" / "models" / "reach=1257410937935512" / "10850311_N48S45E47W42"
 )
 TEST_OUTFLOW_GEOJSON = ROOT / "test_data" / "shared" / "outflow_area.geojson"
 

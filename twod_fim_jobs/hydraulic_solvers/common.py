@@ -117,12 +117,15 @@ def publish_scenario(
 
     # Make results
     run_scenario_results = RunScenarioResults(
-        convergence_results=solve_scenario_results.convergence_results,
+        volume_convergence=solve_scenario_results.volume_convergence,
         termination_condition=solve_scenario_results.termination_condition,
         wall_time=solve_scenario_results.wall_time,
         nominal_wse=processed.nominal_wse,
         us_discharge=run_scenario_inputs.inflow,
         sim_time=processed.sim_time,
+        max_depth=solve_scenario_results.max_depth,
+        median_depth=solve_scenario_results.median_depth,
+        extent_percent=solve_scenario_results.extent_percent,
     )
 
     # Make manifest

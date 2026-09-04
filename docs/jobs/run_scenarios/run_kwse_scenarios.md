@@ -60,7 +60,7 @@ Run a hydraulic solver for a set of user-defined scenarios.  A scenario is defin
 
 | Name | Type | Default | Description |
 | --- | --- | --- | --- |
-| `bc_type` | `string` | "KWSE" | Kind of downstream condition the seed scenario ran with, this will decides whether its folder is nd=<slope> or kwse=<stage>. Defaults to KWSE |
+| `bc_type` | `string` | "KWSE" | Kind of downstream condition the seed scenario ran with, this decides whether hotstart folder is nd=<slope> or kwse=<stage>. Defaults to KWSE. |
 | `identity_hash` | `string` | "0c24be7a" | Hash of the run identity object. If none, assumed to be same as current scenario's. |
 <!-- /AUTO:hotstart_table -->
 

@@ -13,6 +13,7 @@ import pytest
 from twod_fim_jobs.jobs.run_nd_scenarios import (
     RunNDScenariosJob,
     _next_trial_q,
+    _reuse_finished_runs,
     compare_scenario_changes,
 )
 from twod_fim_jobs.models.run_nd_scenarios import (
@@ -231,3 +232,78 @@ def test_a_baseline_with_no_reference_is_accepted():
     assert result.result == "accept"
     assert result.ref_scenario_manifest is None
     assert result.max_depth_increase == 0
+
+
+### REUSING FINISHED RUNS ###
+
+
+def _completed(q: int, max_depth: float, median_depth: float, flooded_area: float):
+    completed = MagicMock()
+    completed.manifest.properties.us_discharge = q
+    completed.manifest.properties.max_depth = max_depth
+    completed.manifest.properties.median_depth = median_depth
+    completed.manifest.properties.flooded_area = flooded_area
+    completed.manifest.self_href = f"s3://bucket/q={q}/scenario_manifest.json"
+    return completed
+
+
+def test_a_run_rejected_as_too_high_is_reconsidered_once_the_reference_moves():
+    """Figure B: 150 was too big a step from 100, but from 136 it is too small.
+    That verdict costs no simulation, and it bounds the next proposal."""
+    ref = _completed(100, 2.00, 0.50, 1.000)
+    done = {
+        100: ref,
+        136: _completed(136, 2.92, 0.80, 1.090),
+        150: _completed(150, 3.40, 0.95, 1.140),
+    }
+    reuse = _reuse_finished_runs(done[136], done, RUN_ND_DEFAULTS)
+
+    assert reuse.ref is done[136], "150 is too small a step to advance the reference"
+    assert reuse.accepted == []
+    assert reuse.ceiling_q is None
+    assert reuse.current is done[150], "150 becomes the position and the hotstart"
+
+
+def test_the_free_pass_advances_the_reference_without_simulating():
+    """A finished run that lands in band against the new reference is a library
+    point already paid for."""
+    ref = _completed(100, 2.00, 0.50, 1.00)
+    in_band = _completed(200, 3.00, 0.90, 1.12)
+    done = {100: ref, 200: in_band}
+
+    reuse = _reuse_finished_runs(ref, done, RUN_ND_DEFAULTS)
+    assert reuse.ref is in_band
+    assert reuse.accepted == [in_band]
+
+
+def test_the_free_pass_keeps_advancing_while_finished_runs_allow():
+    """Each advance re-judges what is left, so one accept can unlock the next."""
+    ref = _completed(100, 2.00, 0.50, 1.00)
+    first = _completed(200, 3.00, 0.90, 1.12)
+    second = _completed(300, 4.00, 1.30, 1.25)
+    done = {100: ref, 200: first, 300: second}
+
+    reuse = _reuse_finished_runs(ref, done, RUN_ND_DEFAULTS)
+    assert reuse.accepted == [first, second]
+    assert reuse.ref is second
+
+
+def test_the_free_pass_reports_the_lowest_run_still_too_high():
+    ref = _completed(100, 2.00, 0.50, 1.00)
+    done = {
+        100: ref,
+        400: _completed(400, 6.00, 3.00, 2.00),
+        500: _completed(500, 7.00, 4.00, 3.00),
+    }
+    reuse = _reuse_finished_runs(ref, done, RUN_ND_DEFAULTS)
+    assert reuse.ceiling_q == 400, "the lowest proven-too-high run bounds proposals"
+    assert reuse.accepted == []
+
+
+def test_runs_at_or_below_the_reference_are_ignored():
+    ref = _completed(200, 3.00, 0.90, 1.12)
+    done = {100: _completed(100, 2.00, 0.50, 1.00), 200: ref}
+    reuse = _reuse_finished_runs(ref, done, RUN_ND_DEFAULTS)
+    assert reuse.ref is ref
+    assert reuse.current is ref
+    assert reuse.ceiling_q is None

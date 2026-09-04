@@ -3,6 +3,7 @@ import logging
 import math
 import tempfile
 from pathlib import Path
+from typing import NamedTuple
 
 import geopandas as gpd
 from shapely.geometry import Point, Polygon
@@ -41,6 +42,73 @@ from twod_fim_jobs.utils.hashing import hash_file
 from twod_fim_jobs.utils.storage import ASSET_CACHE, copy_file, read_json
 
 logger = logging.getLogger(__name__)
+
+
+class Reuse(NamedTuple):
+    """How far the already-simulated scenarios carry the sweep on their own."""
+
+    ref: CompletedScenario
+    accepted: list[CompletedScenario]
+    ceiling_q: int | None
+    current: CompletedScenario
+
+
+def _reuse_finished_runs(
+    ref: CompletedScenario,
+    done: dict[int, CompletedScenario],
+    inputs: RunNDScenariosInputs,
+) -> Reuse:
+    """Advance the reference as far as scenarios already run allow.
+
+    A comparison is arithmetic over two manifests, so re-judging a finished
+    scenario costs nothing. A discharge rejected as too high for one reference
+    may sit squarely in the band for the next one, and it is already on disk.
+
+    Response rises with discharge, so above the reference the outcomes fall in
+    order: too low, then in band, then too high. That is why the last accept is
+    the furthest free advance, the last reject_low is the position to measure the
+    next step from, and the first reject_high is the ceiling.
+    """
+    accepted: list[CompletedScenario] = []
+    while True:
+        ref_q = ref.manifest.properties.us_discharge
+        best: CompletedScenario | None = None
+        ceiling_q: int | None = None
+        current = ref
+
+        for q in sorted(done):
+            if q <= ref_q:
+                continue
+            outcome = compare_scenario_changes(
+                done[q].manifest, inputs, ref.manifest, log_results=False
+            ).result
+            if outcome == "accept":
+                best = done[q]
+            elif outcome == "reject_high":
+                if ceiling_q is None:
+                    ceiling_q = q
+            else:
+                current = done[q]
+
+        if best is None:
+            return Reuse(ref, accepted, ceiling_q, current)
+        accepted.append(best)
+        ref = best
+
+
+def _take_free_advances(
+    ref: CompletedScenario,
+    done: dict[int, CompletedScenario],
+    inputs: RunNDScenariosInputs,
+) -> tuple[CompletedScenario, CompletedScenario, int | None, CompletedScenario | None]:
+    """Run the free pass and publish whatever it accepts."""
+    reuse = _reuse_finished_runs(ref, done, inputs)
+    for scenario in reuse.accepted:
+        q = scenario.manifest.properties.us_discharge
+        logger.info(f"Accepting already-simulated discharge {q} against the new reference")
+        publish_scenario(scenario)
+    ceiling = done.get(reuse.ceiling_q) if reuse.ceiling_q is not None else None
+    return reuse.ref, reuse.current, reuse.ceiling_q, ceiling
 
 
 def _next_trial_q(
@@ -111,6 +179,12 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
         results = RunNDScenariosResult(
             scenario_comparison_results=[scenario_comparison], warnings=[]
         )
+        # Every scenario simulated this run, published or not. Rejections are
+        # kept because the next reference may accept them, and re-judging one
+        # costs no simulation.
+        done: dict[int, CompletedScenario] = {
+            ref_scenario.manifest.properties.us_discharge: ref_scenario
+        }
         ceiling_q: int | None = None
         ceiling_scenario: CompletedScenario | None = None
         q_trial = current_scenario.manifest.properties.us_discharge + delta_us_discharge
@@ -132,6 +206,7 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 results.warnings.append(WaterOnEdgeWarning())
                 return results
 
+            done[q_trial] = trial_scenario
             scenario_comparison = compare_scenario_changes(
                 trial_scenario.manifest, inputs, ref_scenario.manifest
             )
@@ -147,9 +222,14 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
             elif scenario_comparison.result == "accept":
                 logger.info(f"Accepting trial discharge {q_trial}")
                 publish_scenario(trial_scenario)
-                ref_scenario = trial_scenario
-                current_scenario = trial_scenario
+                ref_scenario = current_scenario = trial_scenario
                 ceiling_q, ceiling_scenario = None, None
+                (
+                    ref_scenario,
+                    current_scenario,
+                    ceiling_q,
+                    ceiling_scenario,
+                ) = _take_free_advances(ref_scenario, done, inputs)
 
             elif scenario_comparison.result == "reject_low":
                 logger.info(f"Rejecting trial discharge {q_trial}: low")
@@ -176,7 +256,12 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 logger.info(f"Bracket closed; accepting {ceiling_q} as the smallest step")
                 publish_scenario(ceiling_scenario)
                 ref_scenario = current_scenario = ceiling_scenario
-                ceiling_q, ceiling_scenario = None, None
+                (
+                    ref_scenario,
+                    current_scenario,
+                    ceiling_q,
+                    ceiling_scenario,
+                ) = _take_free_advances(ref_scenario, done, inputs)
                 current_q = current_scenario.manifest.properties.us_discharge
                 next_q = current_q + delta_us_discharge
 

@@ -12,6 +12,7 @@ import pytest
 
 from twod_fim_jobs.jobs.run_nd_scenarios import (
     RunNDScenariosJob,
+    _next_trial_q,
     compare_scenario_changes,
 )
 from twod_fim_jobs.models.run_nd_scenarios import (
@@ -181,21 +182,37 @@ def test_comparison_judges_each_criterion_against_its_range(expected):
     assert result.result == expected
 
 
-def test_at_min_step_accepts_a_step_that_is_too_large():
-    """Nothing left to shrink, so an oversized step is taken rather than rejected."""
-    result = compare_scenario_changes(
-        TRIALS["reject_high"], RUN_ND_DEFAULTS, REF, at_min_step=True, log_results=False
-    )
-    assert result.result == "accept"
+@pytest.mark.parametrize(
+    "current_q, delta, ceiling_q, expected",
+    [
+        (100, 50, None, 150),  # no ceiling, the step stands
+        (100, 30, 150, 130),  # proposal is already inside the bracket
+        (100, 50, 150, 125),  # proposal reaches the ceiling, so bisect instead
+        (100, 90, 150, 125),  # and it does not matter by how much it overshoots
+        (100, 50, 121, 110),  # a narrow bracket still yields a midpoint
+        (100, 50, 115, 110),  # narrower than 2x min_delta_q: clamp, do not give up
+    ],
+)
+def test_next_trial_q_never_proposes_at_or_above_the_ceiling(
+    current_q, delta, ceiling_q, expected
+):
+    """A reject_high proves every larger discharge is also too high, so proposing
+    one would spend a simulation learning what monotonicity already gives."""
+    assert _next_trial_q(current_q, delta, ceiling_q, min_delta_q=10) == expected
 
 
-def test_at_min_step_still_rejects_a_step_that_is_too_small():
-    """The step can always grow, so reject_low has to survive the floor. Losing it
-    leaves the sweep crawling at the minimum increment for the rest of the range."""
-    result = compare_scenario_changes(
-        TRIALS["reject_low"], RUN_ND_DEFAULTS, REF, at_min_step=True, log_results=False
-    )
-    assert result.result == "reject_low"
+@pytest.mark.parametrize("ceiling_q", [101, 105, 110])
+def test_next_trial_q_reports_a_closed_bracket(ceiling_q):
+    """No discharge is both min_delta_q above current and below the ceiling, so
+    there is nothing left to try. The caller takes the ceiling run instead."""
+    assert _next_trial_q(100, 50, ceiling_q, min_delta_q=10) is None
+
+
+def test_the_bracket_closes_at_min_delta_q_not_twice_it():
+    """Width 11 still holds one usable discharge and must not be abandoned;
+    bisecting alone would aim at 105 and give up while 110 was available."""
+    assert _next_trial_q(100, 50, 111, min_delta_q=10) == 110
+    assert _next_trial_q(100, 50, 110, min_delta_q=10) is None
 
 
 def test_force_accept_overrides_every_outcome():

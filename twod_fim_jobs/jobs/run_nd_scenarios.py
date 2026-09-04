@@ -25,6 +25,7 @@ from twod_fim_jobs.models.run_nd_scenarios import (
 )
 from twod_fim_jobs.models.solvers import (
     BoundaryCondition,
+    CompletedScenario,
     FreeBC,
     QFixBC,
     RunConfig,
@@ -40,6 +41,29 @@ from twod_fim_jobs.utils.hashing import hash_file
 from twod_fim_jobs.utils.storage import ASSET_CACHE, copy_file, read_json
 
 logger = logging.getLogger(__name__)
+
+
+def _next_trial_q(
+    current_q: int, delta: int, ceiling_q: int | None, min_delta_q: int
+) -> int | None:
+    """The next discharge worth simulating, or None when the bracket has closed.
+
+    A reject_high at ceiling_q proves, by monotonicity, that every q at or above
+    it is also too high for this reference. Proposing one costs a simulation to
+    learn what is already known, so proposals are bisected into the bracket
+    instead. None means the bracket holds no untried discharge.
+    """
+    proposal = current_q + delta
+    if ceiling_q is not None and proposal >= ceiling_q:
+        # Bisect, but never below the smallest step allowed: a bracket narrower
+        # than twice min_delta_q still holds discharges worth trying, and giving
+        # up on them means taking the ceiling run and a step over the band.
+        proposal = max((current_q + ceiling_q) // 2, current_q + min_delta_q)
+        if proposal >= ceiling_q:
+            return None
+    if proposal - current_q < min_delta_q:
+        return None
+    return proposal
 
 
 def _scale_delta(delta: int, factor: float) -> int:
@@ -87,6 +111,8 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
         results = RunNDScenariosResult(
             scenario_comparison_results=[scenario_comparison], warnings=[]
         )
+        ceiling_q: int | None = None
+        ceiling_scenario: CompletedScenario | None = None
         q_trial = current_scenario.manifest.properties.us_discharge + delta_us_discharge
 
         while q_trial < inputs.max_upstream_inflow:
@@ -107,15 +133,13 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 return results
 
             scenario_comparison = compare_scenario_changes(
-                trial_scenario.manifest,
-                inputs,
-                ref_scenario.manifest,
-                at_min_step=(delta_us_discharge <= inputs.adaptive_step_min_delta_q),
+                trial_scenario.manifest, inputs, ref_scenario.manifest
             )
             results.scenario_comparison_results.append(scenario_comparison)
 
             if scenario_comparison.result == "reject_high":
                 logger.info(f"Rejecting trial discharge {q_trial}: high")
+                ceiling_q, ceiling_scenario = q_trial, trial_scenario
                 delta_us_discharge = _scale_delta(
                     delta_us_discharge, inputs.adaptive_step_algorithm_shrink_factor
                 )
@@ -125,6 +149,7 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 publish_scenario(trial_scenario)
                 ref_scenario = trial_scenario
                 current_scenario = trial_scenario
+                ceiling_q, ceiling_scenario = None, None
 
             elif scenario_comparison.result == "reject_low":
                 logger.info(f"Rejecting trial discharge {q_trial}: low")
@@ -136,7 +161,26 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
             delta_us_discharge = max(
                 inputs.adaptive_step_min_delta_q, delta_us_discharge
             )
-            q_trial = current_scenario.manifest.properties.us_discharge + delta_us_discharge
+            current_q = current_scenario.manifest.properties.us_discharge
+            next_q = _next_trial_q(
+                current_q,
+                delta_us_discharge,
+                ceiling_q,
+                inputs.adaptive_step_min_delta_q,
+            )
+
+            if next_q is None and ceiling_scenario is not None:
+                # No untried discharge is left below the ceiling, so the smallest
+                # step that clears the band is the ceiling run itself. Taking it
+                # keeps the library from growing denser than it was asked to be.
+                logger.info(f"Bracket closed; accepting {ceiling_q} as the smallest step")
+                publish_scenario(ceiling_scenario)
+                ref_scenario = current_scenario = ceiling_scenario
+                ceiling_q, ceiling_scenario = None, None
+                current_q = current_scenario.manifest.properties.us_discharge
+                next_q = current_q + delta_us_discharge
+
+            q_trial = next_q if next_q is not None else inputs.max_upstream_inflow
 
         trial_scenario = _run_scenario(
             inputs.max_upstream_inflow,
@@ -317,7 +361,6 @@ def compare_scenario_changes(
     inputs: RunNDScenariosInputs,
     ref_scenario: RunScenarioManifest | None = None,
     force_accept: bool = False,
-    at_min_step: bool = False,
     log_results: bool = True,
 ) -> AdaptiveStepComparisonResults:
     """Compare a trial scenario against a reference to accept or reject the step."""
@@ -360,12 +403,6 @@ def compare_scenario_changes(
         result = "accept"
     else:
         result = "reject_low"
-
-    # At the smallest allowed step there is nothing left to shrink, so a step
-    # judged too large is taken instead of rejected. Too small still stands: the
-    # step can always grow.
-    if at_min_step and result == "reject_high":
-        result = "accept"
 
     if force_accept:
         result = "accept"

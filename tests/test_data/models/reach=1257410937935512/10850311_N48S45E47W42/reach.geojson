@@ -1,0 +1,8 @@
+{
+"type": "FeatureCollection",
+"name": "reach",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::5070" } },
+"features": [
+{ "type": "Feature", "properties": { "reach_id": 1257410937935512.0, "reach_to_id": 1257412149032946.0, "total_da_sqkm": 712342.13405797817, "stream_order": 9 }, "geometry": { "type": "LineString", "coordinates": [ [ -2056698.909930475754663, 2807794.480629871133715 ], [ -2058340.370450109476224, 2809095.051464276388288 ], [ -2058715.910235207993537, 2809390.175069698598236 ], [ -2059232.444197998847812, 2810758.509357497561723 ] ] } }
+]
+}

@@ -22,7 +22,7 @@ TEST_MODEL_DATA = (
     / "test_data"
     / "models"
     / "reach=1257410937935512"
-    / "fceb20c6_N164S214E230W107"
+    / "10850311_N48S45E47W42"
 )
 TEST_OUTFLOW_GEOJSON = ROOT / "test_data" / "shared" / "outflow_area.geojson"
 

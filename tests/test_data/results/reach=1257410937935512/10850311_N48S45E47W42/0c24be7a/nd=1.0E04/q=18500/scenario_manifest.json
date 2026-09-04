@@ -1,0 +1,392 @@
+{
+    "type": "run",
+    "hash_algo": "sha256",
+    "twod_fim_version": "0.1.0",
+    "created_at": "2026-09-04T14:01:02.727836Z",
+    "reach_id": 1257410937935512,
+    "identity_hash": "0c24be7a",
+    "scenario_code": "ND1.0E04Q18500",
+    "model_id": "10850311_N48S45E47W42",
+    "identity": {
+        "sdr_commit_id": "826a602ddcaf58bf4081dc04b65ba15b82cc8c8a",
+        "solver": "lisflood"
+    },
+    "self_href": "/home/slawson/repos/twod-fim-jobs/tests/end_to_end_data/results/reach=1257410937935512/10850311_N48S45E47W42/0c24be7a/nd=1.0E04/q=18500/scenario_manifest.json",
+    "inputs": {
+        "domain": {
+            "bbox": [
+                -2062400.0,
+                2804600.0,
+                -2053500.0,
+                2813900.0
+            ],
+            "anchor": [
+                -2058200.0,
+                2809100.0
+            ],
+            "offsets": [
+                48.0,
+                45.0,
+                47.0,
+                42.0
+            ]
+        },
+        "grid_properties": {
+            "rows": 93,
+            "cols": 89
+        },
+        "terrain": {
+            "href": "/home/slawson/repos/twod-fim-jobs/tests/end_to_end_data/models/1257410937935512/10850311_N48S45E47W42/dem.tif",
+            "checksum": "37f0d79d0c8eb3df",
+            "source_url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",
+            "retrieved": "2026-09-04T13:59:29.183083",
+            "derived": false
+        },
+        "roughness": {
+            "href": "/home/slawson/repos/twod-fim-jobs/tests/end_to_end_data/models/1257410937935512/10850311_N48S45E47W42/roughness.tif",
+            "checksum": "4492aa8baecc2cd6",
+            "source_url": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/e2e_lulc_subset_coarse.tif",
+            "retrieved": "2026-09-04T13:59:29.206377",
+            "derived": false
+        },
+        "boundary_conditions": [
+            {
+                "vector": {
+                    "href": "/home/slawson/repos/twod-fim-jobs/tests/end_to_end_data/models/1257410937935512/10850311_N48S45E47W42/inflow.geojson",
+                    "checksum": "d7e12795c14a7ca0",
+                    "source_url": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/reach_network.parquet",
+                    "retrieved": "2026-09-04T13:59:29.228494",
+                    "derived": false
+                },
+                "bc_type": "QFIX",
+                "value": 18500
+            },
+            {
+                "vector": {
+                    "href": "/home/slawson/repos/twod-fim-jobs/tests/end_to_end_data/models/1257410937935512/10850311_N48S45E47W42/outflow_area.geojson",
+                    "checksum": "6e5264878274fb99",
+                    "source_url": null,
+                    "retrieved": null,
+                    "derived": false
+                },
+                "bc_type": "FREE",
+                "value": 0.0001
+            }
+        ],
+        "hot_start": null,
+        "run_config": {
+            "sim_time_seconds": 86400.0,
+            "save_interval_seconds": 3600.0,
+            "mass_interval_seconds": 60.0,
+            "initial_tstep_seconds": 0.5,
+            "use_cuda": true,
+            "use_elevoff": false,
+            "volume_convergence_tolerance": 0.1,
+            "allow_water_on_edges": true,
+            "max_simulation_wall_time_seconds": 10000000000.0,
+            "save_zarr": false
+        },
+        "base_out_dir": "/home/slawson/repos/twod-fim-jobs/tests/end_to_end_data/results",
+        "reach_id": 1257410937935512,
+        "model_id": "10850311_N48S45E47W42",
+        "centerline": {
+            "href": "/home/slawson/repos/twod-fim-jobs/tests/end_to_end_data/models/1257410937935512/10850311_N48S45E47W42/reach.geojson",
+            "checksum": "5cbb7e8aa6a6621f",
+            "source_url": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/reach_network.parquet",
+            "retrieved": "2026-09-04T13:59:29.226991",
+            "derived": false
+        },
+        "run_identity_hash": "0c24be7a"
+    },
+    "properties": {
+        "convergence_results": [
+            {
+                "volume_convergence": 1.0,
+                "boundary_check": null,
+                "model_running": true
+            },
+            {
+                "volume_convergence": 0.9998621344566345,
+                "boundary_check": {
+                    "wse_0": 10.038999557495117,
+                    "wse_1": 6.500999927520752,
+                    "wse_range": 3.5379996299743652,
+                    "n_wetted_edge_cells": 19,
+                    "n_violating_edge_cells": 1,
+                    "n_violating_top": 0,
+                    "n_violating_bottom": 0,
+                    "n_violating_left": 0,
+                    "n_violating_right": 1,
+                    "worst_violating_wse": 8.726256370544434,
+                    "closest_edge_margin": 0.06136608123779297,
+                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
+                },
+                "model_running": true
+            },
+            {
+                "volume_convergence": 0.9054158926010132,
+                "boundary_check": {
+                    "wse_0": 11.065999984741211,
+                    "wse_1": 9.477999687194824,
+                    "wse_range": 1.5880002975463867,
+                    "n_wetted_edge_cells": 120,
+                    "n_violating_edge_cells": 9,
+                    "n_violating_top": 0,
+                    "n_violating_bottom": 9,
+                    "n_violating_left": 0,
+                    "n_violating_right": 0,
+                    "worst_violating_wse": 10.647859573364258,
+                    "closest_edge_margin": 0.16429805755615234,
+                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
+                },
+                "model_running": true
+            },
+            {
+                "volume_convergence": 0.6621848940849304,
+                "boundary_check": {
+                    "wse_0": 11.48799991607666,
+                    "wse_1": 9.86299991607666,
+                    "wse_range": 1.625,
+                    "n_wetted_edge_cells": 178,
+                    "n_violating_edge_cells": 13,
+                    "n_violating_top": 0,
+                    "n_violating_bottom": 13,
+                    "n_violating_left": 0,
+                    "n_violating_right": 0,
+                    "worst_violating_wse": 10.063613891601562,
+                    "closest_edge_margin": 0.10254764556884766,
+                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
+                },
+                "model_running": true
+            },
+            {
+                "volume_convergence": 0.3757535219192505,
+                "boundary_check": {
+                    "wse_0": 11.545999526977539,
+                    "wse_1": 9.927000045776367,
+                    "wse_range": 1.6189994812011719,
+                    "n_wetted_edge_cells": 220,
+                    "n_violating_edge_cells": 13,
+                    "n_violating_top": 0,
+                    "n_violating_bottom": 13,
+                    "n_violating_left": 0,
+                    "n_violating_right": 0,
+                    "worst_violating_wse": 10.13961410522461,
+                    "closest_edge_margin": 0.1125478744506836,
+                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
+                },
+                "model_running": true
+            },
+            {
+                "volume_convergence": 0.2647637128829956,
+                "boundary_check": {
+                    "wse_0": 11.554999351501465,
+                    "wse_1": 9.934999465942383,
+                    "wse_range": 1.619999885559082,
+                    "n_wetted_edge_cells": 230,
+                    "n_violating_edge_cells": 13,
+                    "n_violating_top": 0,
+                    "n_violating_bottom": 13,
+                    "n_violating_left": 0,
+                    "n_violating_right": 0,
+                    "worst_violating_wse": 10.150613784790039,
+                    "closest_edge_margin": 0.11354827880859375,
+                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
+                },
+                "model_running": true
+            },
+            {
+                "volume_convergence": 0.25475987792015076,
+                "boundary_check": {
+                    "wse_0": 11.556999206542969,
+                    "wse_1": 9.936999320983887,
+                    "wse_range": 1.619999885559082,
+                    "n_wetted_edge_cells": 232,
+                    "n_violating_edge_cells": 13,
+                    "n_violating_top": 0,
+                    "n_violating_bottom": 13,
+                    "n_violating_left": 0,
+                    "n_violating_right": 0,
+                    "worst_violating_wse": 10.153614044189453,
+                    "closest_edge_margin": 0.112548828125,
+                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
+                },
+                "model_running": true
+            },
+            {
+                "volume_convergence": 0.2534440755844116,
+                "boundary_check": {
+                    "wse_0": 11.556999206542969,
+                    "wse_1": 9.937999725341797,
+                    "wse_range": 1.6189994812011719,
+                    "n_wetted_edge_cells": 232,
+                    "n_violating_edge_cells": 13,
+                    "n_violating_top": 0,
+                    "n_violating_bottom": 13,
+                    "n_violating_left": 0,
+                    "n_violating_right": 0,
+                    "worst_violating_wse": 10.155613899230957,
+                    "closest_edge_margin": 0.11354827880859375,
+                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
+                },
+                "model_running": true
+            },
+            {
+                "volume_convergence": 0.2523473799228668,
+                "boundary_check": {
+                    "wse_0": 11.557999610900879,
+                    "wse_1": 9.93899917602539,
+                    "wse_range": 1.6190004348754883,
+                    "n_wetted_edge_cells": 235,
+                    "n_violating_edge_cells": 13,
+                    "n_violating_top": 0,
+                    "n_violating_bottom": 13,
+                    "n_violating_left": 0,
+                    "n_violating_right": 0,
+                    "worst_violating_wse": 10.159613609313965,
+                    "closest_edge_margin": 0.11354827880859375,
+                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
+                },
+                "model_running": true
+            },
+            {
+                "volume_convergence": 0.24918149411678314,
+                "boundary_check": {
+                    "wse_0": 11.559000015258789,
+                    "wse_1": 9.943999290466309,
+                    "wse_range": 1.6150007247924805,
+                    "n_wetted_edge_cells": 236,
+                    "n_violating_edge_cells": 13,
+                    "n_violating_top": 0,
+                    "n_violating_bottom": 13,
+                    "n_violating_left": 0,
+                    "n_violating_right": 0,
+                    "worst_violating_wse": 10.167613983154297,
+                    "closest_edge_margin": 0.11354732513427734,
+                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
+                },
+                "model_running": true
+            },
+            {
+                "volume_convergence": 0.23198463022708893,
+                "boundary_check": {
+                    "wse_0": 11.565999984741211,
+                    "wse_1": 9.967000007629395,
+                    "wse_range": 1.5989999771118164,
+                    "n_wetted_edge_cells": 241,
+                    "n_violating_edge_cells": 13,
+                    "n_violating_top": 0,
+                    "n_violating_bottom": 13,
+                    "n_violating_left": 0,
+                    "n_violating_right": 0,
+                    "worst_violating_wse": 10.187613487243652,
+                    "closest_edge_margin": 0.11154747009277344,
+                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
+                },
+                "model_running": true
+            },
+            {
+                "volume_convergence": 0.19110438227653503,
+                "boundary_check": {
+                    "wse_0": 11.581999778747559,
+                    "wse_1": 10.017999649047852,
+                    "wse_range": 1.564000129699707,
+                    "n_wetted_edge_cells": 244,
+                    "n_violating_edge_cells": 13,
+                    "n_violating_top": 0,
+                    "n_violating_bottom": 13,
+                    "n_violating_left": 0,
+                    "n_violating_right": 0,
+                    "worst_violating_wse": 10.233613967895508,
+                    "closest_edge_margin": 0.11054801940917969,
+                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
+                },
+                "model_running": true
+            },
+            {
+                "volume_convergence": 0.14095951616764069,
+                "boundary_check": {
+                    "wse_0": 11.601999282836914,
+                    "wse_1": 10.065999984741211,
+                    "wse_range": 1.5359992980957031,
+                    "n_wetted_edge_cells": 246,
+                    "n_violating_edge_cells": 13,
+                    "n_violating_top": 0,
+                    "n_violating_bottom": 13,
+                    "n_violating_left": 0,
+                    "n_violating_right": 0,
+                    "worst_violating_wse": 10.319613456726074,
+                    "closest_edge_margin": 0.039947509765625,
+                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
+                },
+                "model_running": true
+            },
+            {
+                "volume_convergence": 0.10113201290369034,
+                "boundary_check": {
+                    "wse_0": 11.618000030517578,
+                    "wse_1": 10.097999572753906,
+                    "wse_range": 1.5200004577636719,
+                    "n_wetted_edge_cells": 246,
+                    "n_violating_edge_cells": 14,
+                    "n_violating_top": 0,
+                    "n_violating_bottom": 14,
+                    "n_violating_left": 0,
+                    "n_violating_right": 0,
+                    "worst_violating_wse": 10.261052131652832,
+                    "closest_edge_margin": 0.08054065704345703,
+                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
+                },
+                "model_running": true
+            },
+            {
+                "volume_convergence": 0.07576456665992737,
+                "boundary_check": {
+                    "wse_0": 11.629999160766602,
+                    "wse_1": 10.116999626159668,
+                    "wse_range": 1.5129995346069336,
+                    "n_wetted_edge_cells": 247,
+                    "n_violating_edge_cells": 38,
+                    "n_violating_top": 0,
+                    "n_violating_bottom": 38,
+                    "n_violating_left": 0,
+                    "n_violating_right": 0,
+                    "worst_violating_wse": 10.373152732849121,
+                    "closest_edge_margin": 0.1145486831665039,
+                    "error": "boundary error: edge cell WSE is between endpoint WSE values"
+                },
+                "model_running": true
+            }
+        ],
+        "termination_condition": "volume_convergence",
+        "wall_time": 72.60126836299969,
+        "nominal_wse": 11.4,
+        "us_discharge": 18500,
+        "sim_time": 54000.0
+    },
+    "assets": {
+        "depth": {
+            "href": "/home/slawson/repos/twod-fim-jobs/tests/end_to_end_data/results/reach=1257410937935512/10850311_N48S45E47W42/0c24be7a/nd=1.0E04/q=18500/depth.tif",
+            "checksum": "3b0d69684570e7b1",
+            "source_url": null,
+            "retrieved": null,
+            "derived": true
+        },
+        "inundation_polygon": {
+            "href": "/home/slawson/repos/twod-fim-jobs/tests/end_to_end_data/results/reach=1257410937935512/10850311_N48S45E47W42/0c24be7a/nd=1.0E04/q=18500/inundated_area.geojson",
+            "checksum": "65a568ded3c51cc6",
+            "source_url": null,
+            "retrieved": null,
+            "derived": true
+        },
+        "stage_transfer_line": {
+            "href": "/home/slawson/repos/twod-fim-jobs/tests/end_to_end_data/results/reach=1257410937935512/10850311_N48S45E47W42/0c24be7a/nd=1.0E04/q=18500/stl.geojson",
+            "checksum": "e5a4626c3f50c7f1",
+            "source_url": null,
+            "retrieved": null,
+            "derived": true
+        },
+        "zarr_store": null
+    },
+    "warnings": []
+}

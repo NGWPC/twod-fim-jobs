@@ -316,6 +316,7 @@ def compare_scenario_changes(
     inputs: RunNDScenariosInputs,
     ref_scenario: RunScenarioManifest | None = None,
     force_accept: bool = False,
+    log_results: bool = True
 ) -> AdaptiveStepComparisonResults:
     """Compare depth and extent changes between a reference and trial scenario to accept or reject the step."""
     if ref_scenario is None:
@@ -368,7 +369,7 @@ def compare_scenario_changes(
     if force_accept:
         result = "accept"
 
-    return AdaptiveStepComparisonResults(
+    res = AdaptiveStepComparisonResults(
         ref_scenario_manifest=ref_scenario.self_href,
         trial_scenario_manifest=trial_scenario.self_href,
         max_stage_diff=max_depth_diff,
@@ -376,3 +377,8 @@ def compare_scenario_changes(
         extent_diff=extent_diff,
         result=result,
     )
+
+    if log_results:
+        logger.info(res.model_dump())
+
+    return res

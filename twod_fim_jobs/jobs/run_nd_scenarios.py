@@ -345,22 +345,24 @@ def compare_scenario_changes(
     max_depth_diff = np.quantile(depth_diffs, 0.95)
     median_depth_diff = np.median(depth_diffs)
     ref_extent = (ref_raster.data > 0).sum()
-    extent_diff = ((trial_raster.data > 0).sum() - ref_extent) / ref_extent
+    extent_diff = ((trial_raster.data > 0).sum() - ref_extent) / ref_extent * 100
+
+    max_depth_lo, max_depth_hi = inputs.ld_q_max_depth_increase_range
+    median_lo, median_hi = inputs.ld_q_median_depth_increase_range
+    area_lo, area_hi = inputs.ld_q_flooded_area_prcnt_increase_range
 
     # reject_high takes priority: any criterion over its ceiling means the step was too large
     if (
-        max_depth_diff > inputs.adaptive_step_algorithm_max_stage_max_acceptable
-        or median_depth_diff
-        > inputs.adaptive_step_algorithm_median_stage_max_acceptable
-        or extent_diff > inputs.adaptive_step_algorithm_extent_max_acceptable
+        max_depth_diff > max_depth_hi
+        or median_depth_diff > median_hi
+        or extent_diff > area_hi
     ):
         result = "reject_high"
 
     elif (
-        inputs.adaptive_step_algorithm_max_stage_min_acceptable <= max_depth_diff
-        or inputs.adaptive_step_algorithm_median_stage_min_acceptable
-        <= median_depth_diff
-        or inputs.adaptive_step_algorithm_extent_min_acceptable <= extent_diff
+        max_depth_lo <= max_depth_diff
+        or median_lo <= median_depth_diff
+        or area_lo <= extent_diff
     ):
         result = "accept"
     else:

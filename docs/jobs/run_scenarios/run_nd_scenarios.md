@@ -32,12 +32,9 @@ Iteratively runs the model for a reach using a normal depth downstream boundary 
 | `save_zarr` | `boolean` | false | Whether or not to generate and save a zarr file with wse and depth at each print interval |
 | `adaptive_step_algorithm_shrink_factor` | `number` | 0.5 | Multiplier applied to the discharge step size when a trial scenario is rejected for producing too large a change |
 | `adaptive_step_algorithm_grow_factor` | `number` | 1.5 | Multiplier applied to the discharge step size when a trial scenario is accepted or rejected for producing too small a change |
-| `adaptive_step_algorithm_max_stage_min_acceptable` | `number` | 0.75 | Minimum 95th-percentile depth difference (m) between consecutive discharge scenarios required to accept the step |
-| `adaptive_step_algorithm_max_stage_max_acceptable` | `number` | 1.25 | Maximum 95th-percentile depth difference (m) between consecutive discharge scenarios before rejection |
-| `adaptive_step_algorithm_median_stage_min_acceptable` | `number` | 0.25 | Minimum median depth difference (m) between consecutive discharge scenarios required to accept the step |
-| `adaptive_step_algorithm_median_stage_max_acceptable` | `number` | 0.75 | Maximum median depth difference (m) between consecutive discharge scenarios before rejection |
-| `adaptive_step_algorithm_extent_min_acceptable` | `number` | 0.075 | Minimum fractional change in inundated area between consecutive discharge scenarios required to accept the step |
-| `adaptive_step_algorithm_extent_max_acceptable` | `number` | 0.125 | Maximum fractional change in inundated area between consecutive discharge scenarios before rejection |
+| `ld_q_max_depth_increase_range` | `list[any]` | [0.75, 1.25] | [min, max] increase in max depth (m) between consecutive discharge scenarios. Below min the step is too small and grows; above max it is too large and shrinks. |
+| `ld_q_median_depth_increase_range` | `list[any]` | [0.25, 0.5] | [min, max] increase in median depth (m) between consecutive discharge scenarios. |
+| `ld_q_flooded_area_prcnt_increase_range` | `list[any]` | [10.0, 15.0] | [min, max] percent increase in flooded area between consecutive discharge scenarios, where 10 means 10 percent. |
 <!-- /AUTO:inputs_table -->
 
 ## Artifacts

@@ -87,9 +87,9 @@
     "nominal_wse": 121.2,  // Nominal water surface elevation achieved at the reach upstream point
     "us_discharge": 1000,  // Total upstream inflow discharge for this scenario, in whole cms
     "sim_time": 960.0,  // Simulation time (model time)in seconds at the final timestep
-    "max_depth": 10.0,  // Maximum flood depth in the final depth raster.
-    "median_depth": 1.3,  // Median flood depth in the final depth raster.
-    "extent_percent": 0.23  // Ratio of inundated area to model domain area.
+    "max_depth": 10.0,  // Maximum flood depth over wet cells, m.
+    "median_depth": 1.3,  // Median flood depth over wet cells, m.
+    "flooded_area": 0.42  // Inundated area, sq km.
   },
   "assets": {
     "depth": {

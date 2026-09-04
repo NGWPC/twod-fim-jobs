@@ -138,12 +138,12 @@ def watch_run(
 
     # Build results
     if p is not None:
-        inundation_metrics = generate_inundation_metrics(Raster(p).data)
+        inundation_metrics = generate_inundation_metrics(Raster(p))
     else:
         inundation_metrics = InundationMetricResults(
             max_depth=0.0,
             median_depth=0.0,
-            extent_percent=0.0,
+            flooded_area=0.0,
         )
     if convergence_metrics is not None:
         volume_convergence = convergence_metrics.volume_convergence
@@ -156,7 +156,7 @@ def watch_run(
         wall_time=elapsed_wall_time,
         max_depth=inundation_metrics.max_depth,
         median_depth=inundation_metrics.median_depth,
-        extent_percent=inundation_metrics.extent_percent,
+        flooded_area=inundation_metrics.flooded_area,
     )
 
 
@@ -202,11 +202,15 @@ def check_status(
     return (convergence, cur_array.copy())
 
 
-def generate_inundation_metrics(cur_array: np.ndarray) -> InundationMetricResults:
+def generate_inundation_metrics(raster: Raster) -> InundationMetricResults:
+    """Inundation metrics over wet cells only."""
+    wet = raster.data[raster.data > 0]
+    if wet.size == 0:
+        return InundationMetricResults(max_depth=0.0, median_depth=0.0, flooded_area=0.0)
     return InundationMetricResults(
-        max_depth=cur_array.max(),
-        median_depth=np.median(cur_array),
-        extent_percent=np.sum(cur_array > 0) / cur_array.size,
+        max_depth=float(wet.max()),
+        median_depth=float(np.median(wet)),
+        flooded_area=float(wet.size * raster.resolution**2 / 1e6),
     )
 
 

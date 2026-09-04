@@ -125,7 +125,7 @@ def publish_scenario(
         sim_time=processed.sim_time,
         max_depth=solve_scenario_results.max_depth,
         median_depth=solve_scenario_results.median_depth,
-        extent_percent=solve_scenario_results.extent_percent,
+        flooded_area=solve_scenario_results.flooded_area,
     )
 
     # Make manifest

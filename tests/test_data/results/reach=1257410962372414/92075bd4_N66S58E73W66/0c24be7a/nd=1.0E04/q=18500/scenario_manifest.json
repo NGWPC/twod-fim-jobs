@@ -107,7 +107,7 @@
         "volume_convergence": 0.07450714707374573,
         "max_depth": 2.0,
         "median_depth": 0.5,
-        "extent_percent": 0.25
+        "flooded_area": 0.25
     },
     "assets": {
         "depth": {

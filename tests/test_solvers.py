@@ -169,7 +169,7 @@ def test_publish_scenario_preserves_s3_double_slash(tmp_path: Path) -> None:
         wall_time=100.0,
         max_depth=2.0,
         median_depth=0.5,
-        extent_percent=0.25,
+        flooded_area=0.25,
     )
 
     # Create mock post-process results
@@ -290,7 +290,7 @@ def test_write_model_results_to_s3_works(tmp_path: Path) -> None:
         wall_time=250.5,
         max_depth=2.0,
         median_depth=0.5,
-        extent_percent=0.25,
+        flooded_area=0.25,
     )
 
     # Create mock post-process results
@@ -394,7 +394,7 @@ def test_check_model_skips_when_run_exists() -> None:
             sim_time=100.0,
             max_depth=2.0,
             median_depth=0.5,
-            extent_percent=0.25,
+            flooded_area=0.25,
         ),
         warnings=[],
     )

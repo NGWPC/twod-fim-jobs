@@ -158,9 +158,9 @@ class AdaptiveStepComparisonResults(BaseModel):
             "s3://twod-fim/version=v1/results/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1200/scenario.json"
         ]
     )
-    max_stage_diff: float = Field(examples=[1.15])
-    median_stage_diff: float = Field(examples=[1.03])
-    extent_diff: float = Field(examples=[0.02])
+    max_depth_increase: float = Field(examples=[1.15])
+    median_depth_increase: float = Field(examples=[1.03])
+    flooded_area_prcnt_increase: float = Field(examples=[12.0])
     result: Literal["reject_high", "reject_low", "accept"] = Field(examples=["accept"])
 
 

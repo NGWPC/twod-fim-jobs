@@ -5,7 +5,6 @@ import tempfile
 from pathlib import Path
 
 import geopandas as gpd
-import numpy as np
 from shapely.geometry import Point, Polygon
 
 from twod_fim_jobs.consts import (
@@ -34,7 +33,6 @@ from twod_fim_jobs.models.solvers import (
 )
 from twod_fim_jobs.models.warnings import WaterOnEdgeWarning
 from twod_fim_jobs.utils.geospatial import (
-    Raster,
     ensure_linestring,
     load_dem_and_get_pt_indices,
 )
@@ -318,34 +316,25 @@ def compare_scenario_changes(
     force_accept: bool = False,
     log_results: bool = True,
 ) -> AdaptiveStepComparisonResults:
-    """Compare depth and extent changes between a reference and trial scenario to accept or reject the step."""
+    """Compare a trial scenario against a reference to accept or reject the step."""
     if ref_scenario is None:
         return AdaptiveStepComparisonResults(
             ref_scenario_manifest=None,
             trial_scenario_manifest=trial_scenario.self_href,
-            max_stage_diff=0,
-            median_stage_diff=0,
-            extent_diff=0,
+            max_depth_increase=0,
+            median_depth_increase=0,
+            flooded_area_prcnt_increase=0,
             result="accept",
         )
-    # Materialize assets
-    resolved_ref_depth = ASSET_CACHE.materialize_path(ref_scenario.assets.depth)
-    resolved_tria_depth = ASSET_CACHE.materialize_path(trial_scenario.assets.depth)
+    ref, trial = ref_scenario.properties, trial_scenario.properties
 
-    # Load data
-    ref_raster = Raster(resolved_ref_depth)
-    trial_raster = Raster(resolved_tria_depth)
-    ref_raster.data = np.clip(ref_raster.data, 0, None)
-    trial_raster.data = np.clip(trial_raster.data, 0, None)
-    comparison_mask = (ref_raster.data > 0) | (trial_raster.data > 0)
-
-    depth_diffs = (
-        trial_raster.data[comparison_mask] - ref_raster.data[comparison_mask]
-    ).flatten()
-    max_depth_diff = np.quantile(depth_diffs, 0.95)
-    median_depth_diff = np.median(depth_diffs)
-    ref_extent = (ref_raster.data > 0).sum()
-    extent_diff = ((trial_raster.data > 0).sum() - ref_extent) / ref_extent * 100
+    max_depth_increase = trial.max_depth - ref.max_depth
+    median_depth_increase = trial.median_depth - ref.median_depth
+    flooded_area_prcnt_increase = (
+        (trial.flooded_area - ref.flooded_area) / ref.flooded_area * 100
+        if ref.flooded_area > 0
+        else 0.0
+    )
 
     max_depth_lo, max_depth_hi = inputs.ld_q_max_depth_increase_range
     median_lo, median_hi = inputs.ld_q_median_depth_increase_range
@@ -353,16 +342,16 @@ def compare_scenario_changes(
 
     # reject_high takes priority: any criterion over its ceiling means the step was too large
     if (
-        max_depth_diff > max_depth_hi
-        or median_depth_diff > median_hi
-        or extent_diff > area_hi
+        max_depth_increase > max_depth_hi
+        or median_depth_increase > median_hi
+        or flooded_area_prcnt_increase > area_hi
     ):
         result = "reject_high"
 
     elif (
-        max_depth_lo <= max_depth_diff
-        or median_lo <= median_depth_diff
-        or area_lo <= extent_diff
+        max_depth_lo <= max_depth_increase
+        or median_lo <= median_depth_increase
+        or area_lo <= flooded_area_prcnt_increase
     ):
         result = "accept"
     else:
@@ -374,9 +363,9 @@ def compare_scenario_changes(
     res = AdaptiveStepComparisonResults(
         ref_scenario_manifest=ref_scenario.self_href,
         trial_scenario_manifest=trial_scenario.self_href,
-        max_stage_diff=max_depth_diff,
-        median_stage_diff=median_depth_diff,
-        extent_diff=extent_diff,
+        max_depth_increase=max_depth_increase,
+        median_depth_increase=median_depth_increase,
+        flooded_area_prcnt_increase=flooded_area_prcnt_increase,
         result=result,
     )
 

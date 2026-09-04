@@ -455,3 +455,25 @@ class RunScenarioManifest(BaseModel):
         description="Non-fatal check results; the scenario run still completes and writes scenario.json.",
         examples=[[]],
     )
+
+
+class CompletedScenario(BaseModel):
+    """A finished simulation, which may or may not have been published.
+
+    `processed` is None when the scenario was adopted from storage rather than
+    run, which is also how publish knows there is nothing to upload.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    manifest: RunScenarioManifest
+    processed: PostProcessResult | None = None
+
+    @property
+    def depth(self) -> Asset:
+        """The depth grid, wherever it can be read from right now."""
+        if self.processed is None:
+            return self.manifest.assets.depth
+        return self.manifest.assets.depth.model_copy(
+            update={"href": str(self.processed.depth_path)}
+        )

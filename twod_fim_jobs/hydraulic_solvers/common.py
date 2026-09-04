@@ -12,6 +12,7 @@ from twod_fim_jobs.hydraulic_solvers.pre_process import write_model_files
 from twod_fim_jobs.hydraulic_solvers.run import solve_scenario
 from twod_fim_jobs.models.common import Asset
 from twod_fim_jobs.models.solvers import (
+    CompletedScenario,
     PostProcessResult,
     RunScenarioInputs,
     RunScenarioManifest,
@@ -31,23 +32,26 @@ from twod_fim_jobs.utils.storage import (
 
 def run_scenario(
     run_scenario_inputs: RunScenarioInputs, working_dir: Path
-) -> RunScenarioManifest:
+) -> CompletedScenario:
+    """Solve a scenario and describe it. Nothing is uploaded here.
+
+    Publishing is the caller's decision, because run_nd_scenarios simulates
+    candidates it may reject, and a rejected candidate is search overhead rather
+    than a library member.
+    """
     completed = check_run_exists(run_scenario_inputs)
     if completed is not None:
-        return completed
+        return CompletedScenario(manifest=completed)
 
     config_path = write_model_files(run_scenario_inputs, working_dir)
     solve_scenario_results = solve_scenario(
         config_path, run_scenario_inputs, working_dir
     )
     processed = post_process_lisflood(run_scenario_inputs, working_dir)
-
-    # Publish results to out location
-    scenario_manifest = publish_scenario(
+    manifest = build_scenario_manifest(
         run_scenario_inputs, solve_scenario_results, processed
     )
-
-    return scenario_manifest
+    return CompletedScenario(manifest=manifest, processed=processed)
 
 
 def check_run_exists(
@@ -67,12 +71,12 @@ def check_run_exists(
         return None
 
 
-def publish_scenario(
+def build_scenario_manifest(
     run_scenario_inputs: RunScenarioInputs,
     solve_scenario_results: SolveScenarioResults,
     processed: PostProcessResult,
 ) -> RunScenarioManifest:
-    """Publish assets and manifest to final locations."""
+    """Describe a finished scenario. Asset hrefs point at where it would go."""
     # Make assets
     dest_depth_str = (
         f"{run_scenario_inputs.scenario_out_dir}/{processed.depth_path.name}"
@@ -143,11 +147,19 @@ def publish_scenario(
         warnings=[],
     )
 
-    # Upload
-    copy_file(processed.depth_path, dest_depth_str)
-    copy_file(processed.inundation_polygon_path, dest_inun_str)
-    copy_file(processed.stl_path, dest_stl_str)
-    if dest_zarr is not None and processed.zarr_path is not None:
-        copy_dir(processed.zarr_path, dest_zarr)
+    return manifest
+
+
+def publish_scenario(completed: CompletedScenario) -> RunScenarioManifest:
+    """Upload a scenario's assets and manifest to their final locations."""
+    if completed.processed is None:
+        return completed.manifest
+
+    manifest, processed = completed.manifest, completed.processed
+    copy_file(processed.depth_path, manifest.assets.depth.href)
+    copy_file(processed.inundation_polygon_path, manifest.assets.inundation_polygon.href)
+    copy_file(processed.stl_path, manifest.assets.stage_transfer_line.href)
+    if processed.zarr_path is not None and manifest.assets.zarr_store is not None:
+        copy_dir(processed.zarr_path, manifest.assets.zarr_store.href)
     write_json(manifest.self_href, manifest.model_dump_json())
     return manifest

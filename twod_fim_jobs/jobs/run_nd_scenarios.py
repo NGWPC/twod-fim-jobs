@@ -11,7 +11,7 @@ from twod_fim_jobs.consts import (
     MINIMUM_REACH_SLOPE,
     bieger_bankfull_width,
 )
-from twod_fim_jobs.hydraulic_solvers.common import run_scenario
+from twod_fim_jobs.hydraulic_solvers.common import publish_scenario, run_scenario
 from twod_fim_jobs.hydraulic_solvers.identities import get_run_identity_hash
 from twod_fim_jobs.jobs.common import Job
 from twod_fim_jobs.models.build_model import ModelManifest
@@ -79,12 +79,15 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
         ref_scenario = _run_scenario(
             inputs.min_upstream_inflow, downstream_bc, model_manifest, inputs, tmp_dir
         )
+        publish_scenario(ref_scenario)
         current_scenario = ref_scenario
-        scenario_comparison = compare_scenario_changes(current_scenario, inputs, None)
+        scenario_comparison = compare_scenario_changes(
+            current_scenario.manifest, inputs, None
+        )
         results = RunNDScenariosResult(
             scenario_comparison_results=[scenario_comparison], warnings=[]
         )
-        q_trial = current_scenario.properties.us_discharge + delta_us_discharge
+        q_trial = current_scenario.manifest.properties.us_discharge + delta_us_discharge
 
         while q_trial < inputs.max_upstream_inflow:
             logger.info(f"Evaluating trial discharge {q_trial}")
@@ -95,18 +98,18 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 model_manifest,
                 inputs,
                 tmp_dir,
-                hot_start=current_scenario.assets.depth,
+                hot_start=current_scenario.depth,
             )
 
-            if trial_scenario.properties.termination_condition == "edge_error":
+            if trial_scenario.manifest.properties.termination_condition == "edge_error":
                 logger.error("Aborting adaptive step algorithm for edge error")
                 results.warnings.append(WaterOnEdgeWarning())
                 return results
 
             scenario_comparison = compare_scenario_changes(
-                trial_scenario,
+                trial_scenario.manifest,
                 inputs,
-                ref_scenario,
+                ref_scenario.manifest,
                 at_min_step=(delta_us_discharge <= inputs.adaptive_step_min_delta_q),
             )
             results.scenario_comparison_results.append(scenario_comparison)
@@ -119,6 +122,7 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
 
             elif scenario_comparison.result == "accept":
                 logger.info(f"Accepting trial discharge {q_trial}")
+                publish_scenario(trial_scenario)
                 ref_scenario = trial_scenario
                 current_scenario = trial_scenario
 
@@ -132,7 +136,7 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
             delta_us_discharge = max(
                 inputs.adaptive_step_min_delta_q, delta_us_discharge
             )
-            q_trial = current_scenario.properties.us_discharge + delta_us_discharge
+            q_trial = current_scenario.manifest.properties.us_discharge + delta_us_discharge
 
         trial_scenario = _run_scenario(
             inputs.max_upstream_inflow,
@@ -140,10 +144,11 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
             model_manifest,
             inputs,
             tmp_dir,
-            hot_start=current_scenario.assets.depth,
+            hot_start=current_scenario.depth,
         )
+        publish_scenario(trial_scenario)
         scenario_comparison = compare_scenario_changes(
-            trial_scenario, inputs, ref_scenario, force_accept=True
+            trial_scenario.manifest, inputs, ref_scenario.manifest, force_accept=True
         )
         results.scenario_comparison_results.append(scenario_comparison)
 
@@ -304,9 +309,7 @@ def _run_scenario(
     working_dir = tmp_dir / run_scenario_inputs.scenario_dir_name
 
     # Execute run
-    scenario_manifest = run_scenario(run_scenario_inputs, working_dir)
-
-    return scenario_manifest
+    return run_scenario(run_scenario_inputs, working_dir)
 
 
 def compare_scenario_changes(

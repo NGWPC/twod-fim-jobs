@@ -107,7 +107,7 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 trial_scenario,
                 inputs,
                 ref_scenario,
-                force_accept=(delta_us_discharge <= inputs.adaptive_step_min_delta_q),
+                at_min_step=(delta_us_discharge <= inputs.adaptive_step_min_delta_q),
             )
             results.scenario_comparison_results.append(scenario_comparison)
 
@@ -314,6 +314,7 @@ def compare_scenario_changes(
     inputs: RunNDScenariosInputs,
     ref_scenario: RunScenarioManifest | None = None,
     force_accept: bool = False,
+    at_min_step: bool = False,
     log_results: bool = True,
 ) -> AdaptiveStepComparisonResults:
     """Compare a trial scenario against a reference to accept or reject the step."""
@@ -356,6 +357,12 @@ def compare_scenario_changes(
         result = "accept"
     else:
         result = "reject_low"
+
+    # At the smallest allowed step there is nothing left to shrink, so a step
+    # judged too large is taken instead of rejected. Too small still stands: the
+    # step can always grow.
+    if at_min_step and result == "reject_high":
+        result = "accept"
 
     if force_accept:
         result = "accept"

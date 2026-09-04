@@ -192,7 +192,7 @@ def calculate_volume_convergence(
     v1 = np.nansum(cur_array[cur_array > 0]) * (resolution**2)
     v2 = np.nansum(prev_array[prev_array > 0]) * (resolution**2)
     delta_volume = v1 - v2
-    relative_change = delta_volume / (inflow * save_interval_sec)
+    relative_change = abs(delta_volume) / (inflow * save_interval_sec)
     return relative_change
 
 

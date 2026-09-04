@@ -1,17 +1,21 @@
 import logging
 from pathlib import Path
+
 from twod_fim_jobs.hydraulic_solvers.common import run_scenario
 from twod_fim_jobs.hydraulic_solvers.identities import get_run_identity_hash
 from twod_fim_jobs.jobs.common import Job
 from twod_fim_jobs.models.build_model import ModelManifest
-from twod_fim_jobs.models.solvers import FreeBC, QFixBC, RunConfig, TransferBC
 from twod_fim_jobs.models.run_kwse_scenarios import (
     RunKWSEScenariosInputs,
     RunKWSEScenariosResult,
 )
 from twod_fim_jobs.models.solvers import (
+    FreeBC,
+    QFixBC,
+    RunConfig,
     RunScenarioInputs,
     RunScenarioManifest,
+    TransferBC,
 )
 from twod_fim_jobs.utils.storage import read_json
 
@@ -82,13 +86,21 @@ class RunKWSEScenariosJob(Job[RunKWSEScenariosInputs]):
 
             # Make hotstart
             if scenario.hotstart is not None:
-                hot_ds_bc_proxy = transfer_bc.model_copy(
-                    update={"value": scenario.hotstart.bc_value}
-                )
                 hot_us_bc_proxy = inflow_bc.model_copy(
                     update={"value": scenario.hotstart.upstream_discharge}
                 )
-                hot_bc_proxy = [hot_us_bc_proxy, outflow_bc, hot_ds_bc_proxy]
+                if scenario.hotstart.bc_type == "ND":
+                    hot_bc_proxy = [
+                        hot_us_bc_proxy,
+                        outflow_bc.model_copy(
+                            update={"value": scenario.hotstart.bc_value}
+                        ),
+                    ]
+                else:
+                    hot_ds_bc_proxy = transfer_bc.model_copy(
+                        update={"value": scenario.hotstart.bc_value}
+                    )
+                    hot_bc_proxy = [hot_us_bc_proxy, outflow_bc, hot_ds_bc_proxy]
                 hot_scenario_proxy = run_scenario_inputs.model_copy(
                     update={
                         "boundary_conditions": hot_bc_proxy,

@@ -1,0 +1,131 @@
+{
+    "type": "model",
+    "hash_algo": "sha256",
+    "twod_fim_version": "0.1.0",
+    "created_at": "2026-09-04T13:59:37.639280",
+    "reach_id": 1257410962372414,
+    "identity_hash": "92075bd4",
+    "domain_code": "N66S58E73W66",
+    "model_id": "92075bd4_N66S58E73W66",
+    "inputs": {
+        "reach_id": 1257410962372414,
+        "reach_network_path": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/reach_network.parquet",
+        "upstream_reach_ids": [
+            1257411073114277
+        ],
+        "upstream_mainstem_reach_id": 1257411073114277,
+        "base_output_path": "/home/slawson/repos/twod-fim-jobs/tests/end_to_end_data/models/1257410962372414",
+        "dem_source": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",
+        "lulc_source": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/e2e_lulc_subset_coarse.tif",
+        "other_geometries": [],
+        "domain_buffer": 0.0,
+        "grid_resolution": 100.0,
+        "walk_us_dist_pct": 0.1,
+        "epsg_code": 5070,
+        "bankfull_width_multiplier": 1.0,
+        "lulc_lookup": {
+            "11": 0.04,
+            "21": 0.04,
+            "22": 0.1,
+            "23": 0.08,
+            "24": 0.15,
+            "31": 0.025,
+            "41": 0.16,
+            "42": 0.16,
+            "43": 0.16,
+            "52": 0.1,
+            "71": 0.035,
+            "81": 0.03,
+            "82": 0.035,
+            "90": 0.12,
+            "95": 0.07
+        }
+    },
+    "domain": {
+        "bbox": [
+            -2059800.0,
+            2798500.0,
+            -2045900.0,
+            2810900.0
+        ],
+        "anchor": [
+            -2053200.0,
+            2804300.0
+        ],
+        "offsets": [
+            66.0,
+            58.0,
+            73.0,
+            66.0
+        ]
+    },
+    "identity": {
+        "sdr_commit": "826a602ddcaf58bf4081dc04b65ba15b82cc8c8a",
+        "reach_geom_hash": "33296ce4",
+        "grid_resolution": 100.0,
+        "epsg_code": 5070,
+        "dem_source_inputs_hash": "456e21f0",
+        "lulc_source_inputs_hash": "bebd6a08",
+        "lulc_lookup_dict_hash": "3ef0294c"
+    },
+    "properties": {
+        "grid": {
+            "rows": 124,
+            "cols": 139
+        },
+        "drainage_area_sqkm": 712334.12,
+        "bankfull_width_m": 310.1,
+        "upstream_reach_ids": [
+            1257411073114277
+        ],
+        "stream_order": 9,
+        "length_m": 10087.66,
+        "downstream_reach_id": 1257410962372414,
+        "upstream_mainstem_reach_id": 1257411073114277
+    },
+    "assets": {
+        "terrain": {
+            "href": "/home/slawson/repos/twod-fim-jobs/tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/dem.tif",
+            "checksum": "da13b951d438090a",
+            "source_url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",
+            "retrieved": "2026-09-04T13:59:37.592423",
+            "derived": false
+        },
+        "roughness": {
+            "href": "/home/slawson/repos/twod-fim-jobs/tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/roughness.tif",
+            "checksum": "1e7ea2eaacfaf11e",
+            "source_url": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/e2e_lulc_subset_coarse.tif",
+            "retrieved": "2026-09-04T13:59:37.613802",
+            "derived": false
+        },
+        "centerline": {
+            "href": "/home/slawson/repos/twod-fim-jobs/tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/reach.geojson",
+            "checksum": "847cde2bc8690164",
+            "source_url": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/reach_network.parquet",
+            "retrieved": "2026-09-04T13:59:37.632928",
+            "derived": false
+        },
+        "inflow_line": {
+            "href": "/home/slawson/repos/twod-fim-jobs/tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/inflow.geojson",
+            "checksum": "ca79e0ea26161dcd",
+            "source_url": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/reach_network.parquet",
+            "retrieved": "2026-09-04T13:59:37.634351",
+            "derived": false
+        },
+        "reach_centroid": {
+            "href": "/home/slawson/repos/twod-fim-jobs/tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/anchor.geojson",
+            "checksum": "268307e1b3245bab",
+            "source_url": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/reach_network.parquet",
+            "retrieved": "2026-09-04T13:59:37.637393",
+            "derived": false
+        },
+        "domain": {
+            "href": "/home/slawson/repos/twod-fim-jobs/tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/domain.geojson",
+            "checksum": "2a665e66377d253e",
+            "source_url": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/reach_network.parquet",
+            "retrieved": "2026-09-04T13:59:37.638872",
+            "derived": false
+        }
+    },
+    "warnings": []
+}

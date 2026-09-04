@@ -9,7 +9,6 @@ from twod_fim_jobs.hydraulic_solvers.common import check_run_exists, publish_sce
 from twod_fim_jobs.hydraulic_solvers.pre_process import process_bc_line
 from twod_fim_jobs.models.common import Asset, Domain, GridProperties
 from twod_fim_jobs.models.solvers import (
-    ConvergenceResult,
     HFixBC,
     PostProcessResult,
     QFixBC,
@@ -165,13 +164,12 @@ def test_publish_scenario_preserves_s3_double_slash(tmp_path: Path) -> None:
 
     # Create mock solve results
     solve_results = SolveScenarioResults(
-        convergence_results=[
-            ConvergenceResult(
-                volume_convergence=0.05, boundary_check=None, model_running=False
-            )
-        ],
+        volume_convergence=0.05,
         termination_condition=TerminationCondition.VOLUME_CONVERGENCE,
         wall_time=100.0,
+        max_depth=2.0,
+        median_depth=0.5,
+        extent_percent=0.25,
     )
 
     # Create mock post-process results
@@ -287,13 +285,12 @@ def test_write_model_results_to_s3_works(tmp_path: Path) -> None:
 
     # Create mock solve results
     solve_results = SolveScenarioResults(
-        convergence_results=[
-            ConvergenceResult(
-                volume_convergence=0.05, boundary_check=None, model_running=False
-            )
-        ],
+        volume_convergence=0.05,
         termination_condition=TerminationCondition.VOLUME_CONVERGENCE,
         wall_time=250.5,
+        max_depth=2.0,
+        median_depth=0.5,
+        extent_percent=0.25,
     )
 
     # Create mock post-process results
@@ -389,16 +386,15 @@ def test_check_model_skips_when_run_exists() -> None:
             zarr_store=None,
         ),
         properties=RunScenarioResults(
-            convergence_results=[
-                ConvergenceResult(
-                    volume_convergence=0.05, boundary_check=None, model_running=False
-                )
-            ],
+            volume_convergence=0.05,
             termination_condition=TerminationCondition.VOLUME_CONVERGENCE,
             wall_time=100.0,
             nominal_wse=1.0,
             us_discharge=100,
             sim_time=100.0,
+            max_depth=2.0,
+            median_depth=0.5,
+            extent_percent=0.25,
         ),
         warnings=[],
     )

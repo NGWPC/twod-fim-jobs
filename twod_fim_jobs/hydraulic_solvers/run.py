@@ -9,6 +9,7 @@ import numpy as np
 
 from twod_fim_jobs.consts import DEFAULT_RESROOT_LISFLOOD, STABILITY_WAIT
 from twod_fim_jobs.models.solvers import (
+    InundationMetricResults,
     TerminationCondition,
     BoundaryCheckResult,
     ConvergenceResult,
@@ -66,7 +67,6 @@ def watch_run(
 ) -> SolveScenarioResults:
     seen: set[Path] = set()
     prev_array: np.ndarray | None = None
-    metric_log = []
 
     dem_array, endpoint_indices = load_dem_and_get_pt_indices(
         run_scenario_inputs.centerline, run_scenario_inputs.terrain
@@ -79,6 +79,8 @@ def watch_run(
     t0 = time.perf_counter()
     elapsed_wall_time = 0
     termination_condition = TerminationCondition.MAX_SIMULATION_TIME
+    p = None
+    convergence_metrics = None
 
     while running or len(new_files) > 0:
         if not new_files:
@@ -87,7 +89,7 @@ def watch_run(
             if not _is_stable(p):
                 # break instead of continue so that we don't somehow get out of order
                 break
-            metrics, prev_array = check_status(
+            convergence_metrics, prev_array = check_status(
                 p,
                 prev_array,
                 run_scenario_inputs.inflow,
@@ -97,14 +99,14 @@ def watch_run(
                 running,
             )
             seen.add(p)
-            metric_log.append(metrics)
 
             converged = _is_converged(
-                metrics, run_scenario_inputs.run_config.volume_convergence_tolerance
+                convergence_metrics,
+                run_scenario_inputs.run_config.volume_convergence_tolerance,
             )
             edge_error = (
-                metrics.boundary_check is not None
-                and metrics.boundary_check.error is not None
+                convergence_metrics.boundary_check is not None
+                and convergence_metrics.boundary_check.error is not None
                 and not run_scenario_inputs.run_config.allow_water_on_edges
             )
             if converged or edge_error:
@@ -133,10 +135,28 @@ def watch_run(
                 seen
             )
         )
+
+    # Build results
+    if p is not None:
+        inundation_metrics = generate_inundation_metrics(Raster(p).data)
+    else:
+        inundation_metrics = InundationMetricResults(
+            max_depth=0.0,
+            median_depth=0.0,
+            extent_percent=0.0,
+        )
+    if convergence_metrics is not None:
+        volume_convergence = convergence_metrics.volume_convergence
+    else:
+        volume_convergence = 0
+
     return SolveScenarioResults(
-        convergence_results=metric_log,
+        volume_convergence=volume_convergence,
         termination_condition=termination_condition,
         wall_time=elapsed_wall_time,
+        max_depth=inundation_metrics.max_depth,
+        median_depth=inundation_metrics.median_depth,
+        extent_percent=inundation_metrics.extent_percent,
     )
 
 
@@ -182,6 +202,14 @@ def check_status(
     return (convergence, cur_array.copy())
 
 
+def generate_inundation_metrics(cur_array: np.ndarray) -> InundationMetricResults:
+    return InundationMetricResults(
+        max_depth=cur_array.max(),
+        median_depth=np.median(cur_array),
+        extent_percent=np.sum(cur_array > 0) / cur_array.size,
+    )
+
+
 def calculate_volume_convergence(
     cur_array: np.ndarray,
     prev_array: np.ndarray,
@@ -192,7 +220,7 @@ def calculate_volume_convergence(
     v1 = np.nansum(cur_array[cur_array > 0]) * (resolution**2)
     v2 = np.nansum(prev_array[prev_array > 0]) * (resolution**2)
     delta_volume = v1 - v2
-    relative_change = delta_volume / (inflow * save_interval_sec)
+    relative_change = abs(delta_volume) / (inflow * save_interval_sec)
     return relative_change
 
 

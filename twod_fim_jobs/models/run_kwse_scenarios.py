@@ -1,13 +1,13 @@
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
-from pydantic import field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from twod_fim_jobs.consts import (
-    DEFAULT_SIM_TIME_SECONDS,
-    DEFAULT_SIM_SAVE_INTERVAL_SECONDS,
     DEFAULT_MAX_WALL_TIME_SECONDS,
+    DEFAULT_SIM_SAVE_INTERVAL_SECONDS,
+    DEFAULT_SIM_TIME_SECONDS,
     DEFAULT_VOLUME_CONVERGENCE_THRESHOLD,
 )
-
 from twod_fim_jobs.hydraulic_solvers.identities import get_run_identity_hash
 from twod_fim_jobs.models.warnings import JobWarning
 
@@ -16,8 +16,13 @@ class HotStart(BaseModel):
     upstream_discharge: float = Field(
         description="Flows applied at the top of the reach in cms", examples=[1000.0]
     )
+    bc_type: Literal["ND", "KWSE"] = Field(
+        default="KWSE",
+        description="Kind of downstream condition the seed scenario ran with, this decides whether hotstart folder is nd=<slope> or kwse=<stage>. Defaults to KWSE.",
+        examples=["ND"],
+    )
     bc_value: float = Field(
-        description="Nominal water surface elevation at the bottom of the reach",
+        description="Value of the seed scenario's downstream condition: a normal-depth slope when bc_type is ND, a water surface elevation when it is KWSE",
         examples=[202.3],
     )
     identity_hash: str | None = Field(

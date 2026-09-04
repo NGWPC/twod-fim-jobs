@@ -54,12 +54,13 @@ Run a hydraulic solver for a set of user-defined scenarios.  A scenario is defin
 | Name | Type | Description |
 | --- | --- | --- |
 | `upstream_discharge` | `number` | Flows applied at the top of the reach in cms |
-| `bc_value` | `number` | Nominal water surface elevation at the bottom of the reach |
+| `bc_value` | `number` | Value of the seed scenario's downstream condition: a normal-depth slope when bc_type is ND, a water surface elevation when it is KWSE |
 
 #### Optional
 
 | Name | Type | Default | Description |
 | --- | --- | --- | --- |
+| `bc_type` | `string` | "KWSE" | Kind of downstream condition the seed scenario ran with, this decides whether hotstart folder is nd=<slope> or kwse=<stage>. Defaults to KWSE. |
 | `identity_hash` | `string` | "0c24be7a" | Hash of the run identity object. If none, assumed to be same as current scenario's. |
 <!-- /AUTO:hotstart_table -->
 

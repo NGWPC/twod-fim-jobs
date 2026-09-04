@@ -190,20 +190,64 @@ def test_end_to_end_docker(validate_e2e_image):
         "adaptive_step_algorithm_extent_min_acceptable": 0.075,
         "adaptive_step_algorithm_extent_max_acceptable": 0.2,
     }
-    results = run_docker_job(validate_e2e_image["run_nd"], payload)["plugin_results"]
+    nd_results_1 = run_docker_job(validate_e2e_image["run_nd"], payload)[
+        "plugin_results"
+    ]
+
+    # Run ND for next reach
+    # Just adding this to test that we can hot start from an ND run.
+    build_results = build_model_results[REACH_2]
+    manifest_path = (
+        MODEL_ROOT / str(REACH_2) / build_results["model_id"] / MANIFEST_FILENAME
+    )
+    payload = {
+        "model_manifest_path": str(manifest_path.resolve()),
+        "model_results_base_path": str(RESULTS_ROOT.resolve()),
+        "min_upstream_inflow": Q_LOW,
+        "max_upstream_inflow": Q_LOW + 1,
+        "delta_upstream_inflow": 2,
+        "volume_convergence_tolerance": 0.1,
+        "allow_water_on_edges": True,
+        "adaptive_step_algorithm_max_stage_min_acceptable": 0.5,
+        "adaptive_step_algorithm_max_stage_max_acceptable": 3,
+        "adaptive_step_algorithm_median_stage_min_acceptable": 0.5,
+        "adaptive_step_algorithm_median_stage_max_acceptable": 3,
+        "adaptive_step_algorithm_extent_min_acceptable": 0.075,
+        "adaptive_step_algorithm_extent_max_acceptable": 0.2,
+    }
+    nd_results_2 = run_docker_job(validate_e2e_image["run_nd"], payload)[
+        "plugin_results"
+    ]
 
     # Build KWSE scenarios
     scenarios = []
     last_q = None
     last_wse = None
-    for i in results.get("scenario_comparison_results", []):
+    for i in nd_results_1.get("scenario_comparison_results", []):
         manifest = RunScenarioManifest.model_validate_json(
             read_json(i["trial_scenario_manifest"])
         )
         if last_q is not None:
-            hot_start = {"upstream_discharge": last_q, "bc_value": last_wse}
+            hot_start = {
+                "upstream_discharge": last_q,
+                "bc_value": last_wse,
+                "bc_type": "KWSE",
+            }
         else:
-            hot_start = None
+            # Hot start from lowest ND run
+            manifest_nd_low = nd_results_2["scenario_comparison_results"][0][
+                "trial_scenario_manifest"
+            ]
+            manifest_nd_low = RunScenarioManifest.model_validate_json(
+                read_json(manifest_nd_low)
+            )
+            slope = manifest_nd_low.inputs.nd_bcs[0].value
+            hot_start = {
+                "upstream_discharge": manifest_nd_low.properties.us_discharge,
+                "bc_value": slope,
+                "bc_type": "ND",
+            }
+
         scenario = {
             "upstream_discharge": manifest.properties.us_discharge,
             "bc_value": manifest.properties.nominal_wse,

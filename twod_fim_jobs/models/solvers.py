@@ -25,6 +25,14 @@ from twod_fim_jobs.models.common import Asset, Domain, GridProperties
 from twod_fim_jobs.models.warnings import JobWarning
 from twod_fim_jobs.utils.naming import get_scenario_code, get_scenario_dir_name
 
+VolumeConvergence = Annotated[
+    float,
+    Field(
+        description="Ratio of net volume change to total inflow volume over the last mass interval; lower is more converged.",
+        examples=[0.02],
+    ),
+]
+
 
 class SolverInfo(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -120,10 +128,7 @@ class BoundaryCheckResult(BaseModel):
 
 
 class ConvergenceResult(BaseModel):
-    volume_convergence: float = Field(
-        description="Ratio of net volume change to total inflow volume over the last mass interval; lower is more converged.",
-        examples=[0.02],
-    )
+    volume_convergence: VolumeConvergence
     boundary_check: BoundaryCheckResult | None = Field(
         default=None,
         description="Edge-boundary violation diagnostics; None if the check was not performed.",
@@ -132,6 +137,12 @@ class ConvergenceResult(BaseModel):
         description="True if the solver was still running at this print interval; False if it had already terminated.",
         examples=[True],
     )
+
+
+class InundationMetricResults(BaseModel):
+    max_depth: float
+    median_depth: float
+    extent_percent: float
 
 
 class _BCBase(BaseModel):
@@ -220,17 +231,18 @@ class PostProcessResult(BaseModel):
 
 
 class SolveScenarioResults(BaseModel):
-    convergence_results: list[ConvergenceResult]
+    volume_convergence: VolumeConvergence
     termination_condition: TerminationCondition
     wall_time: float
+    max_depth: float
+    median_depth: float
+    extent_percent: float
 
 
 class RunScenarioResults(BaseModel):
     """Convenience holder for solver results."""
 
-    convergence_results: list[ConvergenceResult] = Field(
-        description="Convergence status after each raster output"
-    )
+    volume_convergence: VolumeConvergence
     termination_condition: TerminationCondition = Field(
         description="The reason the simulation ended."
     )
@@ -248,6 +260,18 @@ class RunScenarioResults(BaseModel):
     sim_time: float = Field(
         description="Simulation time (model time)in seconds at the final timestep",
         examples=[960.0],
+    )
+    max_depth: float = Field(
+        description="Maximum flood depth in the final depth raster.",
+        examples=[10.0],
+    )
+    median_depth: float = Field(
+        description="Median flood depth in the final depth raster.",
+        examples=[1.3],
+    )
+    extent_percent: float = Field(
+        description="Ratio of inundated area to model domain area.",
+        examples=[0.23],
     )
 
     @field_validator("nominal_wse")

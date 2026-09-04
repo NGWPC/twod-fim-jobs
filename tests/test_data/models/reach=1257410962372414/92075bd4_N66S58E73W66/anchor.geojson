@@ -3,6 +3,6 @@
 "name": "anchor",
 "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::5070" } },
 "features": [
-{ "type": "Feature", "properties": { "x": -2058170.0, "y": 2809120.0 }, "geometry": { "type": "Point", "coordinates": [ -2058170.0, 2809120.0 ] } }
+{ "type": "Feature", "properties": { "x": -2053200.0, "y": 2804300.0 }, "geometry": { "type": "Point", "coordinates": [ -2053200.0, 2804300.0 ] } }
 ]
 }

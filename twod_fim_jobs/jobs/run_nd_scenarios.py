@@ -65,9 +65,11 @@ def _reuse_finished_runs(
     may sit squarely in the band for the next one, and it is already on disk.
 
     Response rises with discharge, so above the reference the outcomes fall in
-    order: too low, then in band, then too high. That is why the last accept is
-    the furthest free advance, the last reject_low is the position to measure the
-    next step from, and the first reject_high is the ceiling.
+    order: too low, then in band, then too high. The scan therefore runs downward
+    from the highest simulated discharge and stops at the first verdict that is
+    not reject_high, since that is either the furthest advance available or proof
+    that nothing in memory clears the floor. Each reject_high seen on the way
+    down lowers the ceiling.
     """
     accepted: list[CompletedScenario] = []
     while True:
@@ -82,18 +84,24 @@ def _reuse_finished_runs(
         ceiling_q: int | None = None
         current = ref
 
-        for q in candidates:
+        # Descending, because the furthest advance is what the pass is after: the
+        # highest accepted discharge needs no evidence from anything below it.
+        # Scanning down, every candidate above the band is reject_high, so the
+        # first verdict that is not ends the scan -- an accept is the furthest
+        # advance, and a reject_low means the band holds nothing at all.
+        for q in reversed(candidates):
             logger.info(f"Re-judging simulated discharge {q} against reference {ref_q}")
             outcome = compare_scenario_changes(
                 done[q].manifest, inputs, ref.manifest
             ).result
+            if outcome == "reject_high":
+                ceiling_q = q
+                continue
             if outcome == "accept":
                 best = done[q]
-            elif outcome == "reject_high":
-                if ceiling_q is None:
-                    ceiling_q = q
             else:
                 current = done[q]
+            break
 
         if best is None:
             return Reuse(ref, accepted, ceiling_q, current)

@@ -180,15 +180,21 @@ The bounds matter because the response curve is concave, so a linear estimate un
 Whenever the reference advances, every finished run above it is re-judged against the new reference before anything else is simulated. A comparison is arithmetic over two manifests, so this costs nothing, and a discharge that was too large a step from one reference frequently sits inside the bands for the next one — in which case it becomes a library entry that has already been paid for and is published retroactively.
 
 ```
-accept 136, then re-judge what is already in memory
+accept 300, then re-judge what is already in memory, highest first
 
-  150    3.40 − 2.92 = +0.48   too small   →  becomes the position
-  200    4.60 − 2.92 = +1.68   too large   →  becomes the ceiling
+  in memory   290  300  301  312  334  379  468  647
+  eligible                   ---  ---  ---  ---  ---   above the reference
 
-  no simulation, and the next proposal is measured from 150
+  647   too large   →  ceiling 647
+  468   too large   →  ceiling 468
+  379   too large   →  ceiling 379
+  334   IN BAND     →  furthest free advance, and the scan stops here
+
+  301 and 312 are never judged: they sit below a discharge already
+  accepted, so nothing they could say would advance the reference further
 ```
 
-Because response rises with discharge, the outcomes above the reference always fall in the order too small, in band, too large. The last acceptance is therefore the furthest free advance, the last too-small run is the new position, and the first too-large run is the new ceiling, all from a single pass.
+Because response rises with discharge, the outcomes above the reference always fall in the order too small, in band, too large. The scan runs downward from the highest simulated discharge for that reason: an accept is the furthest advance available the moment it is found, and everything below it is either a smaller advance or too small a step, so neither can change the answer. Each too-large verdict on the way down lowers the ceiling, and the first verdict that is not too large ends the pass — as an acceptance, or, if nothing clears the floor, as the new position.
 
 ### What is published
 

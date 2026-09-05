@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import twod_fim_jobs.jobs.run_nd_scenarios as run_nd
 from twod_fim_jobs.jobs.run_nd_scenarios import (
     RunNDScenariosJob,
     _next_trial_q,
@@ -300,6 +301,29 @@ def test_the_free_pass_reports_the_lowest_run_still_too_high():
     reuse = _reuse_finished_runs(ref, done, RUN_ND_DEFAULTS)
     assert reuse.ceiling_q == 400, "the lowest proven-too-high run bounds proposals"
     assert reuse.accepted == []
+
+
+def test_the_free_pass_stops_at_the_highest_run_it_can_accept(monkeypatch):
+    """Scanning down, an accept at the top makes everything below it irrelevant:
+    it is already the furthest advance, so those comparisons are never made."""
+    ref = _completed(100, 2.00, 0.50, 1.00)
+    done = {
+        100: ref,
+        200: _completed(200, 2.80, 0.85, 1.10),
+        300: _completed(300, 3.00, 0.90, 1.12),
+    }
+    compared: list[int] = []
+    real = run_nd.compare_scenario_changes
+
+    def spy(trial, inputs, ref_manifest=None, **kwargs):
+        compared.append(trial.properties.us_discharge)
+        return real(trial, inputs, ref_manifest, **kwargs)
+
+    monkeypatch.setattr(run_nd, "compare_scenario_changes", spy)
+    reuse = _reuse_finished_runs(ref, done, RUN_ND_DEFAULTS)
+
+    assert reuse.accepted == [done[300]]
+    assert 200 not in compared, "200 is below an accepted run and never judged"
 
 
 def test_runs_at_or_below_the_reference_are_ignored():

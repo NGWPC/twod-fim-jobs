@@ -93,46 +93,116 @@ Iteratively runs the model for a reach using a normal depth downstream boundary 
 
 ## Adaptive Step Algorithm
 
-The job establishes a library of hydraulically distinct discharge scenarios by walking the reach's actual response curve rather than sampling at a fixed interval. This produces dense sampling at hydraulic transitions (e.g., overtopping, floodplain spillover) and sparse sampling where successive maps would be near-identical.
+The job builds a library of hydraulically distinct discharges by walking the reach's own response curve instead of sampling at a fixed interval, so that sampling is dense where the reach changes quickly — overtopping, floodplain spillover — and sparse where consecutive maps would be near-identical. Because every trial is a full simulation, the algorithm is written to spend simulations only on discharges whose outcome is not already implied by something it has run.
 
-### State Variables
+### State
 
-Two state variables evolve independently throughout the algorithm:
+Four pieces of state evolve through the sweep:
 
-- **`q_current`** — the discharge used to warm-start the next trial run. Advances on `accept` and `reject_low`; holds on `reject_high`.
-- **`q_accepted`** (the reference snapshot) — the comparison baseline for every trial. Advances only on `accept`.
+- **reference** — the accepted scenario the acceptance bands are measured from. It advances only on `accept`, so the criteria always describe cumulative change since the last library entry rather than the change between consecutive runs.
+- **position** — the discharge the next step is measured from, and the depth grid the next run warm-starts from. It advances on `accept` and on `reject_low`, because a run that was too small a step is still the closest starting point available.
+- **ceiling** — the lowest discharge proven too high for the current reference. Response rises with discharge, so a rejection at one discharge proves every larger one is also too high, and the ceiling is reset whenever the reference advances.
+- **finished runs** — every scenario simulated during the job, published or not, held in memory.
 
-This separation means the acceptance criteria measure *cumulative* change since the last accepted library entry, not the incremental change between consecutive runs.
+  q ────────●──────────────────────●──────────────────────○───────────►
+           136                    150                    200
+        reference              position                ceiling
+                                   ├──────────────────────┤
+                                    the next run goes here
+
+  136   accepted, published, and what every comparison is measured from
+  150   too small a step from 136, so it moved the position and now
+        warm-starts the next run — but it was not published
+  200   too large a step from 136, so nothing at or above it is worth
+        simulating until the reference advances past it
+
+  The next discharge is at least min_delta_q above 150 and strictly
+  below 200. When no discharge satisfies both, the bracket has closed.
+
 
 ### Step Sequence
 
-1. Cold-start the model at `min_upstream_inflow` → save as the first accepted snapshot.
-2. Propose `q_trial = q_current + Δq`. Run the model warm-started from `q_current`'s depth raster.
-3. Compare the trial's response to the last accepted snapshot on three criteria:
+The sweep cold-starts at `min_upstream_inflow`, publishes it as the first library entry, and then repeats the following until it reaches `max_upstream_inflow`, which is always run and always kept.
 
-| Criterion | Quantity | Acceptance band |
+1. Choose the next discharge from the position, the current step and the ceiling (below).
+2. Simulate it, warm-started from the position's depth grid, and keep it in memory without publishing.
+3. Compare it against the **reference** on three criteria, each an increase between the two scenarios' published metrics:
+
+| Criterion | Quantity | Accepted when |
 | --- | --- | --- |
-| Max stage | 95th-percentile depth difference over wet cells | `MAX_STAGE_MIN_ACCEPTABLE` ≤ Δ ≤ `MAX_STAGE_MAX_ACCEPTABLE` |
-| Median stage | Median depth difference over wet cells | `MEDIAN_STAGE_MIN_ACCEPTABLE` ≤ Δ ≤ `MEDIAN_STAGE_MAX_ACCEPTABLE` |
-| Extent | Fractional change in flooded cell count relative to accepted snapshot | `EXTENT_MIN_ACCEPTABLE` ≤ Δ ≤ `EXTENT_MAX_ACCEPTABLE` |
+| Max depth | increase in maximum depth over wet cells, m | inside `ld_q_max_depth_increase_range` |
+| Median depth | increase in median depth over wet cells, m | inside `ld_q_median_depth_increase_range` |
+| Flooded area | percent increase in inundated area | inside `ld_q_flooded_area_prcnt_increase_range` |
 
-4. Apply the combined verdict — `reject_high` takes priority:
-   - **`reject_high`** (any criterion above its ceiling): hold `q_current`, shrink `Δq` by `SHRINK_FACTOR`, retry.
-   - **`accept`** (any criterion in band, none above ceiling): save snapshot, advance both `q_current` and `q_accepted` to `q_trial`.
-   - **`reject_low`** (all criteria below their floor): advance `q_current` to `q_trial` without saving a snapshot, grow `Δq` by `GROW_FACTOR`.
-5. Repeat until `q_trial` reaches `max_upstream_inflow`, then run that discharge unconditionally as the final scenario.
+4. Apply the verdict, where `reject_high` takes priority because any criterion over its ceiling means the step was too large:
+   - **`reject_high`** — record the discharge as the ceiling and shrink the step.
+   - **`accept`** — publish the scenario, advance the reference and the position to it, clear the ceiling, then re-judge the finished runs (below).
+   - **`reject_low`** — advance the position without publishing, and grow the step.
 
-The baseline (`min_upstream_inflow`) and final (`max_upstream_inflow`) scenarios are always included in the output regardless of the acceptance verdict.
+### Choosing the next discharge
+
+A proposal is the position plus the current step, except that it may never reach the ceiling. Proposing a discharge at or above a known-too-high one would spend a simulation learning what monotonicity already guarantees, so such a proposal is bisected into the bracket instead, and never placed closer than `adaptive_step_min_delta_q` to the position.
+
+```
+proposal = position + Δq
+
+  below the ceiling        take it
+  at or above the ceiling  bisect (position, ceiling), floored at min_delta_q
+  nothing fits             the bracket has closed
+```
+
+When the bracket closes there is no untried discharge between the position and something already proven too high, which means no step at least `min_delta_q` wide lands inside the bands. The sweep then accepts the ceiling run itself, since it is the smallest step known to clear the band and is already simulated. That library therefore contains one step wider than the bands allow, which is not a defect in the sweep but a sign that the bands cannot be met at this reach without a smaller minimum step.
+
+### Sizing the step
+
+Rather than halving or growing by a constant, each criterion is asked what factor would place it on the middle of its band, and the smallest answer is used. One rule serves both directions: a step that was too large has some criterion over its ceiling and therefore a factor below one, while a step that was too small has every criterion under its floor, where the smallest factor is the least growth that reaches any band — which is what acceptance needs, since only one criterion must clear its floor. Taking the minimum is also what keeps the correction safe, because scaling by it moves the binding criterion to its midpoint and leaves every other at or below its own.
+
+```
+                         max depth   median  flooded area     step
+  max depth too big           0.67     1.00          1.00   x 0.67
+  median too big              1.00     0.62          1.00   x 0.62
+  flooded area too big        1.00     1.00          0.62   x 0.62
+  all three too small         2.00     1.88          1.56   x 1.50   clamped
+
+  Every criterion is asked every time, and a different one binds in each
+  row. The last row is the one worth reading twice: all three want to
+  grow, and the SMALLEST growth wins, because acceptance needs only one
+  criterion above its floor. Growing by 2.00, which max depth asked for,
+  would carry the other two straight past their ceilings.
+```
+
+A criterion whose measured increase is zero or negative is skipped rather than divided by, and if that is true of all three there is no signal to size from, so the step simply grows by the grow factor.
+
+The bounds matter because the response curve is concave, so a linear estimate under-corrects, and a single comparison is thin evidence for a large jump.
+
+### Reusing finished runs
+
+Whenever the reference advances, every finished run above it is re-judged against the new reference before anything else is simulated. A comparison is arithmetic over two manifests, so this costs nothing, and a discharge that was too large a step from one reference frequently sits inside the bands for the next one — in which case it becomes a library entry that has already been paid for and is published retroactively.
+
+```
+accept 136, then re-judge what is already in memory
+
+  150    3.40 − 2.92 = +0.48   too small   →  becomes the position
+  200    4.60 − 2.92 = +1.68   too large   →  becomes the ceiling
+
+  no simulation, and the next proposal is measured from 150
+```
+
+Because response rises with discharge, the outcomes above the reference always fall in the order too small, in band, too large. The last acceptance is therefore the furthest free advance, the last too-small run is the new position, and the first too-large run is the new ceiling, all from a single pass.
+
+### What is published
+
+Only the scenarios the sweep accepts, plus the baseline and the final maximum discharge, are uploaded. A rejected trial is search overhead rather than a library entry, and publishing it would leave the library denser than it was asked to be and pay storage for every artifact. Rejected runs stay in the working directory for the life of the job, where they still serve as warm-start sources and as free candidates for later re-judging.
 
 ### Threshold Constants
 
-All acceptance thresholds and grow/shrink factors are defined in `twod_fim_jobs/consts.py` and prefixed `ADAPTIVE_STEP_ALGORITHM_`.
+The acceptance ranges and the shrink and grow factors are job inputs, defaulting to the values in `twod_fim_jobs/consts.py`.
 
 ### Limitations
 
-- Runs are strictly sequential — each simulation must finish before the next is proposed, so parallelism is not possible.
-- The method does not guarantee dense sampling through all floodplain-spillover transitions; those are governed by the normal-depth downstream boundary condition, which may not capture all backwater effects.
-- Strong safeguards against runaway iterations are required; an edge-error termination aborts the full algorithm.
+- Runs are strictly sequential, since each simulation warm-starts from the previous one, so the sweep cannot be parallelised.
+- Dense sampling through floodplain-spillover transitions is not guaranteed, because those are governed by the normal-depth downstream boundary condition, which may not capture all backwater effects.
+- An edge-error termination aborts the whole sweep, and the reach is left with whatever it had published up to that point.
 
 ## Performance
 

@@ -157,7 +157,9 @@ def publish_scenario(completed: CompletedScenario) -> RunScenarioManifest:
 
     manifest, processed = completed.manifest, completed.processed
     copy_file(processed.depth_path, manifest.assets.depth.href)
-    copy_file(processed.inundation_polygon_path, manifest.assets.inundation_polygon.href)
+    copy_file(
+        processed.inundation_polygon_path, manifest.assets.inundation_polygon.href
+    )
     copy_file(processed.stl_path, manifest.assets.stage_transfer_line.href)
     if processed.zarr_path is not None and manifest.assets.zarr_store is not None:
         copy_dir(processed.zarr_path, manifest.assets.zarr_store.href)

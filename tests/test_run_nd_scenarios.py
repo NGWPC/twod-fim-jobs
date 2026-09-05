@@ -362,4 +362,6 @@ def test_the_scale_is_bounded_by_the_shrink_and_grow_factors(comparison, expecte
 
 def test_a_step_that_moved_nothing_grows():
     """No positive increase means no ratio to compute; the only useful move is up."""
-    assert _step_scale(_comparison(0.0, 0.0, 0.0), RUN_ND_DEFAULTS) == pytest.approx(1.5)
+    assert _step_scale(_comparison(0.0, 0.0, 0.0), RUN_ND_DEFAULTS) == pytest.approx(
+        1.5
+    )

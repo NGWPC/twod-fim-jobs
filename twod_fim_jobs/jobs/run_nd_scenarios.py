@@ -72,13 +72,17 @@ def _reuse_finished_runs(
     accepted: list[CompletedScenario] = []
     while True:
         ref_q = ref.manifest.properties.us_discharge
+        candidates = [q for q in sorted(done) if q > ref_q]
+        if candidates:
+            logger.info(
+                f"Free pass: re-judging finished discharges {candidates} "
+                f"against reference {ref_q}"
+            )
         best: CompletedScenario | None = None
         ceiling_q: int | None = None
         current = ref
 
-        for q in sorted(done):
-            if q <= ref_q:
-                continue
+        for q in candidates:
             outcome = compare_scenario_changes(
                 done[q].manifest, inputs, ref.manifest, log_results=False
             ).result
@@ -92,6 +96,13 @@ def _reuse_finished_runs(
 
         if best is None:
             return Reuse(ref, accepted, ceiling_q, current)
+        # Re-run the winner's comparison with logging on, so a free advance
+        # reads exactly like a simulated trial.
+        compare_scenario_changes(best.manifest, inputs, ref.manifest)
+        logger.info(
+            "Accepting already-simulated discharge "
+            f"{best.manifest.properties.us_discharge}"
+        )
         accepted.append(best)
         ref = best
 
@@ -104,8 +115,6 @@ def _take_free_advances(
     """Run the free pass and publish whatever it accepts."""
     reuse = _reuse_finished_runs(ref, done, inputs)
     for scenario in reuse.accepted:
-        q = scenario.manifest.properties.us_discharge
-        logger.info(f"Accepting already-simulated discharge {q} against the new reference")
         publish_scenario(scenario)
     ceiling = done.get(reuse.ceiling_q) if reuse.ceiling_q is not None else None
     return reuse.ref, reuse.current, reuse.ceiling_q, ceiling
@@ -291,7 +300,9 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 # No untried discharge is left below the ceiling, so the smallest
                 # step that clears the band is the ceiling run itself. Taking it
                 # keeps the library from growing denser than it was asked to be.
-                logger.info(f"Bracket closed; accepting {ceiling_q} as the smallest step")
+                logger.info(
+                    f"Bracket closed; accepting {ceiling_q} as the smallest step"
+                )
                 publish_scenario(ceiling_scenario)
                 ref_scenario = current_scenario = ceiling_scenario
                 (

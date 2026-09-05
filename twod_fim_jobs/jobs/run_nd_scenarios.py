@@ -51,6 +51,11 @@ class Reuse(NamedTuple):
     accepted: list[CompletedScenario]
     ceiling_q: int | None
     current: CompletedScenario
+    # Width of the last accepted step, reference to trial. None if nothing was
+    # accepted. This is measured evidence of what fits at this discharge, which
+    # is why it becomes the next step rather than whatever the sweep was using
+    # further down the curve.
+    last_gap: int | None
 
 
 def _reuse_finished_runs(
@@ -72,6 +77,7 @@ def _reuse_finished_runs(
     down lowers the ceiling.
     """
     accepted: list[CompletedScenario] = []
+    last_gap: int | None = None
     while True:
         ref_q = ref.manifest.properties.us_discharge
         candidates = [q for q in sorted(done) if q > ref_q]
@@ -104,11 +110,12 @@ def _reuse_finished_runs(
             break
 
         if best is None:
-            return Reuse(ref, accepted, ceiling_q, current)
+            return Reuse(ref, accepted, ceiling_q, current, last_gap)
         logger.info(
             "Accepting already-simulated discharge "
             f"{best.manifest.properties.us_discharge}"
         )
+        last_gap = best.manifest.properties.us_discharge - ref_q
         accepted.append(best)
         ref = best
 
@@ -117,17 +124,19 @@ def _take_free_advances(
     ref: CompletedScenario,
     done: dict[int, CompletedScenario],
     inputs: RunNDScenariosInputs,
-) -> tuple[CompletedScenario, CompletedScenario, int | None, CompletedScenario | None]:
+) -> tuple[Reuse, CompletedScenario | None]:
     """Run the free pass and publish whatever it accepts."""
     reuse = _reuse_finished_runs(ref, done, inputs)
     for scenario in reuse.accepted:
         publish_scenario(scenario)
     ceiling = done.get(reuse.ceiling_q) if reuse.ceiling_q is not None else None
-    return reuse.ref, reuse.current, reuse.ceiling_q, ceiling
+    return reuse, ceiling
 
 
 def _step_scale(
-    comparison: AdaptiveStepComparisonResults, inputs: RunNDScenariosInputs
+    comparison: AdaptiveStepComparisonResults,
+    inputs: RunNDScenariosInputs,
+    bracketed: bool,
 ) -> float:
     """How far to scale the discharge step, from the response it just produced.
 
@@ -141,9 +150,14 @@ def _step_scale(
     binding criterion to its midpoint and every other one to at or below its own,
     so nothing is pushed over a ceiling in the course of fixing something else.
 
-    The shrink and grow factors bound it. The response curve is concave, so a
-    linear estimate under-corrects, and one comparison is thin evidence for a
-    large jump.
+    The shrink factor always bounds it, and the grow factor bounds it only while
+    a ceiling exists. With a ceiling, an oversized proposal is discarded and
+    bisected into the bracket anyway, so capping growth changes nothing. Without
+    one the step is the whole search, and capping it throws away the measurement
+    that was just paid for: the curve is concave, so the secant already asks for
+    less growth than the reach needs, and clamping it compounds that error rather
+    than guarding against it. Overshooting is self-correcting, since the trial
+    becomes the ceiling and the next proposal is bisected back into range.
     """
     bands = (
         (comparison.max_depth_increase, inputs.ld_q_max_depth_increase_range),
@@ -158,10 +172,10 @@ def _step_scale(
     ]
     if not scales:
         return inputs.adaptive_step_algorithm_grow_factor
-    return min(
-        max(min(scales), inputs.adaptive_step_algorithm_shrink_factor),
-        inputs.adaptive_step_algorithm_grow_factor,
-    )
+    scale = max(min(scales), inputs.adaptive_step_algorithm_shrink_factor)
+    if bracketed:
+        return min(scale, inputs.adaptive_step_algorithm_grow_factor)
+    return scale
 
 
 def _next_trial_q(
@@ -274,37 +288,54 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 logger.info(f"Rejecting trial discharge {q_trial}: high")
                 ceiling_q, ceiling_scenario = q_trial, trial_scenario
                 delta_us_discharge = _scale_delta(
-                    delta_us_discharge, _step_scale(scenario_comparison, inputs)
+                    delta_us_discharge,
+                    _step_scale(scenario_comparison, inputs, ceiling_q is not None),
                 )
 
             elif scenario_comparison.result == "accept":
                 logger.info(f"Accepting trial discharge {q_trial}")
                 publish_scenario(trial_scenario)
+                # The width that earned the verdict is reference to trial, which
+                # is not the step when the proposal was bisected or the position
+                # had moved. That width is what fits here, so it becomes the step.
+                delta_us_discharge = (
+                    q_trial - ref_scenario.manifest.properties.us_discharge
+                )
                 ref_scenario = current_scenario = trial_scenario
                 ceiling_q, ceiling_scenario = None, None
-                (
-                    ref_scenario,
-                    current_scenario,
-                    ceiling_q,
-                    ceiling_scenario,
-                ) = _take_free_advances(ref_scenario, done, inputs)
+                reuse, ceiling_scenario = _take_free_advances(
+                    ref_scenario, done, inputs
+                )
+                ref_scenario, current_scenario = reuse.ref, reuse.current
+                ceiling_q = reuse.ceiling_q
+                if reuse.last_gap is not None:
+                    delta_us_discharge = reuse.last_gap
 
             elif scenario_comparison.result == "reject_low":
                 logger.info(f"Rejecting trial discharge {q_trial}: low")
                 current_scenario = trial_scenario
                 delta_us_discharge = _scale_delta(
-                    delta_us_discharge, _step_scale(scenario_comparison, inputs)
+                    delta_us_discharge,
+                    _step_scale(scenario_comparison, inputs, ceiling_q is not None),
                 )
 
             delta_us_discharge = max(
                 inputs.adaptive_step_min_delta_q, delta_us_discharge
             )
             current_q = current_scenario.manifest.properties.us_discharge
-            next_q = _next_trial_q(
-                current_q,
+            # An unbracketed secant off a barely-moved trial can ask for a jump
+            # that would clear the rest of the range in one go. Half of what is
+            # left still leaves room to sample above this point. The step itself
+            # is left alone; only this proposal is bounded.
+            step = min(
                 delta_us_discharge,
-                ceiling_q,
-                inputs.adaptive_step_min_delta_q,
+                max(
+                    inputs.adaptive_step_min_delta_q,
+                    (inputs.max_upstream_inflow - current_q) // 2,
+                ),
+            )
+            next_q = _next_trial_q(
+                current_q, step, ceiling_q, inputs.adaptive_step_min_delta_q
             )
 
             if next_q is None and ceiling_scenario is not None:
@@ -315,13 +346,18 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                     f"Bracket closed; accepting {ceiling_q} as the smallest step"
                 )
                 publish_scenario(ceiling_scenario)
+                delta_us_discharge = (
+                    ceiling_scenario.manifest.properties.us_discharge
+                    - ref_scenario.manifest.properties.us_discharge
+                )
                 ref_scenario = current_scenario = ceiling_scenario
-                (
-                    ref_scenario,
-                    current_scenario,
-                    ceiling_q,
-                    ceiling_scenario,
-                ) = _take_free_advances(ref_scenario, done, inputs)
+                reuse, ceiling_scenario = _take_free_advances(
+                    ref_scenario, done, inputs
+                )
+                ref_scenario, current_scenario = reuse.ref, reuse.current
+                ceiling_q = reuse.ceiling_q
+                if reuse.last_gap is not None:
+                    delta_us_discharge = reuse.last_gap
                 current_q = current_scenario.manifest.properties.us_discharge
                 next_q = current_q + delta_us_discharge
 

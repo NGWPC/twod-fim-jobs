@@ -303,6 +303,27 @@ def test_the_free_pass_reports_the_lowest_run_still_too_high():
     assert reuse.accepted == []
 
 
+def test_the_free_pass_reports_the_width_of_the_last_accepted_step():
+    """The step that earned the verdict is reference to trial, and it is the
+    only measured evidence of what fits at the new reference. Chained advances
+    report the LAST gap, not the total distance travelled: 100 -> 300 was never
+    judged in band, and using it would oversize every step after a free pass."""
+    ref = _completed(100, 2.00, 0.50, 1.00)
+    first = _completed(200, 3.00, 0.90, 1.12)
+    second = _completed(300, 4.00, 1.30, 1.25)
+    done = {100: ref, 200: first, 300: second}
+
+    reuse = _reuse_finished_runs(ref, done, RUN_ND_DEFAULTS)
+    assert reuse.accepted == [first, second]
+    assert reuse.last_gap == 100, "300 was accepted against 200, not against 100"
+
+
+def test_the_free_pass_reports_no_gap_when_it_accepts_nothing():
+    ref = _completed(100, 2.00, 0.50, 1.00)
+    done = {100: ref, 400: _completed(400, 6.00, 3.00, 2.00)}
+    assert _reuse_finished_runs(ref, done, RUN_ND_DEFAULTS).last_gap is None
+
+
 def test_the_free_pass_stops_at_the_highest_run_it_can_accept(monkeypatch):
     """Scanning down, an accept at the top makes everything below it irrelevant:
     it is already the furthest advance, so those comparisons are never made."""
@@ -352,14 +373,14 @@ def _comparison(max_depth: float, median_depth: float, area_prcnt: float):
 def test_an_oversized_step_is_scaled_towards_the_band_midpoint():
     """max depth came in at 1.40 against a band of 0.75-1.25, midpoint 1.00.
     A blind halving would go to 0.50; the measurement asks for 0.71."""
-    scale = _step_scale(_comparison(1.40, 0.30, 11.0), RUN_ND_DEFAULTS)
+    scale = _step_scale(_comparison(1.40, 0.30, 11.0), RUN_ND_DEFAULTS, True)
     assert scale == pytest.approx(1.00 / 1.40, rel=1e-6)
 
 
 def test_an_undersized_step_grows_by_the_least_a_criterion_needs():
     """Accept needs only one criterion above its floor, so the smallest growth
     that reaches a band is enough. Area needs 12.5/10.0; depth would need 5x."""
-    scale = _step_scale(_comparison(0.20, 0.05, 10.0), RUN_ND_DEFAULTS)
+    scale = _step_scale(_comparison(0.20, 0.05, 10.0), RUN_ND_DEFAULTS, False)
     assert scale == pytest.approx(12.5 / 10.0, rel=1e-6)
 
 
@@ -367,25 +388,35 @@ def test_the_binding_criterion_is_whichever_asks_for_least():
     """Scaling by the minimum moves that criterion to its midpoint and leaves
     every other at or below its own, so fixing one cannot break another."""
     # depth asks for 1.11x, median for 1.25x, area for 0.625x. Area binds.
-    over_on_area = _step_scale(_comparison(0.90, 0.30, 20.0), RUN_ND_DEFAULTS)
+    over_on_area = _step_scale(_comparison(0.90, 0.30, 20.0), RUN_ND_DEFAULTS, True)
     assert over_on_area == pytest.approx(12.5 / 20.0, rel=1e-6)
 
 
-@pytest.mark.parametrize(
-    "comparison, expected",
-    [
-        (_comparison(99.0, 99.0, 99.0), 0.5),  # wildly over: clamped to shrink
-        (_comparison(0.001, 0.001, 0.001), 1.5),  # barely moved: clamped to grow
-    ],
-)
-def test_the_scale_is_bounded_by_the_shrink_and_grow_factors(comparison, expected):
-    """One comparison is thin evidence for a large jump, and an unbounded factor
-    could propose past max_upstream_inflow and truncate the library."""
-    assert _step_scale(comparison, RUN_ND_DEFAULTS) == pytest.approx(expected)
+@pytest.mark.parametrize("bracketed", [True, False])
+def test_shrinking_is_always_bounded_by_the_shrink_factor(bracketed):
+    """Nothing below the shrink factor, with or without a ceiling."""
+    scale = _step_scale(_comparison(99.0, 99.0, 99.0), RUN_ND_DEFAULTS, bracketed)
+    assert scale == pytest.approx(0.5)
+
+
+def test_growth_is_capped_while_a_ceiling_bounds_the_search():
+    """With a ceiling the proposal is bisected into the bracket anyway, so a
+    large factor would be discarded; the grow factor still caps it."""
+    scale = _step_scale(_comparison(0.001, 0.001, 0.001), RUN_ND_DEFAULTS, True)
+    assert scale == pytest.approx(1.5)
+
+
+def test_growth_is_uncapped_once_nothing_bounds_the_search():
+    """With no ceiling the step IS the search. The reach barely moved, so the
+    measurement asks for a large jump and gets it -- capping it at 1.5 is what
+    made the sweep walk 647 -> 954 in five simulations instead of one."""
+    scale = _step_scale(_comparison(0.001, 0.001, 0.001), RUN_ND_DEFAULTS, False)
+    assert scale == pytest.approx(0.375 / 0.001), "median binds, and is not clamped"
+    assert scale > RUN_ND_DEFAULTS.adaptive_step_algorithm_grow_factor
 
 
 def test_a_step_that_moved_nothing_grows():
     """No positive increase means no ratio to compute; the only useful move is up."""
-    assert _step_scale(_comparison(0.0, 0.0, 0.0), RUN_ND_DEFAULTS) == pytest.approx(
-        1.5
-    )
+    assert _step_scale(
+        _comparison(0.0, 0.0, 0.0), RUN_ND_DEFAULTS, False
+    ) == pytest.approx(1.5)

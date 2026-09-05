@@ -173,7 +173,45 @@ Rather than halving or growing by a constant, each criterion is asked what facto
 
 A criterion whose measured increase is zero or negative is skipped rather than divided by, and if that is true of all three there is no signal to size from, so the step simply grows by the grow factor.
 
-The bounds matter because the response curve is concave, so a linear estimate under-corrects, and a single comparison is thin evidence for a large jump.
+The shrink factor always bounds the result. The grow factor bounds it only while a ceiling exists, because the two situations are not symmetric:
+
+```
+  WITH a ceiling      the proposal is bisected into (position, ceiling)
+                      anyway, so an oversized step is discarded before it
+                      is ever simulated -- the cap changes nothing
+
+  WITHOUT a ceiling   nothing overrides the step, so the step IS the
+                      search, and a cap throws away the measurement just
+                      paid for
+```
+
+Capping growth in the second case is worse than it looks. The response curve is concave, so scaling the step by the factor the secant asks for yields *less* than the response it predicted — the estimate already errs low, and clamping it compounds that error rather than guarding against it. Overshooting is also self-correcting: a trial that lands too high becomes the ceiling, and the next proposal is bisected straight back into range. So growth is left uncapped once the ceiling is gone.
+
+```
+  ref 647, no ceiling, step 15, area +0.81% against a floor of 10%
+
+  capped at 1.5x    662, 684, 717, 767, 842, 954     6 simulations
+  uncapped          the secant asks for 15.4x, i.e. q ~ 878, and the
+                    first or second trial lands in band
+```
+
+One guard remains, on the proposal rather than the step: a trial where nothing moved can ask for a factor large enough to clear the whole range in a single jump, so a proposal is never placed more than halfway from the position to `max_upstream_inflow`. That bounds a degenerate measurement without touching an ordinary one — on the sweep above, halfway is roughly 1000 cms and the secant asked for 231.
+
+On an acceptance nothing is scaled at all. The step simply becomes the width that earned the verdict, measured **reference to trial** — not the step that was proposed, which differs whenever the proposal was bisected or the position had moved ahead of the reference. That width is the one piece of measured evidence about what fits at this discharge, so it is what the sweep carries forward.
+
+This matters most after a free advance, where the reference can move a long way without any step being proposed at all:
+
+```
+  344  reject_low                       step 10 -> 15
+  359  accepted against reference 334   width 25, so the step becomes 25
+       free pass: 359 -> 468            width 109, step becomes 109
+       free pass: 468 -> 647            width 179, step becomes 179
+
+  the sweep resumes at 647 with a step of 179, not the 15 it was using
+  down at 344 where the response was far steeper
+```
+
+Chained advances report the **last** gap rather than the total distance travelled. The reference moved 359 → 647, but 647 was never judged against 359 — it was judged against 468, which is why the pass needed two rounds. Carrying 288 forward would claim evidence the sweep never gathered and oversize every step after a free advance.
 
 ### Reusing finished runs
 

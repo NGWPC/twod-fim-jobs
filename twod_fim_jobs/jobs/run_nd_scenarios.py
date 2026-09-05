@@ -111,6 +111,44 @@ def _take_free_advances(
     return reuse.ref, reuse.current, reuse.ceiling_q, ceiling
 
 
+def _step_scale(
+    comparison: AdaptiveStepComparisonResults, inputs: RunNDScenariosInputs
+) -> float:
+    """How far to scale the discharge step, from the response it just produced.
+
+    Each criterion asks for the factor that would land it on the middle of its
+    band, and the smallest is taken. That one number serves both directions: a
+    step judged too large has some criterion over its ceiling, whose factor is
+    below one, and a step judged too small has every criterion under its floor,
+    where the smallest factor is the least growth that reaches the band.
+
+    Taking the minimum is what keeps the correction safe. Scaling by it moves the
+    binding criterion to its midpoint and every other one to at or below its own,
+    so nothing is pushed over a ceiling in the course of fixing something else.
+
+    The shrink and grow factors bound it. The response curve is concave, so a
+    linear estimate under-corrects, and one comparison is thin evidence for a
+    large jump.
+    """
+    bands = (
+        (comparison.max_depth_increase, inputs.ld_q_max_depth_increase_range),
+        (comparison.median_depth_increase, inputs.ld_q_median_depth_increase_range),
+        (
+            comparison.flooded_area_prcnt_increase,
+            inputs.ld_q_flooded_area_prcnt_increase_range,
+        ),
+    )
+    scales = [
+        (low + high) / 2 / measured for measured, (low, high) in bands if measured > 0
+    ]
+    if not scales:
+        return inputs.adaptive_step_algorithm_grow_factor
+    return min(
+        max(min(scales), inputs.adaptive_step_algorithm_shrink_factor),
+        inputs.adaptive_step_algorithm_grow_factor,
+    )
+
+
 def _next_trial_q(
     current_q: int, delta: int, ceiling_q: int | None, min_delta_q: int
 ) -> int | None:
@@ -216,7 +254,7 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 logger.info(f"Rejecting trial discharge {q_trial}: high")
                 ceiling_q, ceiling_scenario = q_trial, trial_scenario
                 delta_us_discharge = _scale_delta(
-                    delta_us_discharge, inputs.adaptive_step_algorithm_shrink_factor
+                    delta_us_discharge, _step_scale(scenario_comparison, inputs)
                 )
 
             elif scenario_comparison.result == "accept":
@@ -235,7 +273,7 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 logger.info(f"Rejecting trial discharge {q_trial}: low")
                 current_scenario = trial_scenario
                 delta_us_discharge = _scale_delta(
-                    delta_us_discharge, inputs.adaptive_step_algorithm_grow_factor
+                    delta_us_discharge, _step_scale(scenario_comparison, inputs)
                 )
 
             delta_us_discharge = max(

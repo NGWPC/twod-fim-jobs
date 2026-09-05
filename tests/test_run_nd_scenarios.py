@@ -14,9 +14,11 @@ from twod_fim_jobs.jobs.run_nd_scenarios import (
     RunNDScenariosJob,
     _next_trial_q,
     _reuse_finished_runs,
+    _step_scale,
     compare_scenario_changes,
 )
 from twod_fim_jobs.models.run_nd_scenarios import (
+    AdaptiveStepComparisonResults,
     RunNDScenariosInputs,
     RunNDScenariosResult,
 )
@@ -307,3 +309,57 @@ def test_runs_at_or_below_the_reference_are_ignored():
     assert reuse.ref is ref
     assert reuse.current is ref
     assert reuse.ceiling_q is None
+
+
+### STEP SIZING ###
+
+
+def _comparison(max_depth: float, median_depth: float, area_prcnt: float):
+    return AdaptiveStepComparisonResults(
+        ref_scenario_manifest="s3://bucket/ref.json",
+        trial_scenario_manifest="s3://bucket/trial.json",
+        max_depth_increase=max_depth,
+        median_depth_increase=median_depth,
+        flooded_area_prcnt_increase=area_prcnt,
+        result="accept",
+    )
+
+
+def test_an_oversized_step_is_scaled_towards_the_band_midpoint():
+    """max depth came in at 1.40 against a band of 0.75-1.25, midpoint 1.00.
+    A blind halving would go to 0.50; the measurement asks for 0.71."""
+    scale = _step_scale(_comparison(1.40, 0.30, 11.0), RUN_ND_DEFAULTS)
+    assert scale == pytest.approx(1.00 / 1.40, rel=1e-6)
+
+
+def test_an_undersized_step_grows_by_the_least_a_criterion_needs():
+    """Accept needs only one criterion above its floor, so the smallest growth
+    that reaches a band is enough. Area needs 12.5/10.0; depth would need 5x."""
+    scale = _step_scale(_comparison(0.20, 0.05, 10.0), RUN_ND_DEFAULTS)
+    assert scale == pytest.approx(12.5 / 10.0, rel=1e-6)
+
+
+def test_the_binding_criterion_is_whichever_asks_for_least():
+    """Scaling by the minimum moves that criterion to its midpoint and leaves
+    every other at or below its own, so fixing one cannot break another."""
+    # depth asks for 1.11x, median for 1.25x, area for 0.625x. Area binds.
+    over_on_area = _step_scale(_comparison(0.90, 0.30, 20.0), RUN_ND_DEFAULTS)
+    assert over_on_area == pytest.approx(12.5 / 20.0, rel=1e-6)
+
+
+@pytest.mark.parametrize(
+    "comparison, expected",
+    [
+        (_comparison(99.0, 99.0, 99.0), 0.5),  # wildly over: clamped to shrink
+        (_comparison(0.001, 0.001, 0.001), 1.5),  # barely moved: clamped to grow
+    ],
+)
+def test_the_scale_is_bounded_by_the_shrink_and_grow_factors(comparison, expected):
+    """One comparison is thin evidence for a large jump, and an unbounded factor
+    could propose past max_upstream_inflow and truncate the library."""
+    assert _step_scale(comparison, RUN_ND_DEFAULTS) == pytest.approx(expected)
+
+
+def test_a_step_that_moved_nothing_grows():
+    """No positive increase means no ratio to compute; the only useful move is up."""
+    assert _step_scale(_comparison(0.0, 0.0, 0.0), RUN_ND_DEFAULTS) == pytest.approx(1.5)

@@ -75,7 +75,7 @@ def _reuse_finished_runs(
         candidates = [q for q in sorted(done) if q > ref_q]
         if candidates:
             logger.info(
-                f"Free pass: re-judging finished discharges {candidates} "
+                f"Free pass: simulated {sorted(done)}; re-judging {candidates} "
                 f"against reference {ref_q}"
             )
         best: CompletedScenario | None = None
@@ -83,8 +83,9 @@ def _reuse_finished_runs(
         current = ref
 
         for q in candidates:
+            logger.info(f"Re-judging simulated discharge {q} against reference {ref_q}")
             outcome = compare_scenario_changes(
-                done[q].manifest, inputs, ref.manifest, log_results=False
+                done[q].manifest, inputs, ref.manifest
             ).result
             if outcome == "accept":
                 best = done[q]
@@ -96,9 +97,6 @@ def _reuse_finished_runs(
 
         if best is None:
             return Reuse(ref, accepted, ceiling_q, current)
-        # Re-run the winner's comparison with logging on, so a free advance
-        # reads exactly like a simulated trial.
-        compare_scenario_changes(best.manifest, inputs, ref.manifest)
         logger.info(
             "Accepting already-simulated discharge "
             f"{best.manifest.properties.us_discharge}"
@@ -237,6 +235,11 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
         q_trial = current_scenario.manifest.properties.us_discharge + delta_us_discharge
 
         while q_trial < inputs.max_upstream_inflow:
+            logger.info(
+                f"State: reference={ref_scenario.manifest.properties.us_discharge} "
+                f"position={current_scenario.manifest.properties.us_discharge} "
+                f"ceiling={ceiling_q} step={delta_us_discharge}"
+            )
             logger.info(f"Evaluating trial discharge {q_trial}")
 
             trial_scenario = _run_scenario(

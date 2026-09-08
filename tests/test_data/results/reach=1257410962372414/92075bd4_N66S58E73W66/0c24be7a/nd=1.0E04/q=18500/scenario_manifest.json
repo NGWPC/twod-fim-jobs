@@ -11,7 +11,7 @@
         "sdr_commit_id": "826a602ddcaf58bf4081dc04b65ba15b82cc8c8a",
         "solver": "lisflood"
     },
-    "self_href": "tests/end_to_end_data/results/reach=1257410962372414/92075bd4_N66S58E73W66/0c24be7a/nd=1.0E04/q=18500/scenario_manifest.json",
+    "self_href": "tests/test_data/results/reach=1257410962372414/92075bd4_N66S58E73W66/0c24be7a/nd=1.0E04/q=18500/scenario_manifest.json",
     "inputs": {
         "domain": {
             "bbox": [
@@ -36,14 +36,14 @@
             "cols": 139
         },
         "terrain": {
-            "href": "tests/end_to_end_data/models/1257410962372414/92075bd4_N66S58E73W66/dem.tif",
+            "href": "tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/dem.tif",
             "checksum": "da13b951d438090a",
             "source_url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",
             "retrieved": "2026-09-04T13:59:37.592423",
             "derived": false
         },
         "roughness": {
-            "href": "tests/end_to_end_data/models/1257410962372414/92075bd4_N66S58E73W66/roughness.tif",
+            "href": "tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/roughness.tif",
             "checksum": "1e7ea2eaacfaf11e",
             "source_url": "tests/test_data/reference_data/e2e_lulc_subset_coarse.tif",
             "retrieved": "2026-09-04T13:59:37.613802",
@@ -52,7 +52,7 @@
         "boundary_conditions": [
             {
                 "vector": {
-                    "href": "tests/end_to_end_data/models/1257410962372414/92075bd4_N66S58E73W66/inflow.geojson",
+                    "href": "tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/inflow.geojson",
                     "checksum": "ca79e0ea26161dcd",
                     "source_url": "tests/test_data/reference_data/reach_network.parquet",
                     "retrieved": "2026-09-04T13:59:37.634351",
@@ -63,7 +63,7 @@
             },
             {
                 "vector": {
-                    "href": "tests/end_to_end_data/models/1257410962372414/92075bd4_N66S58E73W66/outflow_area.geojson",
+                    "href": "tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/outflow_area.geojson",
                     "checksum": "689821beb1154429",
                     "source_url": null,
                     "retrieved": null,
@@ -86,11 +86,11 @@
             "max_simulation_wall_time_seconds": 10000000000.0,
             "save_zarr": false
         },
-        "base_out_dir": "tests/end_to_end_data/results",
+        "base_out_dir": "tests/test_data/results",
         "reach_id": 1257410962372414,
         "model_id": "92075bd4_N66S58E73W66",
         "centerline": {
-            "href": "tests/end_to_end_data/models/1257410962372414/92075bd4_N66S58E73W66/reach.geojson",
+            "href": "tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/reach.geojson",
             "checksum": "847cde2bc8690164",
             "source_url": "tests/test_data/reference_data/reach_network.parquet",
             "retrieved": "2026-09-04T13:59:37.632928",
@@ -111,21 +111,21 @@
     },
     "assets": {
         "depth": {
-            "href": "tests/end_to_end_data/results/reach=1257410962372414/92075bd4_N66S58E73W66/0c24be7a/nd=1.0E04/q=18500/depth.tif",
+            "href": "tests/test_data/results/reach=1257410962372414/92075bd4_N66S58E73W66/0c24be7a/nd=1.0E04/q=18500/depth.tif",
             "checksum": "6c110c2f308f6576",
             "source_url": null,
             "retrieved": null,
             "derived": true
         },
         "inundation_polygon": {
-            "href": "tests/end_to_end_data/results/reach=1257410962372414/92075bd4_N66S58E73W66/0c24be7a/nd=1.0E04/q=18500/inundated_area.geojson",
+            "href": "tests/test_data/results/reach=1257410962372414/92075bd4_N66S58E73W66/0c24be7a/nd=1.0E04/q=18500/inundated_area.geojson",
             "checksum": "8018fd5bbc9d9946",
             "source_url": null,
             "retrieved": null,
             "derived": true
         },
         "stage_transfer_line": {
-            "href": "tests/end_to_end_data/results/reach=1257410962372414/92075bd4_N66S58E73W66/0c24be7a/nd=1.0E04/q=18500/stl.geojson",
+            "href": "tests/test_data/results/reach=1257410962372414/92075bd4_N66S58E73W66/0c24be7a/nd=1.0E04/q=18500/stl.geojson",
             "checksum": "e80a89bfcf40fea9",
             "source_url": null,
             "retrieved": null,

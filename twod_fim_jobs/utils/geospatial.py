@@ -2,6 +2,7 @@ from math import floor, ceil
 import logging
 import math
 import shutil
+import tempfile
 from collections.abc import Iterable
 from functools import cached_property
 from pathlib import Path
@@ -475,10 +476,10 @@ def raster_to_polygon(raster_path: Path, out_path: Path) -> None:
 
 
 def tif_to_asc(tif_path: Path) -> Path:
-    """Convert a GeoTIFF to an Arc ASCII raster alongside the source file."""
-    out_path = tif_path.with_suffix(".asc")
-    if out_path.exists():
-        return out_path
+    """Convert a GeoTIFF to an Arc ASCII raster in the system temp directory."""
+    temp_file = tempfile.NamedTemporaryFile(suffix=".asc", delete=False)
+    out_path = Path(temp_file.name)
+    temp_file.close()
     src = Raster(tif_path)
     asc_profile = {
         "driver": "AAIGrid",

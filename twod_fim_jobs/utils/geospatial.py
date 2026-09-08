@@ -150,7 +150,7 @@ def make_inflow_line(
         us_geom = us_mainstem.geometry.iloc[0]
         # Walk upstream a bit for u/s boundary condition
         walk_us_dist = us_geom.length * walk_us_dist_pct
-        us_bc_pt = us_geom.interpolate(1 - walk_us_dist)
+        us_bc_pt = us_geom.interpolate(us_geom.length - walk_us_dist)
         inflow_geom = perpendicular_line(us_geom, us_bc_pt, inflow_width)
     return gpd.GeoDataFrame({"ind": [1]}, geometry=[inflow_geom], crs=reach.crs)
 

@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 import geopandas as gpd
 import pandas as pd
 from pydantic import ValidationError
-from shapely.ops import substring
+from shapely.ops import split
 
 from twod_fim_jobs.consts import (
     ANCHOR_FILENAME,
@@ -245,9 +245,11 @@ def generate_other_geometries(
 
     if not us_mainstem.empty:
         mainstem = us_mainstem.geometry.iloc[0]
-        inflow_midpoint = inflow_line.geometry.iloc[0].interpolate(0.5, normalized=True)
-        clip_distance = mainstem.project(inflow_midpoint)
-        centerlines.append(substring(mainstem, clip_distance, mainstem.length))
+        clipped_mainstem = min(
+            split(mainstem, inflow_line.geometry.iloc[0]).geoms,
+            key=lambda geometry: geometry.distance(reach.geometry.iloc[0]),
+        )
+        centerlines.append(clipped_mainstem)
 
     centerline_buffers = gpd.GeoDataFrame(
         geometry=gpd.GeoSeries(centerlines, crs=reach.crs).buffer(buffer_distance),

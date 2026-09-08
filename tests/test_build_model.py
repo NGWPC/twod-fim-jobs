@@ -356,8 +356,29 @@ def test_generate_other_geometries_clips_and_buffers_upstream_mainstem():
 
     buffer_distance = bieger_bankfull_width(100.0)
     expected_buffer = LineString([(7, 0), (10, 0)]).buffer(buffer_distance)
+    full_mainstem_buffer = us_mainstem.geometry.iloc[0].buffer(buffer_distance)
     assert len(result) == 3
     assert result.crs == reach.crs
+    assert any(geometry.equals(expected_buffer) for geometry in result.geometry)
+    assert not any(
+        geometry.equals(full_mainstem_buffer) for geometry in result.geometry
+    )
+
+
+def test_generate_other_geometries_clipping_ignores_mainstem_orientation():
+    reach = gpd.GeoDataFrame(
+        {DA_FIELD: [100.0]},
+        geometry=[LineString([(10, 0), (20, 0)])],
+        crs=5070,
+    )
+    us_mainstem = _make_cl_gdf([(10, 0), (0, 0)]).set_crs(5070)
+    inflow = _make_cl_gdf([(7, -5), (7, 5)]).set_crs(5070)
+
+    result = generate_other_geometries(
+        reach, us_mainstem, inflow, gpd.GeoDataFrame(), 1
+    )
+
+    expected_buffer = LineString([(7, 0), (10, 0)]).buffer(bieger_bankfull_width(100.0))
     assert any(geometry.equals(expected_buffer) for geometry in result.geometry)
 
 

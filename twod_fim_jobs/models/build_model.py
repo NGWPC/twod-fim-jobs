@@ -14,6 +14,7 @@ from shapely.wkt import loads as load_wkt
 
 from twod_fim_jobs.consts import (
     DEFAULT_BANKFULL_WIDTH_MULTIPLIER,
+    DEFAULT_CENTERLINE_BUFFER,
     DEFAULT_DEM_SOURCE,
     DEFAULT_DOMAIN_BUFFER,
     DEFAULT_EPSG_CODE,
@@ -214,6 +215,11 @@ class BuildModelInputs(BaseModel):
         default=DEFAULT_LULC_LOOKUP,
         description="A dictionary mapping land use codes to Manning's roughness values",
         examples=[{11: 0.04, 21: 0.04, 31: 0.025, 41: 0.16, 82: 0.035}],
+    )
+    centerline_buffer_bankfull_multiplier: float = Field(
+        default=DEFAULT_CENTERLINE_BUFFER,
+        description="This value is multiplied by the reach bankfull width to obtain the centerline buffer distance.  The buffered centerline becomes one of the geometries in the total bounds calculation that determines domain.",
+        examples=[10.0],
     )
 
     @property

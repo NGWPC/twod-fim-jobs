@@ -7,11 +7,11 @@ from urllib.parse import urlparse
 import geopandas as gpd
 import pandas as pd
 from pydantic import ValidationError
+from shapely.ops import substring
 
 from twod_fim_jobs.consts import (
     ANCHOR_FILENAME,
     DA_FIELD,
-    DEFAULT_CENTERLINE_BUFFER,
     DEM_FILENAME,
     DOMAIN_FILENAME,
     INFLOW_FILENAME,
@@ -94,21 +94,12 @@ class BuildModelJob(Job[BuildModelInputs]):
         if cl_inf_intersections:
             job_warnings.append(cl_inf_intersections)
 
-        # Assemble other geometries
-        cl_buffer_dist = (
-            bieger_bankfull_width(float(reach[DA_FIELD].iloc[0]))
-            * DEFAULT_CENTERLINE_BUFFER
-        )
-        cl_buffer = reach.buffer(cl_buffer_dist)
-        all_other_geometries = gpd.GeoDataFrame(
-            pd.concat(
-                [
-                    inflow_line,
-                    gpd.GeoDataFrame(geometry=cl_buffer, crs=reach.crs),
-                    inputs.other_geometries_gdf,
-                ],
-                ignore_index=True,
-            )
+        all_other_geometries = generate_other_geometries(
+            reach,
+            us_mainstem,
+            inflow_line,
+            inputs.other_geometries_gdf,
+            inputs.centerline_buffer_bankfull_multiplier,
         )
 
         # Build domain
@@ -236,6 +227,39 @@ class BuildModelJob(Job[BuildModelInputs]):
             model_dir=model_dir,
             warnings=job_warnings,
         )
+
+
+def generate_other_geometries(
+    reach: gpd.GeoDataFrame,
+    us_mainstem: gpd.GeoDataFrame,
+    inflow_line: gpd.GeoDataFrame,
+    other_geometries: gpd.GeoDataFrame,
+    centerline_buffer_bankfull_multiplier: float,
+) -> gpd.GeoDataFrame:
+    """Assemble geometries used to determine the model domain."""
+    buffer_distance = (
+        bieger_bankfull_width(float(reach[DA_FIELD].iloc[0]))
+        * centerline_buffer_bankfull_multiplier
+    )
+    centerlines = [reach.geometry.iloc[0]]
+
+    if not us_mainstem.empty:
+        mainstem = us_mainstem.geometry.iloc[0]
+        inflow_midpoint = inflow_line.geometry.iloc[0].interpolate(0.5, normalized=True)
+        clip_distance = mainstem.project(inflow_midpoint)
+        centerlines.append(substring(mainstem, clip_distance, mainstem.length))
+
+    centerline_buffers = gpd.GeoDataFrame(
+        geometry=gpd.GeoSeries(centerlines, crs=reach.crs).buffer(buffer_distance),
+        crs=reach.crs,
+    )
+    return gpd.GeoDataFrame(
+        pd.concat(
+            [inflow_line, centerline_buffers, other_geometries], ignore_index=True
+        ),
+        geometry="geometry",
+        crs=reach.crs,
+    )
 
 
 def _check_inflow_cl_intersection(

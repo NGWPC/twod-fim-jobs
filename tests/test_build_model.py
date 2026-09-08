@@ -14,7 +14,11 @@ from twod_fim_jobs.exceptions import (
     ReachDatasetUnavailable,
     ReachNotFoundError,
 )
-from twod_fim_jobs.jobs.build_model import BuildModelJob, _check_inflow_cl_intersection
+from twod_fim_jobs.jobs.build_model import (
+    BuildModelJob,
+    _check_inflow_cl_intersection,
+    generate_other_geometries,
+)
 from twod_fim_jobs.jobs.build_model import _normalize_href
 from twod_fim_jobs.models.build_model import BuildModelInputs
 from twod_fim_jobs.models.warnings import (
@@ -28,6 +32,7 @@ import rasterio
 from rasterio.crs import CRS
 from rasterio.transform import from_bounds
 
+from twod_fim_jobs.consts import DA_FIELD, bieger_bankfull_width
 from twod_fim_jobs.models.common import Asset
 from twod_fim_jobs.utils.storage import read_json
 
@@ -334,6 +339,26 @@ def test_large_domain_area_warning_emitted(
 
 def _make_cl_gdf(coords: list[tuple]) -> gpd.GeoDataFrame:
     return gpd.GeoDataFrame(geometry=[LineString(coords)])
+
+
+def test_generate_other_geometries_clips_and_buffers_upstream_mainstem():
+    reach = gpd.GeoDataFrame(
+        {DA_FIELD: [100.0]},
+        geometry=[LineString([(10, 0), (20, 0)])],
+        crs=5070,
+    )
+    us_mainstem = _make_cl_gdf([(0, 0), (10, 0)]).set_crs(5070)
+    inflow = _make_cl_gdf([(7, -5), (7, 5)]).set_crs(5070)
+
+    result = generate_other_geometries(
+        reach, us_mainstem, inflow, gpd.GeoDataFrame(), 1
+    )
+
+    buffer_distance = bieger_bankfull_width(100.0)
+    expected_buffer = LineString([(7, 0), (10, 0)]).buffer(buffer_distance)
+    assert len(result) == 3
+    assert result.crs == reach.crs
+    assert any(geometry.equals(expected_buffer) for geometry in result.geometry)
 
 
 def test_check_inflow_cl_single_intersection_returns_none():

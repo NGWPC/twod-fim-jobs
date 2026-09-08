@@ -9,14 +9,14 @@
     "model_id": "92075bd4_N66S58E73W66",
     "inputs": {
         "reach_id": 1257410962372414,
-        "reach_network_path": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/reach_network.parquet",
+        "reach_network_path": "tests/test_data/reference_data/reach_network.parquet",
         "upstream_reach_ids": [
             1257411073114277
         ],
         "upstream_mainstem_reach_id": 1257411073114277,
-        "base_output_path": "/home/slawson/repos/twod-fim-jobs/tests/end_to_end_data/models/1257410962372414",
+        "base_output_path": "tests/end_to_end_data/models/1257410962372414",
         "dem_source": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",
-        "lulc_source": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/e2e_lulc_subset_coarse.tif",
+        "lulc_source": "tests/test_data/reference_data/e2e_lulc_subset_coarse.tif",
         "other_geometries": [],
         "domain_buffer": 0.0,
         "grid_resolution": 100.0,
@@ -85,44 +85,44 @@
     },
     "assets": {
         "terrain": {
-            "href": "/home/slawson/repos/twod-fim-jobs/tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/dem.tif",
+            "href": "tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/dem.tif",
             "checksum": "da13b951d438090a",
             "source_url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",
             "retrieved": "2026-09-04T13:59:37.592423",
             "derived": false
         },
         "roughness": {
-            "href": "/home/slawson/repos/twod-fim-jobs/tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/roughness.tif",
+            "href": "tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/roughness.tif",
             "checksum": "1e7ea2eaacfaf11e",
-            "source_url": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/e2e_lulc_subset_coarse.tif",
+            "source_url": "tests/test_data/reference_data/e2e_lulc_subset_coarse.tif",
             "retrieved": "2026-09-04T13:59:37.613802",
             "derived": false
         },
         "centerline": {
-            "href": "/home/slawson/repos/twod-fim-jobs/tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/reach.geojson",
+            "href": "tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/reach.geojson",
             "checksum": "847cde2bc8690164",
-            "source_url": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/reach_network.parquet",
+            "source_url": "tests/test_data/reference_data/reach_network.parquet",
             "retrieved": "2026-09-04T13:59:37.632928",
             "derived": false
         },
         "inflow_line": {
-            "href": "/home/slawson/repos/twod-fim-jobs/tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/inflow.geojson",
+            "href": "tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/inflow.geojson",
             "checksum": "ca79e0ea26161dcd",
-            "source_url": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/reach_network.parquet",
+            "source_url": "tests/test_data/reference_data/reach_network.parquet",
             "retrieved": "2026-09-04T13:59:37.634351",
             "derived": false
         },
         "reach_centroid": {
-            "href": "/home/slawson/repos/twod-fim-jobs/tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/anchor.geojson",
+            "href": "tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/anchor.geojson",
             "checksum": "268307e1b3245bab",
-            "source_url": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/reach_network.parquet",
+            "source_url": "tests/test_data/reference_data/reach_network.parquet",
             "retrieved": "2026-09-04T13:59:37.637393",
             "derived": false
         },
         "domain": {
-            "href": "/home/slawson/repos/twod-fim-jobs/tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/domain.geojson",
+            "href": "tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/domain.geojson",
             "checksum": "2a665e66377d253e",
-            "source_url": "/home/slawson/repos/twod-fim-jobs/tests/test_data/reference_data/reach_network.parquet",
+            "source_url": "tests/test_data/reference_data/reach_network.parquet",
             "retrieved": "2026-09-04T13:59:37.638872",
             "derived": false
         }

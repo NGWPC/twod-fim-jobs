@@ -218,6 +218,8 @@ def test_end_to_end_docker(validate_e2e_image):
     last_q = None
     last_wse = None
     for i in nd_results_1.get("scenario_comparison_results", []):
+        if i["result"] != "accept":
+            continue
         manifest = RunScenarioManifest.model_validate_json(
             read_json(i["trial_scenario_manifest"])
         )

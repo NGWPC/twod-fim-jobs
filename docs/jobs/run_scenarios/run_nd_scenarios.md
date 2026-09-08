@@ -27,12 +27,10 @@ Iteratively runs the model for a reach using a normal depth downstream boundary 
 | `max_simulation_length_seconds` | `number` | 86400 | Maximum time (in model seconds) that a model will be allowed to run before it is forcefully terminated |
 | `save_interval_seconds` | `number` | 3600.0 | Frequency (in model seconds) with which a model will export depth rasters |
 | `max_simulation_wall_time_seconds` | `number` | 10000000000.0 | Maximum time (in wall time) that a model will be allowed to run before it is forcefully terminated |
-| `adaptive_step_min_delta_q` | `integer` | 10 | Minimum sensitivity for Q in adaptive step algorithm.  If delta_q at the min and algorithm would reject high, trial is accepted instead. |
+| `adaptive_step_min_delta_q` | `integer` | 10 | Discharge step below which refining stops being worth another simulation. Not a minimum step: a finer step is run if that is where the acceptance window falls. But when the window asks for less than this and the trial still rejects high, it is accepted rather than narrowing again. |
 | `save_velocity` | `boolean` | false | Whether or not to generate and save velocity tifs |
 | `save_zarr` | `boolean` | false | Whether or not to generate and save a zarr file with wse and depth at each print interval |
-| `adaptive_step_algorithm_shrink_factor` | `number` | 0.5 | Multiplier applied to the discharge step size when a trial scenario is rejected for producing too large a change |
-| `adaptive_step_algorithm_grow_factor` | `number` | 1.5 | Multiplier applied to the discharge step size when a trial scenario is accepted or rejected for producing too small a change |
-| `ld_q_max_depth_increase_range` | `list[any]` | [0.75, 1.25] | [min, max] increase in max depth (m) between consecutive discharge scenarios. Below min the step is too small and grows; above max it is too large and shrinks. |
+| `ld_q_max_depth_increase_range` | `list[any]` | [0.75, 1.25] | [min, max] increase in max depth (m) between consecutive library entries. Under min the step was too small, over max it was too large. |
 | `ld_q_median_depth_increase_range` | `list[any]` | [0.25, 0.5] | [min, max] increase in median depth (m) between consecutive discharge scenarios. |
 | `ld_q_flooded_area_prcnt_increase_range` | `list[any]` | [10.0, 15.0] | [min, max] percent increase in flooded area between consecutive discharge scenarios, where 10 means 10 percent. |
 <!-- /AUTO:inputs_table -->
@@ -93,129 +91,89 @@ Iteratively runs the model for a reach using a normal depth downstream boundary 
 
 ## Adaptive Step Algorithm
 
-The job builds a library of hydraulically distinct discharges by walking the reach's own response curve instead of sampling at a fixed interval, so that sampling is dense where the reach changes quickly — overtopping, floodplain spillover — and sparse where consecutive maps would be near-identical. Because every trial is a full simulation, the algorithm is written to spend simulations only on discharges whose outcome is not already implied by something it has run.
+The job builds a library of hydraulically distinct discharges by walking the reach's own response instead of sampling at a fixed interval, so sampling is dense where the reach response changes quickly (overtopping, floodplain spillover), and sparse where consecutive maps would be near-identical.
+
+First some vocabular and definitions:
 
 ### State
 
-Four pieces of state evolve through the sweep:
+- **reference:** the last scenario published to the library. Comparison is measured from it
+- **position:** the last discharge simulated. The next run hotstarts from its depth grid, and the next discharge is measured out from here.
+- **scenario points:** every scenario simulated during the job, published or not, held in memory
 
-- **reference** — the accepted scenario the acceptance bands are measured from. It advances only on `accept`, so the criteria always describe cumulative change since the last library entry rather than the change between consecutive runs.
-- **position** — the discharge the next step is measured from, and the depth grid the next run warm-starts from. It advances on `accept` and on `reject_low`, because a run that was too small a step is still the closest starting point available.
-- **ceiling** — the lowest discharge proven too high for the current reference. Response rises with discharge, so a rejection at one discharge proves every larger one is also too high, and the ceiling is reset whenever the reference advances.
-- **finished runs** — every scenario simulated during the job, published or not, held in memory.
+### The response curves
 
-  q ────────●──────────────────────●──────────────────────○───────────►
-           136                    150                    200
-        reference              position                ceiling
-                                   ├──────────────────────┤
-                                    the next run goes here
+Each simulated scenario gives us three readings: maximum depth, median depth and inundated area. The algorithm accumulates them as **three separate curves.** These curves are used to calculate next point to evaluate. Following rules for curves are maintained:
 
-  136   accepted, published, and what every comparison is measured from
-  150   too small a step from 136, so it moved the position and now
-        warm-starts the next run — but it was not published
-  200   too large a step from 136, so nothing at or above it is worth
-        simulating until the reference advances past it
+```
+1. Straight line segments between simulated discharges aka data/scenario points (no fitting).
 
-  The next discharge is at least min_delta_q above 150 and strictly
-  below 200. When no discharge satisfies both, the bracket has closed.
+2. Values can not decrease i.e. if a point value is lower than the one before it, the earlier
+   value is held
 
+3. Above the highest data point on the chart, the last segment's slope is carried on (for extrapolation)
+```
+
+Rule 2 is to nevigate a physical error that is more water mean less flooding.
+
+### How the Next Discharge is Chosen
+
+Each criterion is read off its own curve for the discharge at which the change from the reference reaches its floor, and the discharge at which it reaches its ceiling. Acceptance needs only one criterion at its floor but every criterion under its ceiling, so the two ends of the window are minima over different criteria:
+
+```
+  window opens at   the EARLIEST floor crossing
+  window closes at  the EARLIEST ceiling crossing
+
+  q ──────────●──────────[════════════]──────────────►
+           reference    opens      closes
+                             ▲
+                        take the middle
+```
+
+The window is never empty. The criterion that reaches a floor first must do so before any criterion reaches a ceiling, because that same criterion's own ceiling comes later still. The next discharge is the middle of the window, rounded to whole cms — the top edge would give larger steps and a smaller library, but it is where a straight-line reading of a concave curve is least trustworthy.
+
+### When the window is out of reach
+
+The window can land somewhere the sweep cannot run. Where it landed is itself a finding, so neither case is a silent correction:
+
+| Case                                                         | What happens                                                                                         |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Window is within `adaptive_step_min_delta_q` of the position | Run exactly what the window asked for — the step is **not** widened. But the band is finer than this is worth chasing, so a `reject_high` is accepted rather than narrowing again. |
+| Window opens beyond `max_upstream_inflow`                    | Run `max_upstream_inflow`.                                                                           |
+
+`adaptive_step_min_delta_q` is not a minimum step. A four cms step is run if that is where the window falls; the setting marks only where refinement stops earning another simulation.
+
+If all three curves have gone flat, no criterion reaches a floor at any discharge, so the window opens at infinity — which is the second case, and it becomes "go and check the top." Flatness therefore needs no test of its own and raises no error.
 
 ### Step Sequence
 
-The sweep cold-starts at `min_upstream_inflow`, publishes it as the first library entry, and then repeats the following until it reaches `max_upstream_inflow`, which is always run and always kept.
+The sweep cold-starts at `min_upstream_inflow` and publishes it as the first library entry. One point is not a curve, so the opening step is the authored `delta_upstream_inflow`; every step after that is read off the curves. Then it repeats:
 
-1. Choose the next discharge from the position, the current step and the ceiling (below).
+1. Choose the next discharge from the curves (above).
 2. Simulate it, warm-started from the position's depth grid, and keep it in memory without publishing.
 3. Compare it against the **reference** on three criteria, each an increase between the two scenarios' published metrics:
 
-| Criterion | Quantity | Accepted when |
-| --- | --- | --- |
-| Max depth | increase in maximum depth over wet cells, m | inside `ld_q_max_depth_increase_range` |
-| Median depth | increase in median depth over wet cells, m | inside `ld_q_median_depth_increase_range` |
-| Flooded area | percent increase in inundated area | inside `ld_q_flooded_area_prcnt_increase_range` |
+| Criterion    | Quantity                                                             | Accepted when                                   |
+| ------------ | -------------------------------------------------------------------- | ----------------------------------------------- |
+| Max depth    | increase in maximum depth over wet cells, m                          | inside `ld_q_max_depth_increase_range`          |
+| Median depth | increase in median depth over wet cells, m                           | inside `ld_q_median_depth_increase_range`       |
+| Flooded area | percent increase in inundated area, against the reference's own area | inside `ld_q_flooded_area_prcnt_increase_range` |
 
 4. Apply the verdict, where `reject_high` takes priority because any criterion over its ceiling means the step was too large:
-   - **`reject_high`** — record the discharge as the ceiling and shrink the step.
-   - **`accept`** — publish the scenario, advance the reference and the position to it, clear the ceiling, then re-judge the finished runs (below).
-   - **`reject_low`** — advance the position without publishing, and grow the step.
 
-### Choosing the next discharge
+   - **`reject_high`** — keep the point, which pulls the curves down and lowers the next window. Nothing is published.
+   - **`accept`** — publish the scenario, advance the reference and the position to it, then re-judge the finished runs (below).
+   - **`reject_low`** — advance the position without publishing.
 
-A proposal is the position plus the current step, except that it may never reach the ceiling. Proposing a discharge at or above a known-too-high one would spend a simulation learning what monotonicity already guarantees, so such a proposal is bisected into the bracket instead, and never placed closer than `adaptive_step_min_delta_q` to the position.
+### Reaching the maximum
 
-```
-proposal = position + Δq
+`max_upstream_inflow` is a library entry whatever its comparison says: it is the top of the discharge envelope, and the KWSE stage grid is built from it. It is published on that basis alone. It is still judged, though, and the verdict is recorded honestly — a `reject_high` there means the response resumed somewhere below, so the sweep carries on and fills the gap underneath rather than leaving a hole no one can see.
 
-  below the ceiling        take it
-  at or above the ceiling  bisect (position, ceiling), floored at min_delta_q
-  nothing fits             the bracket has closed
-```
-
-When the bracket closes there is no untried discharge between the position and something already proven too high, which means no step at least `min_delta_q` wide lands inside the bands. The sweep then accepts the ceiling run itself, since it is the smallest step known to clear the band and is already simulated. That library therefore contains one step wider than the bands allow, which is not a defect in the sweep but a sign that the bands cannot be met at this reach without a smaller minimum step.
-
-### Sizing the step
-
-Rather than halving or growing by a constant, each criterion is asked what factor would place it on the middle of its band, and the smallest answer is used. One rule serves both directions: a step that was too large has some criterion over its ceiling and therefore a factor below one, while a step that was too small has every criterion under its floor, where the smallest factor is the least growth that reaches any band — which is what acceptance needs, since only one criterion must clear its floor. Taking the minimum is also what keeps the correction safe, because scaling by it moves the binding criterion to its midpoint and leaves every other at or below its own.
-
-```
-                         max depth   median  flooded area     step
-  max depth too big           0.67     1.00          1.00   x 0.67
-  median too big              1.00     0.62          1.00   x 0.62
-  flooded area too big        1.00     1.00          0.62   x 0.62
-  all three too small         2.00     1.88          1.56   x 1.50   clamped
-
-  Every criterion is asked every time, and a different one binds in each
-  row. The last row is the one worth reading twice: all three want to
-  grow, and the SMALLEST growth wins, because acceptance needs only one
-  criterion above its floor. Growing by 2.00, which max depth asked for,
-  would carry the other two straight past their ceilings.
-```
-
-A criterion whose measured increase is zero or negative is skipped rather than divided by, and if that is true of all three there is no signal to size from, so the step simply grows by the grow factor.
-
-The shrink factor always bounds the result. The grow factor bounds it only while a ceiling exists, because the two situations are not symmetric:
-
-```
-  WITH a ceiling      the proposal is bisected into (position, ceiling)
-                      anyway, so an oversized step is discarded before it
-                      is ever simulated -- the cap changes nothing
-
-  WITHOUT a ceiling   nothing overrides the step, so the step IS the
-                      search, and a cap throws away the measurement just
-                      paid for
-```
-
-Capping growth in the second case is worse than it looks. The response curve is concave, so scaling the step by the factor the secant asks for yields *less* than the response it predicted — the estimate already errs low, and clamping it compounds that error rather than guarding against it. Overshooting is also self-correcting: a trial that lands too high becomes the ceiling, and the next proposal is bisected straight back into range. So growth is left uncapped once the ceiling is gone.
-
-```
-  ref 647, no ceiling, step 15, area +0.81% against a floor of 10%
-
-  capped at 1.5x    662, 684, 717, 767, 842, 954     6 simulations
-  uncapped          the secant asks for 15.4x, i.e. q ~ 878, and the
-                    first or second trial lands in band
-```
-
-One guard remains, on the proposal rather than the step: a trial where nothing moved can ask for a factor large enough to clear the whole range in a single jump, so a proposal is never placed more than halfway from the position to `max_upstream_inflow`. That bounds a degenerate measurement without touching an ordinary one — on the sweep above, halfway is roughly 1000 cms and the secant asked for 231.
-
-On an acceptance nothing is scaled at all. The step simply becomes the width that earned the verdict, measured **reference to trial** — not the step that was proposed, which differs whenever the proposal was bisected or the position had moved ahead of the reference. That width is the one piece of measured evidence about what fits at this discharge, so it is what the sweep carries forward.
-
-This matters most after a free advance, where the reference can move a long way without any step being proposed at all:
-
-```
-  344  reject_low                       step 10 -> 15
-  359  accepted against reference 334   width 25, so the step becomes 25
-       free pass: 359 -> 468            width 109, step becomes 109
-       free pass: 468 -> 647            width 179, step becomes 179
-
-  the sweep resumes at 647 with a step of 179, not the 15 it was using
-  down at 344 where the response was far steeper
-```
-
-Chained advances report the **last** gap rather than the total distance travelled. The reference moved 359 → 647, but 647 was never judged against 359 — it was judged against 468, which is why the pass needed two rounds. Carrying 288 forward would claim evidence the sweep never gathered and oversize every step after a free advance.
+Because the maximum is published the moment it runs and may later be re-judged and accepted by the free pass, publishing is idempotent: a discharge already uploaded is never uploaded twice.
 
 ### Reusing finished runs
 
-Whenever the reference advances, every finished run above it is re-judged against the new reference before anything else is simulated. A comparison is arithmetic over two manifests, so this costs nothing, and a discharge that was too large a step from one reference frequently sits inside the bands for the next one — in which case it becomes a library entry that has already been paid for and is published retroactively.
+Whenever the reference advances, every finished run above it is re-judged against the new reference before anything else is simulated. A comparison is arithmetic over two manifests, so this costs nothing, and a discharge that was too large a step from one reference sometimes sits inside the bands for the next one — in which case it becomes a library entry that has already been paid for and is published retroactively.
 
 ```
 accept 300, then re-judge what is already in memory, highest first
@@ -223,16 +181,20 @@ accept 300, then re-judge what is already in memory, highest first
   in memory   290  300  301  312  334  379  468  647
   eligible                   ---  ---  ---  ---  ---   above the reference
 
-  647   too large   →  ceiling 647
-  468   too large   →  ceiling 468
-  379   too large   →  ceiling 379
+  647   too large   →  keep scanning down
+  468   too large   →  keep scanning down
+  379   too large   →  keep scanning down
   334   IN BAND     →  furthest free advance, and the scan stops here
 
   301 and 312 are never judged: they sit below a discharge already
   accepted, so nothing they could say would advance the reference further
 ```
 
-Because response rises with discharge, the outcomes above the reference always fall in the order too small, in band, too large. The scan runs downward from the highest simulated discharge for that reason: an accept is the furthest advance available the moment it is found, and everything below it is either a smaller advance or too small a step, so neither can change the answer. Each too-large verdict on the way down lowers the ceiling, and the first verdict that is not too large ends the pass — as an acceptance, or, if nothing clears the floor, as the new position.
+Because response rises with discharge, the outcomes above the reference fall in the order too small, in band, too large. The scan runs downward from the highest simulated discharge for that reason: an accept is the furthest advance available the moment it is found, and everything below it is either a smaller advance or too small a step.
+
+### Why this is safe
+
+**The curves only ever propose. Every verdict is measured.** Nothing is published because a curve predicted it, so a wrong curve costs one simulation and buys a real point exactly where the curve was least accurate. It also bounds the damage from a feature the curve cannot see: a sharp floodplain spillover between two widely spaced samples reads as a gentle slope, but the trial on the far side of it rejects high, and the next window comes back and finds it.
 
 ### What is published
 
@@ -240,13 +202,14 @@ Only the scenarios the sweep accepts, plus the baseline and the final maximum di
 
 ### Threshold Constants
 
-The acceptance ranges and the shrink and grow factors are job inputs, defaulting to the values in `twod_fim_jobs/consts.py`.
+The acceptance ranges are job inputs, defaulting to the values in `twod_fim_jobs/consts.py`.
 
 ### Limitations
 
 - Runs are strictly sequential, since each simulation warm-starts from the previous one, so the sweep cannot be parallelised.
 - Dense sampling through floodplain-spillover transitions is not guaranteed, because those are governed by the normal-depth downstream boundary condition, which may not capture all backwater effects.
 - An edge-error termination aborts the whole sweep, and the reach is left with whatever it had published up to that point.
+- The flooded-area criterion is scale-dependent, because its denominator is the reference's own area while the two depth criteria are absolute. Low in the range the wetted area is small and spreading quickly, so a step finer than `adaptive_step_min_delta_q` can be needed to stay inside the band; high in the range the area has largely saturated, so a step of several hundred cms can fall below the floor and acceptance passes to the depth criteria. One band therefore does not describe the same thing at both ends of a reach.
 
 ## Performance
 

@@ -1,9 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Literal
 from twod_fim_jobs.consts import (
-    ADAPTIVE_STEP_ALGORITHM_GROW_FACTOR,
     ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q,
-    ADAPTIVE_STEP_ALGORITHM_SHRINK_FACTOR,
     LD_Q_FLOODED_AREA_PRCNT_INCREASE_RANGE,
     LD_Q_MAX_DEPTH_INCREASE_RANGE,
     LD_Q_MEDIAN_DEPTH_INCREASE_RANGE,
@@ -89,7 +87,7 @@ class RunNDScenariosInputs(BaseModel):
     )
     adaptive_step_min_delta_q: int = Field(
         default=ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q,
-        description="Minimum sensitivity for Q in adaptive step algorithm.  If delta_q at the min and algorithm would reject high, trial is accepted instead.",
+        description="Discharge step below which refining stops being worth another simulation. Not a minimum step: a finer step is run if that is where the acceptance window falls. But when the window asks for less than this and the trial still rejects high, it is accepted rather than narrowing again.",
         examples=[10],
     )
     save_velocity: bool = Field(
@@ -102,19 +100,9 @@ class RunNDScenariosInputs(BaseModel):
         description="Whether or not to generate and save a zarr file with wse and depth at each print interval",
         examples=[False],
     )
-    adaptive_step_algorithm_shrink_factor: float = Field(
-        default=ADAPTIVE_STEP_ALGORITHM_SHRINK_FACTOR,
-        description="Multiplier applied to the discharge step size when a trial scenario is rejected for producing too large a change",
-        examples=[0.5],
-    )
-    adaptive_step_algorithm_grow_factor: float = Field(
-        default=ADAPTIVE_STEP_ALGORITHM_GROW_FACTOR,
-        description="Multiplier applied to the discharge step size when a trial scenario is accepted or rejected for producing too small a change",
-        examples=[1.5],
-    )
     ld_q_max_depth_increase_range: tuple[float, float] = Field(
         default=LD_Q_MAX_DEPTH_INCREASE_RANGE,
-        description="[min, max] increase in max depth (m) between consecutive discharge scenarios. Below min the step is too small and grows; above max it is too large and shrinks.",
+        description="[min, max] increase in max depth (m) between consecutive library entries. Under min the step was too small, over max it was too large.",
         examples=[(0.75, 1.25)],
     )
     ld_q_median_depth_increase_range: tuple[float, float] = Field(

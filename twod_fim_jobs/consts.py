@@ -143,8 +143,6 @@ SCENARIO_MANIFEST_FILENAME = "scenario_manifest.json"
 DEPTH_ZARR_FILENAME = "depths.zarr"
 
 # Adaptive step algorithm
-ADAPTIVE_STEP_ALGORITHM_SHRINK_FACTOR: float = 0.5
-ADAPTIVE_STEP_ALGORITHM_GROW_FACTOR: float = 1.5
 LD_Q_MAX_DEPTH_INCREASE_RANGE: tuple[float, float] = (0.75, 1.25)
 LD_Q_MEDIAN_DEPTH_INCREASE_RANGE: tuple[float, float] = (0.25, 0.5)
 LD_Q_FLOODED_AREA_PRCNT_INCREASE_RANGE: tuple[float, float] = (10.0, 15.0)

@@ -30,6 +30,7 @@ Initialize a model for a single reach by generating the terrain, roughness, geom
 | `epsg_code` | `integer` | 5070 | EPSG integer for all georeferenced output artifacts |
 | `bankfull_width_multiplier` | `number` | 1.0 | How much to multiply bankfull width to arrive at inflow line width |
 | `lulc_lookup` | `dict[str, number]` | {"11": 0.04, "21": 0.04, "22": 0.1, "23": 0.08, "24": 0.15, "31": 0.025, "41": 0.16, "42": 0.16, "43": 0.16, "52": 0.1, "71": 0.035, "81": 0.03, "82": 0.035, "90": 0.12, "95": 0.07} | A dictionary mapping land use codes to Manning's roughness values |
+| `centerline_buffer_bankfull_multiplier` | `number` | 15 | This value is multiplied by the reach bankfull width to obtain the centerline buffer distance.  The buffered centerline becomes one of the geometries in the total bounds calculation that determines domain. |
 <!-- /AUTO:inputs_table -->
 
 ## Processing Scope

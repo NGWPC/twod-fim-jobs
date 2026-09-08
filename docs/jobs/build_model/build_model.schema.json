@@ -283,6 +283,15 @@
           ],
           "title": "Lulc Lookup",
           "type": "object"
+        },
+        "centerline_buffer_bankfull_multiplier": {
+          "default": 15,
+          "description": "This value is multiplied by the reach bankfull width to obtain the centerline buffer distance.  The buffered centerline becomes one of the geometries in the total bounds calculation that determines domain.",
+          "examples": [
+            10.0
+          ],
+          "title": "Centerline Buffer Bankfull Multiplier",
+          "type": "number"
         }
       },
       "required": [

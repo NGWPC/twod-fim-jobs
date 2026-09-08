@@ -27,7 +27,8 @@
       "31": 0.025,
       "41": 0.16,
       "82": 0.035
-    }  // A dictionary mapping land use codes to Manning's roughness values
+    },  // A dictionary mapping land use codes to Manning's roughness values
+    "centerline_buffer_bankfull_multiplier": 10.0  // This value is multiplied by the reach bankfull width to obtain the centerline buffer distance.  The buffered centerline becomes one of the geometries in the total bounds calculation that determines domain.
   },
   "domain": {
     "bbox": [-2059240.0, 2806980.0, -2055870.0, 2810760.0],  // Domain bbox in native CRS [west, south, east, north].

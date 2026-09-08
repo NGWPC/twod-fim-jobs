@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from twod_fim_jobs.hydraulic_solvers.common import run_scenario
+from twod_fim_jobs.hydraulic_solvers.common import publish_scenario, run_scenario
 from twod_fim_jobs.hydraulic_solvers.identities import get_run_identity_hash
 from twod_fim_jobs.jobs.common import Job
 from twod_fim_jobs.models.build_model import ModelManifest
@@ -113,7 +113,9 @@ class RunKWSEScenariosJob(Job[RunKWSEScenariosInputs]):
                 run_scenario_inputs.hot_start = hot_scenario_manifest.assets.depth
 
             working_dir = tmp_dir / run_scenario_inputs.scenario_dir_name
-            scenario_manifest = run_scenario(run_scenario_inputs, working_dir)
+            # Every scenario here was chosen by the orchestrator, so all are kept.
+            completed = run_scenario(run_scenario_inputs, working_dir)
+            scenario_manifest = publish_scenario(completed)
             manifests.append(scenario_manifest.self_href)
 
         return RunKWSEScenariosResult(manifests=manifests, warnings=[])

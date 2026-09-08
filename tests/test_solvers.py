@@ -5,10 +5,15 @@ from unittest.mock import MagicMock, patch
 import geopandas as gpd
 from shapely.geometry import LineString
 
-from twod_fim_jobs.hydraulic_solvers.common import check_run_exists, publish_scenario
+from twod_fim_jobs.hydraulic_solvers.common import (
+    build_scenario_manifest,
+    check_run_exists,
+    publish_scenario,
+)
 from twod_fim_jobs.hydraulic_solvers.pre_process import process_bc_line
 from twod_fim_jobs.models.common import Asset, Domain, GridProperties
 from twod_fim_jobs.models.solvers import (
+    CompletedScenario,
     HFixBC,
     PostProcessResult,
     QFixBC,
@@ -95,7 +100,7 @@ def create_test_run_scenario_inputs(
 ### TESTS ###
 
 
-def test_publish_scenario_preserves_s3_double_slash(tmp_path: Path) -> None:
+def test_build_scenario_manifest_preserves_s3_double_slash(tmp_path: Path) -> None:
     """s3:// scheme must not be collapsed to s3:/ by path joining."""
     # Create placeholder local files for mock results
     depth = tmp_path / "depth.tif"
@@ -169,7 +174,7 @@ def test_publish_scenario_preserves_s3_double_slash(tmp_path: Path) -> None:
         wall_time=100.0,
         max_depth=2.0,
         median_depth=0.5,
-        extent_percent=0.25,
+        flooded_area=0.25,
     )
 
     # Create mock post-process results
@@ -202,7 +207,9 @@ def test_publish_scenario_preserves_s3_double_slash(tmp_path: Path) -> None:
             ),
         ),
     ):
-        manifest = publish_scenario(run_scenario_inputs, solve_results, processed)
+        manifest = build_scenario_manifest(
+            run_scenario_inputs, solve_results, processed
+        )
 
     # Verify s3:// is preserved (not collapsed to s3:/)
     assert manifest.assets.depth.href.startswith("s3://"), (
@@ -290,7 +297,7 @@ def test_write_model_results_to_s3_works(tmp_path: Path) -> None:
         wall_time=250.5,
         max_depth=2.0,
         median_depth=0.5,
-        extent_percent=0.25,
+        flooded_area=0.25,
     )
 
     # Create mock post-process results
@@ -324,7 +331,10 @@ def test_write_model_results_to_s3_works(tmp_path: Path) -> None:
             ),
         ),
     ):
-        manifest = publish_scenario(run_scenario_inputs, solve_results, processed)
+        manifest = build_scenario_manifest(
+            run_scenario_inputs, solve_results, processed
+        )
+        publish_scenario(CompletedScenario(manifest=manifest, processed=processed))
 
     # Verify the manifest was created with expected structure
     assert isinstance(manifest, RunScenarioManifest)
@@ -394,7 +404,7 @@ def test_check_model_skips_when_run_exists() -> None:
             sim_time=100.0,
             max_depth=2.0,
             median_depth=0.5,
-            extent_percent=0.25,
+            flooded_area=0.25,
         ),
         warnings=[],
     )
@@ -491,3 +501,65 @@ def test_kwse_downstream_stl_outside_bounds_raises_error(tmp_path: Path) -> None
         # When geometry is outside domain bounds, process_bc_line returns empty list
         result = process_bc_line(transfer_bc, domain, grid)
         assert result == [], "Expected empty BC points when geometry is outside domain"
+
+
+### DEFERRED PUBLISHING ###
+
+
+def test_publishing_an_adopted_scenario_uploads_nothing(tmp_path: Path) -> None:
+    """check_run_exists returns a manifest with no local artifacts; there is
+    nothing to upload and re-uploading would rewrite what is already there."""
+    manifest = RunScenarioManifest.model_validate_json(
+        (
+            Path(__file__).parent
+            / "test_data"
+            / "results"
+            / "reach=1257410937935512"
+            / "10850311_N48S45E47W42"
+            / "0c24be7a"
+            / "nd=1.0E04"
+            / "q=18500"
+            / "scenario_manifest.json"
+        ).read_text()
+    )
+    with (
+        patch("twod_fim_jobs.hydraulic_solvers.common.copy_file") as copy_file,
+        patch("twod_fim_jobs.hydraulic_solvers.common.write_json") as write_json,
+    ):
+        returned = publish_scenario(CompletedScenario(manifest=manifest))
+
+    assert returned is manifest
+    assert copy_file.call_count == 0
+    assert write_json.call_count == 0
+
+
+def test_an_unpublished_scenario_hotstarts_from_its_local_depth_grid() -> None:
+    """A rejected candidate is never uploaded, so the next simulation has to
+    read its depth grid off disk rather than from the address it would have had."""
+    manifest = RunScenarioManifest.model_validate_json(
+        (
+            Path(__file__).parent
+            / "test_data"
+            / "results"
+            / "reach=1257410937935512"
+            / "10850311_N48S45E47W42"
+            / "0c24be7a"
+            / "nd=1.0E04"
+            / "q=18500"
+            / "scenario_manifest.json"
+        ).read_text()
+    )
+    processed = PostProcessResult(
+        depth_path=Path("/tmp/working/q=18500/depth.tif"),
+        inundation_polygon_path=Path("/tmp/working/q=18500/inundated_area.geojson"),
+        stl_path=Path("/tmp/working/q=18500/stl.geojson"),
+        nominal_wse=225.1,
+        sim_time=3600.0,
+    )
+
+    adopted = CompletedScenario(manifest=manifest)
+    assert adopted.depth.href == manifest.assets.depth.href
+
+    local = CompletedScenario(manifest=manifest, processed=processed)
+    assert local.depth.href == "/tmp/working/q=18500/depth.tif"
+    assert local.depth.checksum == manifest.assets.depth.checksum

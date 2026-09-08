@@ -3,16 +3,17 @@ import logging
 import math
 import tempfile
 from pathlib import Path
+from collections.abc import Callable
+from typing import NamedTuple
 
 import geopandas as gpd
-import numpy as np
 from shapely.geometry import Point, Polygon
 
 from twod_fim_jobs.consts import (
     MINIMUM_REACH_SLOPE,
     bieger_bankfull_width,
 )
-from twod_fim_jobs.hydraulic_solvers.common import run_scenario
+from twod_fim_jobs.hydraulic_solvers.common import publish_scenario, run_scenario
 from twod_fim_jobs.hydraulic_solvers.identities import get_run_identity_hash
 from twod_fim_jobs.jobs.common import Job
 from twod_fim_jobs.models.build_model import ModelManifest
@@ -26,6 +27,7 @@ from twod_fim_jobs.models.run_nd_scenarios import (
 )
 from twod_fim_jobs.models.solvers import (
     BoundaryCondition,
+    CompletedScenario,
     FreeBC,
     QFixBC,
     RunConfig,
@@ -34,7 +36,6 @@ from twod_fim_jobs.models.solvers import (
 )
 from twod_fim_jobs.models.warnings import WaterOnEdgeWarning
 from twod_fim_jobs.utils.geospatial import (
-    Raster,
     ensure_linestring,
     load_dem_and_get_pt_indices,
 )
@@ -44,20 +45,242 @@ from twod_fim_jobs.utils.storage import ASSET_CACHE, copy_file, read_json
 logger = logging.getLogger(__name__)
 
 
-def _scale_delta(delta: int, factor: float) -> int:
-    """Grow or shrink the discharge step, keeping it a whole number of cms.
+class Reuse(NamedTuple):
+    """How far the already-simulated scenarios carry the sweep on their own."""
 
-    Discharge is integral throughout this system: the bounds and the step are
-    authored as integers, the folder a scenario is written to is named by the
-    discharge, and the library records the set of discharges that were run. The
-    shrink and grow factors are ratios rather than flows, so scaling has to be
-    rounded back or the step — and every discharge derived from it — drifts off
-    the integers.
+    ref: CompletedScenario
+    accepted: list[CompletedScenario]
+    position: CompletedScenario
 
-    Rounded to at least 1 so a small step cannot scale to zero and stall the
-    sweep at one discharge.
+
+def _reuse_finished_runs(
+    ref: CompletedScenario,
+    done: dict[int, CompletedScenario],
+    inputs: RunNDScenariosInputs,
+) -> Reuse:
+    """Advance the reference as far as scenarios already run allow.
+
+    A comparison is arithmetic over two manifests, so re-judging a finished
+    scenario costs nothing. A discharge rejected as too high for one reference
+    may sit squarely in the band for the next one, and it is already on disk.
+
+    Response rises with discharge, so above the reference the outcomes fall in
+    order: too low, then in band, then too high. The scan therefore runs downward
+    from the highest simulated discharge and stops at the first verdict that is
+    not reject_high, since that is either the furthest advance available or proof
+    that nothing in memory clears the floor.
     """
-    return max(1, round(delta * factor))
+    accepted: list[CompletedScenario] = []
+    while True:
+        ref_q = ref.manifest.properties.us_discharge
+        candidates = [q for q in sorted(done) if q > ref_q]
+        if candidates:
+            logger.info(
+                f"Free pass: simulated {sorted(done)}; re-judging {candidates} "
+                f"against reference {ref_q}"
+            )
+        best: CompletedScenario | None = None
+        position = ref
+
+        for q in reversed(candidates):
+            logger.info(f"Re-judging simulated discharge {q} against reference {ref_q}")
+            outcome = compare_scenario_changes(
+                done[q].manifest, inputs, ref.manifest
+            ).result
+            if outcome == "reject_high":
+                continue
+            if outcome == "accept":
+                best = done[q]
+            else:
+                position = done[q]
+            break
+
+        if best is None:
+            return Reuse(ref, accepted, position)
+        logger.info(
+            "Accepting already-simulated discharge "
+            f"{best.manifest.properties.us_discharge}"
+        )
+        accepted.append(best)
+        ref = best
+
+
+def _take_free_advances(
+    ref: CompletedScenario,
+    done: dict[int, CompletedScenario],
+    inputs: RunNDScenariosInputs,
+    publish: Callable[[CompletedScenario], None],
+) -> Reuse:
+    """Run the free pass and publish whatever it accepts."""
+    reuse = _reuse_finished_runs(ref, done, inputs)
+    for scenario in reuse.accepted:
+        publish(scenario)
+    return reuse
+
+
+class Measure(NamedTuple):
+    """One acceptance criterion, and the response curve it is read from.
+
+    `values` are ABSOLUTE readings aligned with the sweep's sorted discharges,
+    not increases. The band is applied to the reference's own reading, which is
+    what makes the curve directly solvable for the next discharge.
+    """
+
+    name: str
+    values: list[float]
+    floor: float
+    ceiling: float
+    # Flooded area's band is a percentage of the reference's area; the depth
+    # bands are absolute metres.
+    relative: bool
+
+
+def _monotone(values: list[float]) -> list[float]:
+    """A running maximum: more water cannot mean less flooding.
+
+    Small measurement wobbles flatten out, and a criterion that genuinely falls
+    -- median depth does, when water spreads over shallow ground -- becomes flat
+    instead. A flat stretch carries no information, which is the honest answer:
+    a criterion moving downward can never satisfy a band asking for an increase.
+    """
+    out: list[float] = []
+    high = -math.inf
+    for value in values:
+        high = max(high, value)
+        out.append(high)
+    return out
+
+
+def _crossing(qs: list[int], values: list[float], target: float) -> float | None:
+    """The discharge at which the curve first reaches `target`.
+
+    Straight segments between simulated points, so a reading is exact at every
+    discharge actually run. Above the highest point the last segment's slope is
+    carried on -- these curves bend gently downward, so that always promises
+    slightly more response than the reach delivers, and the sweep aims a little
+    short rather than overshooting.
+
+    None when the curve never gets there: fewer than two points to draw a line
+    from, or a flat top that goes nowhere.
+    """
+    for i in range(len(qs) - 1):
+        low, high = values[i], values[i + 1]
+        if high > low and low <= target <= high:
+            span = (target - low) / (high - low)
+            return qs[i] + (qs[i + 1] - qs[i]) * span
+    if len(qs) < 2 or target <= values[-1]:
+        return None
+    slope = (values[-1] - values[-2]) / (qs[-1] - qs[-2])
+    if slope <= 0:
+        return None
+    return qs[-1] + (target - values[-1]) / slope
+
+
+def _curves(
+    done: dict[int, CompletedScenario], inputs: RunNDScenariosInputs
+) -> tuple[list[int], list[Measure]]:
+    """The three response curves, assembled from every scenario simulated."""
+    qs = sorted(done)
+    props = [done[q].manifest.properties for q in qs]
+    return qs, [
+        Measure(
+            "max_depth",
+            _monotone([p.max_depth for p in props]),
+            *inputs.ld_q_max_depth_increase_range,
+            False,
+        ),
+        Measure(
+            "median_depth",
+            _monotone([p.median_depth for p in props]),
+            *inputs.ld_q_median_depth_increase_range,
+            False,
+        ),
+        Measure(
+            "flooded_area",
+            _monotone([p.flooded_area for p in props]),
+            *inputs.ld_q_flooded_area_prcnt_increase_range,
+            True,
+        ),
+    ]
+
+
+def _acceptance_window(
+    qs: list[int], measures: list[Measure], ref_q: int
+) -> tuple[float, float] | None:
+    """The discharges at which a trial against `ref_q` would be accepted.
+
+    Each criterion is read off its curve for where the change from the reference
+    reaches its floor and where it reaches its ceiling. Acceptance needs only one
+    criterion at its floor, so the window opens at the EARLIEST floor; it needs
+    every criterion under its ceiling, so it closes at the EARLIEST ceiling.
+
+    The window is never empty. The criterion that reaches a floor first must do
+    so before any criterion reaches a ceiling, because its own ceiling comes
+    later still.
+
+    None means no criterion reaches a floor at any discharge -- the curves have
+    gone flat, and there is nothing left to place below the top of the range.
+    """
+    index = qs.index(ref_q)
+    starts: list[float] = []
+    ends: list[float] = []
+    for measure in measures:
+        base = measure.values[index]
+        if measure.relative:
+            floor, ceiling = (
+                base * (1 + measure.floor / 100),
+                base * (1 + measure.ceiling / 100),
+            )
+        else:
+            floor, ceiling = base + measure.floor, base + measure.ceiling
+        opens = _crossing(qs, measure.values, floor)
+        closes = _crossing(qs, measure.values, ceiling)
+        if opens is not None:
+            starts.append(opens)
+        if closes is not None:
+            ends.append(closes)
+    if not starts:
+        return None
+    return min(starts), min(ends) if ends else math.inf
+
+
+class Proposal(NamedTuple):
+    """The next discharge to simulate, and what the window said about it."""
+
+    q: int
+    # The window landed at or beyond the top of the range: nothing further fits.
+    at_max: bool
+    # The window asked for a step finer than min_delta_q. The step is run as
+    # asked -- min_delta_q is not a floor on the step -- but a reject_high is
+    # then accepted rather than narrowing the search again.
+    below_min_step: bool
+
+
+def _propose(
+    done: dict[int, CompletedScenario],
+    inputs: RunNDScenariosInputs,
+    ref_q: int,
+    position_q: int,
+) -> Proposal:
+    """Where the curves say the next library entry belongs."""
+    max_q = inputs.max_upstream_inflow
+    qs, measures = _curves(done, inputs)
+    window = _acceptance_window(qs, measures, ref_q)
+    if window is None:
+        return Proposal(max_q, True, False)
+    opens, closes = window
+    if math.isinf(closes):
+        return Proposal(max_q, True, False)
+    middle = max(round((opens + closes) / 2), position_q + 1)
+    logger.info(
+        f"Window {opens:.1f} to {closes:.1f} against reference {ref_q}; "
+        f"proposing {middle}"
+    )
+    if middle >= max_q:
+        return Proposal(max_q, True, False)
+    return Proposal(
+        middle, False, middle - position_q < inputs.adaptive_step_min_delta_q
+    )
 
 
 class RunNDScenariosJob(Job[RunNDScenariosInputs]):
@@ -78,76 +301,111 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
         logger.info(
             f"Starting adaptive step algorithm for discharge range {inputs.min_upstream_inflow} - {inputs.max_upstream_inflow} w/ delta {delta_us_discharge}"
         )
+        # The maximum is published the moment it is run and may later be
+        # re-judged by the free pass, so publishing is made idempotent rather
+        # than every call site having to know what is already uploaded.
+        published: set[int] = set()
+
+        def publish(scenario: CompletedScenario) -> None:
+            q = scenario.manifest.properties.us_discharge
+            if q not in published:
+                published.add(q)
+                publish_scenario(scenario)
+
         ref_scenario = _run_scenario(
             inputs.min_upstream_inflow, downstream_bc, model_manifest, inputs, tmp_dir
         )
+        publish(ref_scenario)
         current_scenario = ref_scenario
-        scenario_comparison = compare_scenario_changes(current_scenario, inputs, None)
+        scenario_comparison = compare_scenario_changes(
+            current_scenario.manifest, inputs, None
+        )
         results = RunNDScenariosResult(
             scenario_comparison_results=[scenario_comparison], warnings=[]
         )
-        q_trial = current_scenario.properties.us_discharge + delta_us_discharge
+        # Every scenario simulated this run, published or not. Rejections are
+        # kept because the next reference may accept them, and re-judging one
+        # costs no simulation.
+        done: dict[int, CompletedScenario] = {
+            ref_scenario.manifest.properties.us_discharge: ref_scenario
+        }
+        # The bootstrap. One point is not a curve, so the opening step is the
+        # authored one; every step after that is read off the curves.
+        q_trial = inputs.min_upstream_inflow + delta_us_discharge
+        max_q = inputs.max_upstream_inflow
+        max_done = False
 
-        while q_trial < inputs.max_upstream_inflow:
-            logger.info(f"Evaluating trial discharge {q_trial}")
+        while True:
+            if len(done) == 1:
+                # One point is not a curve: use the authored opening step.
+                at_max = q_trial >= max_q
+                q_trial, below_min_step = min(q_trial, max_q), False
+            else:
+                q_trial, at_max, below_min_step = _propose(
+                    done,
+                    inputs,
+                    ref_scenario.manifest.properties.us_discharge,
+                    current_scenario.manifest.properties.us_discharge,
+                )
+            if at_max and max_done:
+                break
 
+            logger.info(
+                f"State: reference={ref_scenario.manifest.properties.us_discharge} "
+                f"position={current_scenario.manifest.properties.us_discharge} "
+                f"trial={q_trial}"
+                + (" (top of range)" if at_max else "")
+                + (" (finer than min_delta_q)" if below_min_step else "")
+            )
             trial_scenario = _run_scenario(
                 q_trial,
                 downstream_bc,
                 model_manifest,
                 inputs,
                 tmp_dir,
-                hot_start=current_scenario.assets.depth,
+                hot_start=current_scenario.depth,
             )
-
-            if trial_scenario.properties.termination_condition == "edge_error":
+            if trial_scenario.manifest.properties.termination_condition == "edge_error":
                 logger.error("Aborting adaptive step algorithm for edge error")
                 results.warnings.append(WaterOnEdgeWarning())
                 return results
 
+            done[q_trial] = trial_scenario
             scenario_comparison = compare_scenario_changes(
-                trial_scenario,
-                inputs,
-                ref_scenario,
-                force_accept=(delta_us_discharge <= inputs.adaptive_step_min_delta_q),
+                trial_scenario.manifest, inputs, ref_scenario.manifest
             )
             results.scenario_comparison_results.append(scenario_comparison)
+            verdict = scenario_comparison.result
 
-            if scenario_comparison.result == "reject_high":
-                logger.info(f"Rejecting trial discharge {q_trial}: high")
-                delta_us_discharge = _scale_delta(
-                    delta_us_discharge, inputs.adaptive_step_algorithm_shrink_factor
+            if at_max:
+                # The top of the range is a library entry whatever its verdict:
+                # the KWSE stage grid is built from it. It is still judged, and
+                # a reject_high means the response resumed somewhere below, so
+                # the sweep carries on and fills the gap underneath.
+                publish(trial_scenario)
+                max_done = True
+                if verdict != "reject_high":
+                    break
+                logger.info(
+                    f"Maximum discharge {max_q} is too large a step; filling below it"
                 )
+            elif verdict == "reject_high" and below_min_step:
+                # Nothing finer is worth chasing, so this is as close to the
+                # band as this reach can be sampled.
+                logger.info(f"Taking {q_trial} despite reject_high: below min_delta_q")
+                verdict = "accept"
 
-            elif scenario_comparison.result == "accept":
+            if verdict == "accept":
                 logger.info(f"Accepting trial discharge {q_trial}")
-                ref_scenario = trial_scenario
-                current_scenario = trial_scenario
-
-            elif scenario_comparison.result == "reject_low":
+                publish(trial_scenario)
+                ref_scenario = current_scenario = trial_scenario
+                reuse = _take_free_advances(ref_scenario, done, inputs, publish)
+                ref_scenario, current_scenario = reuse.ref, reuse.position
+            elif verdict == "reject_low":
                 logger.info(f"Rejecting trial discharge {q_trial}: low")
                 current_scenario = trial_scenario
-                delta_us_discharge = _scale_delta(
-                    delta_us_discharge, inputs.adaptive_step_algorithm_grow_factor
-                )
-
-            delta_us_discharge = max(
-                inputs.adaptive_step_min_delta_q, delta_us_discharge
-            )
-            q_trial = current_scenario.properties.us_discharge + delta_us_discharge
-
-        trial_scenario = _run_scenario(
-            inputs.max_upstream_inflow,
-            downstream_bc,
-            model_manifest,
-            inputs,
-            tmp_dir,
-            hot_start=current_scenario.assets.depth,
-        )
-        scenario_comparison = compare_scenario_changes(
-            trial_scenario, inputs, ref_scenario, force_accept=True
-        )
-        results.scenario_comparison_results.append(scenario_comparison)
+            else:
+                logger.info(f"Rejecting trial discharge {q_trial}: high")
 
         logger.info("Completed adaptive step algorithm")
 
@@ -306,75 +564,62 @@ def _run_scenario(
     working_dir = tmp_dir / run_scenario_inputs.scenario_dir_name
 
     # Execute run
-    scenario_manifest = run_scenario(run_scenario_inputs, working_dir)
-
-    return scenario_manifest
+    return run_scenario(run_scenario_inputs, working_dir)
 
 
 def compare_scenario_changes(
     trial_scenario: RunScenarioManifest,
     inputs: RunNDScenariosInputs,
     ref_scenario: RunScenarioManifest | None = None,
-    force_accept: bool = False,
     log_results: bool = True,
 ) -> AdaptiveStepComparisonResults:
-    """Compare depth and extent changes between a reference and trial scenario to accept or reject the step."""
+    """Compare a trial scenario against a reference to accept or reject the step."""
     if ref_scenario is None:
         return AdaptiveStepComparisonResults(
             ref_scenario_manifest=None,
             trial_scenario_manifest=trial_scenario.self_href,
-            max_stage_diff=0,
-            median_stage_diff=0,
-            extent_diff=0,
+            max_depth_increase=0,
+            median_depth_increase=0,
+            flooded_area_prcnt_increase=0,
             result="accept",
         )
-    # Materialize assets
-    resolved_ref_depth = ASSET_CACHE.materialize_path(ref_scenario.assets.depth)
-    resolved_tria_depth = ASSET_CACHE.materialize_path(trial_scenario.assets.depth)
+    ref, trial = ref_scenario.properties, trial_scenario.properties
 
-    # Load data
-    ref_raster = Raster(resolved_ref_depth)
-    trial_raster = Raster(resolved_tria_depth)
-    ref_raster.data = np.clip(ref_raster.data, 0, None)
-    trial_raster.data = np.clip(trial_raster.data, 0, None)
-    comparison_mask = (ref_raster.data > 0) | (trial_raster.data > 0)
+    max_depth_increase = trial.max_depth - ref.max_depth
+    median_depth_increase = trial.median_depth - ref.median_depth
+    flooded_area_prcnt_increase = (
+        (trial.flooded_area - ref.flooded_area) / ref.flooded_area * 100
+        if ref.flooded_area > 0
+        else 0.0
+    )
 
-    depth_diffs = (
-        trial_raster.data[comparison_mask] - ref_raster.data[comparison_mask]
-    ).flatten()
-    max_depth_diff = np.quantile(depth_diffs, 0.95)
-    median_depth_diff = np.median(depth_diffs)
-    ref_extent = (ref_raster.data > 0).sum()
-    extent_diff = ((trial_raster.data > 0).sum() - ref_extent) / ref_extent
+    max_depth_lo, max_depth_hi = inputs.ld_q_max_depth_increase_range
+    median_lo, median_hi = inputs.ld_q_median_depth_increase_range
+    area_lo, area_hi = inputs.ld_q_flooded_area_prcnt_increase_range
 
     # reject_high takes priority: any criterion over its ceiling means the step was too large
     if (
-        max_depth_diff > inputs.adaptive_step_algorithm_max_stage_max_acceptable
-        or median_depth_diff
-        > inputs.adaptive_step_algorithm_median_stage_max_acceptable
-        or extent_diff > inputs.adaptive_step_algorithm_extent_max_acceptable
+        max_depth_increase > max_depth_hi
+        or median_depth_increase > median_hi
+        or flooded_area_prcnt_increase > area_hi
     ):
         result = "reject_high"
 
     elif (
-        inputs.adaptive_step_algorithm_max_stage_min_acceptable <= max_depth_diff
-        or inputs.adaptive_step_algorithm_median_stage_min_acceptable
-        <= median_depth_diff
-        or inputs.adaptive_step_algorithm_extent_min_acceptable <= extent_diff
+        max_depth_lo <= max_depth_increase
+        or median_lo <= median_depth_increase
+        or area_lo <= flooded_area_prcnt_increase
     ):
         result = "accept"
     else:
         result = "reject_low"
 
-    if force_accept:
-        result = "accept"
-
     res = AdaptiveStepComparisonResults(
         ref_scenario_manifest=ref_scenario.self_href,
         trial_scenario_manifest=trial_scenario.self_href,
-        max_stage_diff=max_depth_diff,
-        median_stage_diff=median_depth_diff,
-        extent_diff=extent_diff,
+        max_depth_increase=max_depth_increase,
+        median_depth_increase=median_depth_increase,
+        flooded_area_prcnt_increase=flooded_area_prcnt_increase,
         result=result,
     )
 

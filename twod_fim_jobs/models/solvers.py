@@ -142,7 +142,7 @@ class ConvergenceResult(BaseModel):
 class InundationMetricResults(BaseModel):
     max_depth: float
     median_depth: float
-    extent_percent: float
+    flooded_area: float
 
 
 class _BCBase(BaseModel):
@@ -236,7 +236,7 @@ class SolveScenarioResults(BaseModel):
     wall_time: float
     max_depth: float
     median_depth: float
-    extent_percent: float
+    flooded_area: float
 
 
 class RunScenarioResults(BaseModel):
@@ -262,16 +262,16 @@ class RunScenarioResults(BaseModel):
         examples=[960.0],
     )
     max_depth: float = Field(
-        description="Maximum flood depth in the final depth raster.",
+        description="Maximum flood depth over wet cells, m.",
         examples=[10.0],
     )
     median_depth: float = Field(
-        description="Median flood depth in the final depth raster.",
+        description="Median flood depth over wet cells, m.",
         examples=[1.3],
     )
-    extent_percent: float = Field(
-        description="Ratio of inundated area to model domain area.",
-        examples=[0.23],
+    flooded_area: float = Field(
+        description="Inundated area, sq km.",
+        examples=[0.42],
     )
 
     @field_validator("nominal_wse")
@@ -455,3 +455,25 @@ class RunScenarioManifest(BaseModel):
         description="Non-fatal check results; the scenario run still completes and writes scenario.json.",
         examples=[[]],
     )
+
+
+class CompletedScenario(BaseModel):
+    """A finished simulation, which may or may not have been published.
+
+    `processed` is None when the scenario was adopted from storage rather than
+    run, which is also how publish knows there is nothing to upload.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    manifest: RunScenarioManifest
+    processed: PostProcessResult | None = None
+
+    @property
+    def depth(self) -> Asset:
+        """The depth grid, wherever it can be read from right now."""
+        if self.processed is None:
+            return self.manifest.assets.depth
+        return self.manifest.assets.depth.model_copy(
+            update={"href": str(self.processed.depth_path)}
+        )

@@ -1,15 +1,10 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Literal
 from twod_fim_jobs.consts import (
-    ADAPTIVE_STEP_ALGORITHM_EXTENT_MAX_ACCEPTABLE,
-    ADAPTIVE_STEP_ALGORITHM_EXTENT_MIN_ACCEPTABLE,
-    ADAPTIVE_STEP_ALGORITHM_GROW_FACTOR,
-    ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MAX_ACCEPTABLE,
-    ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MIN_ACCEPTABLE,
-    ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MAX_ACCEPTABLE,
-    ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MIN_ACCEPTABLE,
     ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q,
-    ADAPTIVE_STEP_ALGORITHM_SHRINK_FACTOR,
+    LD_Q_FLOODED_AREA_PRCNT_INCREASE_RANGE,
+    LD_Q_MAX_DEPTH_INCREASE_RANGE,
+    LD_Q_MEDIAN_DEPTH_INCREASE_RANGE,
     DEFAULT_MAX_WALL_TIME_SECONDS,
     DEFAULT_SIM_TIME_SECONDS,
     DEFAULT_SIM_SAVE_INTERVAL_SECONDS,
@@ -17,6 +12,15 @@ from twod_fim_jobs.consts import (
 )
 
 from twod_fim_jobs.models.warnings import JobWarning
+
+
+# Narrower than this and the adaptive step has no room to accept: every trial is
+# either too small or too large, and the sweep oscillates instead of converging.
+_MIN_RANGE_SPAN = {
+    "ld_q_max_depth_increase_range": 0.1,
+    "ld_q_median_depth_increase_range": 0.1,
+    "ld_q_flooded_area_prcnt_increase_range": 1.0,
+}
 
 
 class RunNDScenariosInputs(BaseModel):
@@ -83,7 +87,7 @@ class RunNDScenariosInputs(BaseModel):
     )
     adaptive_step_min_delta_q: int = Field(
         default=ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q,
-        description="Minimum sensitivity for Q in adaptive step algorithm.  If delta_q at the min and algorithm would reject high, trial is accepted instead.",
+        description="Discharge step below which refining stops being worth another simulation. Not a minimum step: a finer step is run if that is where the acceptance window falls. But when the window asks for less than this and the trial still rejects high, it is accepted rather than narrowing again.",
         examples=[10],
     )
     save_velocity: bool = Field(
@@ -96,46 +100,32 @@ class RunNDScenariosInputs(BaseModel):
         description="Whether or not to generate and save a zarr file with wse and depth at each print interval",
         examples=[False],
     )
-    adaptive_step_algorithm_shrink_factor: float = Field(
-        default=ADAPTIVE_STEP_ALGORITHM_SHRINK_FACTOR,
-        description="Multiplier applied to the discharge step size when a trial scenario is rejected for producing too large a change",
-        examples=[0.5],
+    ld_q_max_depth_increase_range: tuple[float, float] = Field(
+        default=LD_Q_MAX_DEPTH_INCREASE_RANGE,
+        description="[min, max] increase in max depth (m) between consecutive library entries. Under min the step was too small, over max it was too large.",
+        examples=[(0.75, 1.25)],
     )
-    adaptive_step_algorithm_grow_factor: float = Field(
-        default=ADAPTIVE_STEP_ALGORITHM_GROW_FACTOR,
-        description="Multiplier applied to the discharge step size when a trial scenario is accepted or rejected for producing too small a change",
-        examples=[1.5],
+    ld_q_median_depth_increase_range: tuple[float, float] = Field(
+        default=LD_Q_MEDIAN_DEPTH_INCREASE_RANGE,
+        description="[min, max] increase in median depth (m) between consecutive discharge scenarios.",
+        examples=[(0.25, 0.5)],
     )
-    adaptive_step_algorithm_max_stage_min_acceptable: float = Field(
-        default=ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MIN_ACCEPTABLE,
-        description="Minimum 95th-percentile depth difference (m) between consecutive discharge scenarios required to accept the step",
-        examples=[0.75],
+    ld_q_flooded_area_prcnt_increase_range: tuple[float, float] = Field(
+        default=LD_Q_FLOODED_AREA_PRCNT_INCREASE_RANGE,
+        description="[min, max] percent increase in flooded area between consecutive discharge scenarios, where 10 means 10 percent.",
+        examples=[(10.0, 15.0)],
     )
-    adaptive_step_algorithm_max_stage_max_acceptable: float = Field(
-        default=ADAPTIVE_STEP_ALGORITHM_MAX_STAGE_MAX_ACCEPTABLE,
-        description="Maximum 95th-percentile depth difference (m) between consecutive discharge scenarios before rejection",
-        examples=[1.25],
-    )
-    adaptive_step_algorithm_median_stage_min_acceptable: float = Field(
-        default=ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MIN_ACCEPTABLE,
-        description="Minimum median depth difference (m) between consecutive discharge scenarios required to accept the step",
-        examples=[0.25],
-    )
-    adaptive_step_algorithm_median_stage_max_acceptable: float = Field(
-        default=ADAPTIVE_STEP_ALGORITHM_MEDIAN_STAGE_MAX_ACCEPTABLE,
-        description="Maximum median depth difference (m) between consecutive discharge scenarios before rejection",
-        examples=[0.75],
-    )
-    adaptive_step_algorithm_extent_min_acceptable: float = Field(
-        default=ADAPTIVE_STEP_ALGORITHM_EXTENT_MIN_ACCEPTABLE,
-        description="Minimum fractional change in inundated area between consecutive discharge scenarios required to accept the step",
-        examples=[0.075],
-    )
-    adaptive_step_algorithm_extent_max_acceptable: float = Field(
-        default=ADAPTIVE_STEP_ALGORITHM_EXTENT_MAX_ACCEPTABLE,
-        description="Maximum fractional change in inundated area between consecutive discharge scenarios before rejection",
-        examples=[0.125],
-    )
+
+    @field_validator(*_MIN_RANGE_SPAN)
+    @classmethod
+    def range_is_wide_enough(cls, v: tuple[float, float], info) -> tuple[float, float]:
+        low, high = v
+        span = _MIN_RANGE_SPAN[info.field_name]
+        if high - low < span:
+            raise ValueError(
+                f"{info.field_name} must span at least {span}, got {low} to {high}"
+            )
+        return v
 
     @field_validator("save_velocity")
     @classmethod
@@ -156,9 +146,9 @@ class AdaptiveStepComparisonResults(BaseModel):
             "s3://twod-fim/version=v1/results/1257410937935512/fceb20c6_N164S214E230W107/results/nd=1.0E02/q=1200/scenario.json"
         ]
     )
-    max_stage_diff: float = Field(examples=[1.15])
-    median_stage_diff: float = Field(examples=[1.03])
-    extent_diff: float = Field(examples=[0.02])
+    max_depth_increase: float = Field(examples=[1.15])
+    median_depth_increase: float = Field(examples=[1.03])
+    flooded_area_prcnt_increase: float = Field(examples=[12.0])
     result: Literal["reject_high", "reject_low", "accept"] = Field(examples=["accept"])
 
 

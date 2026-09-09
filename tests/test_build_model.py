@@ -14,7 +14,11 @@ from twod_fim_jobs.exceptions import (
     ReachDatasetUnavailable,
     ReachNotFoundError,
 )
-from twod_fim_jobs.jobs.build_model import BuildModelJob, _check_inflow_cl_intersection
+from twod_fim_jobs.jobs.build_model import (
+    BuildModelJob,
+    _check_inflow_cl_intersection,
+    generate_other_geometries,
+)
 from twod_fim_jobs.jobs.build_model import _normalize_href
 from twod_fim_jobs.models.build_model import BuildModelInputs
 from twod_fim_jobs.models.warnings import (
@@ -28,6 +32,7 @@ import rasterio
 from rasterio.crs import CRS
 from rasterio.transform import from_bounds
 
+from twod_fim_jobs.consts import DA_FIELD, bieger_bankfull_width
 from twod_fim_jobs.models.common import Asset
 from twod_fim_jobs.utils.storage import read_json
 
@@ -208,6 +213,50 @@ def test_end_to_end(build_model_input, tmp_path, mock_extract_raster):
     assert domain_bbox[3] > without_buffer[3]
 
 
+def test_end_to_end_lulc_lookup_from_file(
+    build_model_input, tmp_path, mock_extract_raster
+):
+    """A LULC lookup configured as a JSON path is loaded without mutating inputs."""
+    lookup_path = tmp_path / "lulc_lookup.json"
+    lookup = {11: 99, 21: -0.1}  # Outlandish to be sure that extreme values are obeyed
+    lookup_path.write_text(json.dumps(lookup))
+    model_input = build_model_input.model_copy(
+        update={"base_output_path": str(tmp_path), "lulc_lookup": str(lookup_path)}
+    )
+
+    result = BuildModelJob().run(model_input)
+
+    manifest_path = tmp_path / result.model_id / "model_manifest.json"
+    manifest = json.loads(read_json(manifest_path))
+    assert manifest["inputs"]["lulc_lookup"] == str(lookup_path)
+
+
+def test_lulc_lookup_dict_and_path_have_same_identity_hash(
+    build_model_input, tmp_path, mock_extract_raster
+):
+    """Equivalent dictionary and JSON-path LULC inputs have the same identity."""
+    lookup = build_model_input.lulc_lookup
+    assert isinstance(lookup, dict)
+    lookup_path = tmp_path / "lulc_lookup.json"
+    lookup_path.write_text(json.dumps(lookup))
+
+    dict_result = BuildModelJob().run(
+        build_model_input.model_copy(
+            update={"base_output_path": str(tmp_path / "dict")}
+        )
+    )
+    path_result = BuildModelJob().run(
+        build_model_input.model_copy(
+            update={
+                "base_output_path": str(tmp_path / "path"),
+                "lulc_lookup": str(lookup_path),
+            }
+        )
+    )
+
+    assert dict_result.identity_hash == path_result.identity_hash
+
+
 def test_end_to_end_w_other_geom(
     build_model_input_w_extra_geometries, mock_extract_raster
 ):
@@ -334,6 +383,82 @@ def test_large_domain_area_warning_emitted(
 
 def _make_cl_gdf(coords: list[tuple]) -> gpd.GeoDataFrame:
     return gpd.GeoDataFrame(geometry=[LineString(coords)])
+
+
+def test_generate_other_geometries_clips_and_buffers_upstream_mainstem():
+    reach = gpd.GeoDataFrame(
+        {DA_FIELD: [100.0]},
+        geometry=[LineString([(10, 0), (20, 0)])],
+        crs=5070,
+    )
+    us_mainstem = _make_cl_gdf([(0, 0), (10, 0)]).set_crs(5070)
+    inflow = _make_cl_gdf([(7, -5), (7, 5)]).set_crs(5070)
+
+    result = generate_other_geometries(reach, us_mainstem, inflow, [], 1)
+
+    buffer_distance = bieger_bankfull_width(100.0)
+    expected_buffer = LineString([(7, 0), (10, 0)]).buffer(buffer_distance)
+    full_mainstem_buffer = us_mainstem.geometry.iloc[0].buffer(buffer_distance)
+    assert len(result) == 3
+    assert result.crs == reach.crs
+    assert any(geometry.equals(expected_buffer) for geometry in result.geometry)
+    assert not any(
+        geometry.equals(full_mainstem_buffer) for geometry in result.geometry
+    )
+
+
+def test_generate_other_geometries_loads_geojson_path():
+    reach = gpd.GeoDataFrame(
+        {DA_FIELD: [100.0]},
+        geometry=[LineString([(10, 0), (20, 0)])],
+        crs=5070,
+    )
+    inflow = _make_cl_gdf([(7, -5), (7, 5)]).set_crs(5070)
+    geojson_path = Path("/tmp/other_geometry.geojson")
+    geojson_path.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {"name": "extra"},
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [
+                                [[12, -1], [13, -1], [13, 1], [12, 1], [12, -1]]
+                            ],
+                        },
+                    }
+                ],
+            }
+        )
+    )
+
+    result = generate_other_geometries(
+        reach, gpd.GeoDataFrame(), inflow, [str(geojson_path)], 1
+    )
+
+    assert len(result) == 3
+    assert result.crs == reach.crs
+    assert any(geometry.geom_type == "Polygon" for geometry in result.geometry)
+
+
+def test_generate_other_geometries_clipping_ignores_mainstem_orientation():
+    reach = gpd.GeoDataFrame(
+        {DA_FIELD: [100.0]},
+        geometry=[LineString([(10, 0), (20, 0)])],
+        crs=5070,
+    )
+    us_mainstem = _make_cl_gdf([(10, 0), (0, 0)]).set_crs(5070)
+    inflow = _make_cl_gdf([(7, -5), (7, 5)]).set_crs(5070)
+
+    result = generate_other_geometries(
+        reach, us_mainstem, inflow, gpd.GeoDataFrame(), 1
+    )
+
+    expected_buffer = LineString([(7, 0), (10, 0)]).buffer(bieger_bankfull_width(100.0))
+    assert any(geometry.equals(expected_buffer) for geometry in result.geometry)
 
 
 def test_check_inflow_cl_single_intersection_returns_none():

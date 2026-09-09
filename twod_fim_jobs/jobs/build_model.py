@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import geopandas as gpd
 import pandas as pd
 from pydantic import ValidationError
+from shapely.ops import split
+from shapely.wkt import loads as load_wkt
 
 from twod_fim_jobs.consts import (
     ANCHOR_FILENAME,
     DA_FIELD,
-    DEFAULT_CENTERLINE_BUFFER,
     DEM_FILENAME,
     DOMAIN_FILENAME,
     INFLOW_FILENAME,
@@ -35,6 +38,7 @@ from twod_fim_jobs.models.build_model import (
     Properties,
 )
 from twod_fim_jobs.models.common import Asset
+from twod_fim_jobs.exceptions import InvalidWKTGeometryError
 from twod_fim_jobs.models.warnings import (
     CenterlineInflowMultiIntersectionWarning,
     JobWarning,
@@ -83,32 +87,33 @@ class BuildModelJob(Job[BuildModelInputs]):
             )
             us_mainstem = ensure_linestring(us_mainstem)
 
+        # Load lulc dict, if necessary, without mutating the validated inputs.
+        if isinstance(inputs.lulc_lookup, dict):
+            lulc_lookup = inputs.lulc_lookup
+        else:
+            lulc_lookup = {
+                int(code): roughness
+                for code, roughness in json.loads(read_json(inputs.lulc_lookup)).items()
+            }
+
         # Make inflow line and validate
         inflow_line = make_inflow_line(
             reach,
             us_mainstem,
             inputs.bankfull_width_multiplier,
             inputs.walk_us_dist_pct,
+            inputs.ds_of_lake,
         )
         cl_inf_intersections = _check_inflow_cl_intersection(reach, inflow_line)
         if cl_inf_intersections:
             job_warnings.append(cl_inf_intersections)
 
-        # Assemble other geometries
-        cl_buffer_dist = (
-            bieger_bankfull_width(float(reach[DA_FIELD].iloc[0]))
-            * DEFAULT_CENTERLINE_BUFFER
-        )
-        cl_buffer = reach.buffer(cl_buffer_dist)
-        all_other_geometries = gpd.GeoDataFrame(
-            pd.concat(
-                [
-                    inflow_line,
-                    gpd.GeoDataFrame(geometry=cl_buffer, crs=reach.crs),
-                    inputs.other_geometries_gdf,
-                ],
-                ignore_index=True,
-            )
+        all_other_geometries = generate_other_geometries(
+            reach,
+            us_mainstem,
+            inflow_line,
+            inputs.other_geometries,
+            inputs.centerline_buffer_bankfull_multiplier,
         )
 
         # Build domain
@@ -132,7 +137,7 @@ class BuildModelJob(Job[BuildModelInputs]):
             epsg_code=inputs.epsg_code,
             dem_source_inputs_hash=hash_str(inputs.dem_source, role_length=8),
             lulc_source_inputs_hash=hash_str(inputs.lulc_source, role_length=8),
-            lulc_lookup_dict_hash=hash_dict(inputs.lulc_lookup, role_length=8),
+            lulc_lookup_dict_hash=hash_dict(lulc_lookup, role_length=8),
         )
         identity_hash = hash_dict(identitiy.model_dump(), role_length=8)
         model_id = f"{identity_hash}_{domain.offset_str}"
@@ -166,7 +171,7 @@ class BuildModelJob(Job[BuildModelInputs]):
             cols,
             rows,
             inputs.authority_str,
-            inputs.lulc_lookup,
+            lulc_lookup,
         )
 
         # Write vector artifacts
@@ -236,6 +241,80 @@ class BuildModelJob(Job[BuildModelInputs]):
             model_dir=model_dir,
             warnings=job_warnings,
         )
+
+
+def generate_other_geometries(
+    reach: gpd.GeoDataFrame,
+    us_mainstem: gpd.GeoDataFrame,
+    inflow_line: gpd.GeoDataFrame,
+    other_geometries: list[str],
+    centerline_buffer_bankfull_multiplier: float,
+) -> gpd.GeoDataFrame:
+    """Assemble geometries used to determine the model domain."""
+    other_geometries_gdf = _load_other_geometries(other_geometries, reach.crs)
+    buffer_distance = (
+        bieger_bankfull_width(float(reach[DA_FIELD].iloc[0]))
+        * centerline_buffer_bankfull_multiplier
+    )
+    centerlines = [reach.geometry.iloc[0]]
+
+    if not us_mainstem.empty:
+        mainstem = us_mainstem.geometry.iloc[0]
+        clipped_mainstem = min(
+            split(mainstem, inflow_line.geometry.iloc[0]).geoms,
+            key=lambda geometry: geometry.distance(reach.geometry.iloc[0]),
+        )
+        centerlines.append(clipped_mainstem)
+
+    centerline_buffers = gpd.GeoDataFrame(
+        geometry=gpd.GeoSeries(centerlines, crs=reach.crs).buffer(buffer_distance),
+        crs=reach.crs,
+    )
+    return gpd.GeoDataFrame(
+        pd.concat(
+            [inflow_line, centerline_buffers, other_geometries_gdf], ignore_index=True
+        ),
+        geometry="geometry",
+        crs=reach.crs,
+    )
+
+
+def _load_other_geometries(other_geometries: list[str], crs: Any) -> gpd.GeoDataFrame:
+    """Load WKT strings or storage-backed GeoJSON geometries."""
+    parsed_geometries = [
+        _parse_other_geometry(value, crs) for value in other_geometries
+    ]
+    if not parsed_geometries:
+        return gpd.GeoDataFrame(geometry=[], crs=crs)
+    return gpd.GeoDataFrame(
+        pd.concat(parsed_geometries, ignore_index=True),
+        geometry="geometry",
+        crs=crs,
+    )
+
+
+def _parse_other_geometry(value: str, crs: Any) -> gpd.GeoDataFrame:
+    """Parse one WKT string or storage-backed GeoJSON value."""
+    try:
+        return gpd.GeoDataFrame(
+            {"source_wkt": [value]},
+            geometry=[load_wkt(value)],
+            crs=crs,
+        )
+    except Exception:
+        try:
+            geojson = json.loads(read_json(value))
+            if geojson.get("type") == "FeatureCollection":
+                features = geojson["features"]
+            elif geojson.get("type") == "Feature":
+                features = [geojson]
+            else:
+                features = [{"type": "Feature", "properties": {}, "geometry": geojson}]
+            return gpd.GeoDataFrame.from_features(features, crs=crs)
+        except Exception as geojson_error:
+            raise InvalidWKTGeometryError(
+                f"Invalid WKT or GeoJSON at other_geometries entry: {value}"
+            ) from geojson_error
 
 
 def _check_inflow_cl_intersection(

@@ -188,7 +188,7 @@
           "type": "string"
         },
         "other_geometries": {
-          "description": "A list of geometries that will be included when making the model domain bounding box",
+          "description": "A list of geometries that will be included when making the model domain bounding box. Could be a WKT string or the path to a geojson.",
           "examples": [
             [
               "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"
@@ -230,6 +230,15 @@
           "title": "Walk Us Dist Pct",
           "type": "number"
         },
+        "ds_of_lake": {
+          "default": false,
+          "description": "Whether this reach is downstream of a lake/waterbody/reservoir.  If so, inflow line is placed walk_us_dist_pct downstream of the reach end instead of upstream.",
+          "examples": [
+            false
+          ],
+          "title": "Ds Of Lake",
+          "type": "boolean"
+        },
         "epsg_code": {
           "default": 5070,
           "description": "EPSG integer for all georeferenced output artifacts",
@@ -251,9 +260,17 @@
           "type": "number"
         },
         "lulc_lookup": {
-          "additionalProperties": {
-            "type": "number"
-          },
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            {
+              "type": "string"
+            }
+          ],
           "default": {
             "11": 0.04,
             "21": 0.04,
@@ -271,7 +288,7 @@
             "90": 0.12,
             "95": 0.07
           },
-          "description": "A dictionary mapping land use codes to Manning's roughness values",
+          "description": "A dictionary mapping land use codes to Manning's roughness values or the path to a json dict with that mapping.",
           "examples": [
             {
               "11": 0.04,
@@ -281,8 +298,16 @@
               "82": 0.035
             }
           ],
-          "title": "Lulc Lookup",
-          "type": "object"
+          "title": "Lulc Lookup"
+        },
+        "centerline_buffer_bankfull_multiplier": {
+          "default": 15,
+          "description": "This value is multiplied by the reach bankfull width to obtain the centerline buffer distance.  The buffered centerline becomes one of the geometries in the total bounds calculation that determines domain.",
+          "examples": [
+            10.0
+          ],
+          "title": "Centerline Buffer Bankfull Multiplier",
+          "type": "number"
         }
       },
       "required": [

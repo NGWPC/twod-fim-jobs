@@ -213,6 +213,24 @@ def test_end_to_end(build_model_input, tmp_path, mock_extract_raster):
     assert domain_bbox[3] > without_buffer[3]
 
 
+def test_end_to_end_lulc_lookup_from_file(
+    build_model_input, tmp_path, mock_extract_raster
+):
+    """A LULC lookup configured as a JSON path is loaded without mutating inputs."""
+    lookup_path = tmp_path / "lulc_lookup.json"
+    lookup = {11: 99, 21: -0.1}  # Outlandish to be sure that extreme values are obeyed
+    lookup_path.write_text(json.dumps(lookup))
+    model_input = build_model_input.model_copy(
+        update={"base_output_path": str(tmp_path), "lulc_lookup": str(lookup_path)}
+    )
+
+    result = BuildModelJob().run(model_input)
+
+    manifest_path = tmp_path / result.model_id / "model_manifest.json"
+    manifest = json.loads(read_json(manifest_path))
+    assert manifest["inputs"]["lulc_lookup"] == str(lookup_path)
+
+
 def test_end_to_end_w_other_geom(
     build_model_input_w_extra_geometries, mock_extract_raster
 ):

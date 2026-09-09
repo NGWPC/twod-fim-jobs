@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -83,6 +84,15 @@ class BuildModelJob(Job[BuildModelInputs]):
             )
             us_mainstem = ensure_linestring(us_mainstem)
 
+        # Load lulc dict, if necessary, without mutating the validated inputs.
+        if isinstance(inputs.lulc_lookup, dict):
+            lulc_lookup = inputs.lulc_lookup
+        else:
+            lulc_lookup = {
+                int(code): roughness
+                for code, roughness in json.loads(read_json(inputs.lulc_lookup)).items()
+            }
+
         # Make inflow line and validate
         inflow_line = make_inflow_line(
             reach,
@@ -124,7 +134,7 @@ class BuildModelJob(Job[BuildModelInputs]):
             epsg_code=inputs.epsg_code,
             dem_source_inputs_hash=hash_str(inputs.dem_source, role_length=8),
             lulc_source_inputs_hash=hash_str(inputs.lulc_source, role_length=8),
-            lulc_lookup_dict_hash=hash_dict(inputs.lulc_lookup, role_length=8),
+            lulc_lookup_dict_hash=hash_dict(lulc_lookup, role_length=8),
         )
         identity_hash = hash_dict(identitiy.model_dump(), role_length=8)
         model_id = f"{identity_hash}_{domain.offset_str}"
@@ -158,7 +168,7 @@ class BuildModelJob(Job[BuildModelInputs]):
             cols,
             rows,
             inputs.authority_str,
-            inputs.lulc_lookup,
+            lulc_lookup,
         )
 
         # Write vector artifacts

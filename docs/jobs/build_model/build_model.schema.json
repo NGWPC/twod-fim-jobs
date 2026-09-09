@@ -188,7 +188,7 @@
           "type": "string"
         },
         "other_geometries": {
-          "description": "A list of geometries that will be included when making the model domain bounding box",
+          "description": "A list of geometries that will be included when making the model domain bounding box. Could be a WKT string or the path to a geojson.",
           "examples": [
             [
               "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"
@@ -260,9 +260,17 @@
           "type": "number"
         },
         "lulc_lookup": {
-          "additionalProperties": {
-            "type": "number"
-          },
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            {
+              "type": "string"
+            }
+          ],
           "default": {
             "11": 0.04,
             "21": 0.04,
@@ -280,7 +288,7 @@
             "90": 0.12,
             "95": 0.07
           },
-          "description": "A dictionary mapping land use codes to Manning's roughness values",
+          "description": "A dictionary mapping land use codes to Manning's roughness values or the path to a json dict with that mapping.",
           "examples": [
             {
               "11": 0.04,
@@ -290,8 +298,7 @@
               "82": 0.035
             }
           ],
-          "title": "Lulc Lookup",
-          "type": "object"
+          "title": "Lulc Lookup"
         },
         "centerline_buffer_bankfull_multiplier": {
           "default": 15,

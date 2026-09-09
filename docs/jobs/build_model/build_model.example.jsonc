@@ -15,7 +15,7 @@
     "base_output_path": "s3://twod-fim/version=v1/models/",  // Path where output artifacts will be written
     "dem_source": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt",  // Connection string for the DEM dataset
     "lulc_source": "/vsis3/usgs-landcover/annual-nlcd/c1/v0/cu/mosaic/Annual_NLCD_LndCov_2023_CU_C1V0.tif",  // Connection string for the LULC source dataset
-    "other_geometries": ["POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"],  // A list of geometries that will be included when making the model domain bounding box
+    "other_geometries": ["POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"],  // A list of geometries that will be included when making the model domain bounding box. Could be a WKT string or the path to a geojson.
     "domain_buffer": 100.0,  // An additional buffer for the model domain. Since the reach centerline will already be buffered by 10x bankfull width to generate the domain, 0 is typically appropriate.
     "grid_resolution": 10.0,  // Resolution that grid will snap to and that DEM and roughness will resample to
     "walk_us_dist_pct": 0.25,  // How far to walk up the upstream mainstem centerline to place the inflow boundary condition, as percent of upstream centerline length
@@ -28,7 +28,7 @@
       "31": 0.025,
       "41": 0.16,
       "82": 0.035
-    },  // A dictionary mapping land use codes to Manning's roughness values
+    },  // A dictionary mapping land use codes to Manning's roughness values or the path to a json dict with that mapping.
     "centerline_buffer_bankfull_multiplier": 10.0  // This value is multiplied by the reach bankfull width to obtain the centerline buffer distance.  The buffered centerline becomes one of the geometries in the total bounds calculation that determines domain.
   },
   "domain": {

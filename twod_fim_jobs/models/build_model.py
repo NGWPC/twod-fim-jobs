@@ -216,9 +216,9 @@ class BuildModelInputs(BaseModel):
         description="How much to multiply bankfull width to arrive at inflow line width",
         examples=[1.0],
     )
-    lulc_lookup: dict[int, float] = Field(
+    lulc_lookup: dict[int, float] | str = Field(
         default=DEFAULT_LULC_LOOKUP,
-        description="A dictionary mapping land use codes to Manning's roughness values",
+        description="A dictionary mapping land use codes to Manning's roughness values or the path to a json dict with that mapping.",
         examples=[{11: 0.04, 21: 0.04, 31: 0.025, 41: 0.16, 82: 0.035}],
     )
     centerline_buffer_bankfull_multiplier: float = Field(

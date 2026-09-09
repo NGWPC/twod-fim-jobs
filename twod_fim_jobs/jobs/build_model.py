@@ -279,9 +279,7 @@ def generate_other_geometries(
     )
 
 
-def _load_other_geometries(
-    other_geometries: list[str], crs: Any
-) -> gpd.GeoDataFrame:
+def _load_other_geometries(other_geometries: list[str], crs: Any) -> gpd.GeoDataFrame:
     """Load WKT strings or storage-backed GeoJSON geometries."""
     parsed_geometries = [
         _parse_other_geometry(value, crs) for value in other_geometries

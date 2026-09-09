@@ -369,7 +369,7 @@ def test_generate_other_geometries_clips_and_buffers_upstream_mainstem():
     inflow = _make_cl_gdf([(7, -5), (7, 5)]).set_crs(5070)
 
     result = generate_other_geometries(
-        reach, us_mainstem, inflow, gpd.GeoDataFrame(), 1
+        reach, us_mainstem, inflow, [], 1
     )
 
     buffer_distance = bieger_bankfull_width(100.0)
@@ -381,6 +381,41 @@ def test_generate_other_geometries_clips_and_buffers_upstream_mainstem():
     assert not any(
         geometry.equals(full_mainstem_buffer) for geometry in result.geometry
     )
+
+
+def test_generate_other_geometries_loads_geojson_path():
+    reach = gpd.GeoDataFrame(
+        {DA_FIELD: [100.0]},
+        geometry=[LineString([(10, 0), (20, 0)])],
+        crs=5070,
+    )
+    inflow = _make_cl_gdf([(7, -5), (7, 5)]).set_crs(5070)
+    geojson_path = Path("/tmp/other_geometry.geojson")
+    geojson_path.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {"name": "extra"},
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[[12, -1], [13, -1], [13, 1], [12, 1], [12, -1]]],
+                        },
+                    }
+                ],
+            }
+        )
+    )
+
+    result = generate_other_geometries(
+        reach, gpd.GeoDataFrame(), inflow, [str(geojson_path)], 1
+    )
+
+    assert len(result) == 3
+    assert result.crs == reach.crs
+    assert any(geometry.geom_type == "Polygon" for geometry in result.geometry)
 
 
 def test_generate_other_geometries_clipping_ignores_mainstem_orientation():

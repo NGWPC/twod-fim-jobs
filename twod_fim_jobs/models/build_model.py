@@ -8,9 +8,7 @@ from twod_fim_jobs.models.common import Asset
 from twod_fim_jobs.models.warnings import JobWarning
 
 
-import geopandas as gpd
 from pydantic import Field
-from shapely.wkt import loads as load_wkt
 
 from twod_fim_jobs.consts import (
     DEFAULT_BANKFULL_WIDTH_MULTIPLIER,
@@ -23,7 +21,6 @@ from twod_fim_jobs.consts import (
     DEFAULT_LULC_SOURCE,
     DEFAULT_WALK_US_DIST_PCT,
 )
-from twod_fim_jobs.exceptions import InvalidWKTGeometryError
 from twod_fim_jobs.models.common import Domain, GridProperties
 
 ### HELPER JOB MODELS ###
@@ -178,7 +175,7 @@ class BuildModelInputs(BaseModel):
     )
     other_geometries: list[str] = Field(
         default_factory=list,
-        description="A list of geometries that will be included when making the model domain bounding box",
+        description="A list of geometries that will be included when making the model domain bounding box. Could be a WKT string or the path to a geojson.",
         examples=[["POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"]],
     )
     domain_buffer: float = Field(
@@ -226,27 +223,6 @@ class BuildModelInputs(BaseModel):
         description="This value is multiplied by the reach bankfull width to obtain the centerline buffer distance.  The buffered centerline becomes one of the geometries in the total bounds calculation that determines domain.",
         examples=[10.0],
     )
-
-    @property
-    def other_geometries_gdf(self) -> gpd.GeoDataFrame:
-        """Convert optional WKT geometries into a GeoDataFrame."""
-        if not self.other_geometries:
-            return gpd.GeoDataFrame(geometry=[])
-
-        geometries = []
-        for index, wkt_text in enumerate(self.other_geometries):
-            try:
-                geometries.append(load_wkt(wkt_text))
-            except Exception as exc:
-                raise InvalidWKTGeometryError(
-                    f"Invalid WKT at other_geometries[{index}]: {wkt_text}"
-                ) from exc
-
-        return gpd.GeoDataFrame(
-            {"source_wkt": self.other_geometries},
-            geometry=geometries,
-            crs=self.epsg_code,
-        )
 
     @property
     def authority_str(self) -> str:

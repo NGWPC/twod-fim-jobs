@@ -9,6 +9,7 @@ import geopandas as gpd
 import pandas as pd
 from pydantic import ValidationError
 from shapely.ops import split
+from shapely.wkt import loads as load_wkt
 
 from twod_fim_jobs.consts import (
     ANCHOR_FILENAME,
@@ -36,6 +37,7 @@ from twod_fim_jobs.models.build_model import (
     Properties,
 )
 from twod_fim_jobs.models.common import Asset
+from twod_fim_jobs.exceptions import InvalidWKTGeometryError
 from twod_fim_jobs.models.warnings import (
     CenterlineInflowMultiIntersectionWarning,
     JobWarning,
@@ -109,7 +111,7 @@ class BuildModelJob(Job[BuildModelInputs]):
             reach,
             us_mainstem,
             inflow_line,
-            inputs.other_geometries_gdf,
+            inputs.other_geometries,
             inputs.centerline_buffer_bankfull_multiplier,
         )
 
@@ -244,10 +246,11 @@ def generate_other_geometries(
     reach: gpd.GeoDataFrame,
     us_mainstem: gpd.GeoDataFrame,
     inflow_line: gpd.GeoDataFrame,
-    other_geometries: gpd.GeoDataFrame,
+    other_geometries: list[str],
     centerline_buffer_bankfull_multiplier: float,
 ) -> gpd.GeoDataFrame:
     """Assemble geometries used to determine the model domain."""
+    other_geometries_gdf = _load_other_geometries(other_geometries, reach.crs)
     buffer_distance = (
         bieger_bankfull_width(float(reach[DA_FIELD].iloc[0]))
         * centerline_buffer_bankfull_multiplier
@@ -268,11 +271,51 @@ def generate_other_geometries(
     )
     return gpd.GeoDataFrame(
         pd.concat(
-            [inflow_line, centerline_buffers, other_geometries], ignore_index=True
+            [inflow_line, centerline_buffers, other_geometries_gdf], ignore_index=True
         ),
         geometry="geometry",
         crs=reach.crs,
     )
+
+
+def _load_other_geometries(
+    other_geometries: list[str], crs: object
+) -> gpd.GeoDataFrame:
+    """Load WKT strings or storage-backed GeoJSON geometries."""
+    parsed_geometries = [
+        _parse_other_geometry(value, crs) for value in other_geometries
+    ]
+    if not parsed_geometries:
+        return gpd.GeoDataFrame(geometry=[], crs=crs)
+    return gpd.GeoDataFrame(
+        pd.concat(parsed_geometries, ignore_index=True),
+        geometry="geometry",
+        crs=crs,
+    )
+
+
+def _parse_other_geometry(value: str, crs: object) -> gpd.GeoDataFrame:
+    """Parse one WKT string or storage-backed GeoJSON value."""
+    try:
+        return gpd.GeoDataFrame(
+            {"source_wkt": [value]},
+            geometry=[load_wkt(value)],
+            crs=crs,
+        )
+    except Exception:
+        try:
+            geojson = json.loads(read_json(value))
+            if geojson.get("type") == "FeatureCollection":
+                features = geojson["features"]
+            elif geojson.get("type") == "Feature":
+                features = [geojson]
+            else:
+                features = [{"type": "Feature", "properties": {}, "geometry": geojson}]
+            return gpd.GeoDataFrame.from_features(features, crs=crs)
+        except Exception as geojson_error:
+            raise InvalidWKTGeometryError(
+                f"Invalid WKT or GeoJSON at other_geometries entry: {value}"
+            ) from geojson_error
 
 
 def _check_inflow_cl_intersection(

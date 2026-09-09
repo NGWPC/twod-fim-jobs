@@ -231,6 +231,32 @@ def test_end_to_end_lulc_lookup_from_file(
     assert manifest["inputs"]["lulc_lookup"] == str(lookup_path)
 
 
+def test_lulc_lookup_dict_and_path_have_same_identity_hash(
+    build_model_input, tmp_path, mock_extract_raster
+):
+    """Equivalent dictionary and JSON-path LULC inputs have the same identity."""
+    lookup = build_model_input.lulc_lookup
+    assert isinstance(lookup, dict)
+    lookup_path = tmp_path / "lulc_lookup.json"
+    lookup_path.write_text(json.dumps(lookup))
+
+    dict_result = BuildModelJob().run(
+        build_model_input.model_copy(
+            update={"base_output_path": str(tmp_path / "dict")}
+        )
+    )
+    path_result = BuildModelJob().run(
+        build_model_input.model_copy(
+            update={
+                "base_output_path": str(tmp_path / "path"),
+                "lulc_lookup": str(lookup_path),
+            }
+        )
+    )
+
+    assert dict_result.identity_hash == path_result.identity_hash
+
+
 def test_end_to_end_w_other_geom(
     build_model_input_w_extra_geometries, mock_extract_raster
 ):

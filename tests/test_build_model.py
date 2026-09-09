@@ -394,9 +394,7 @@ def test_generate_other_geometries_clips_and_buffers_upstream_mainstem():
     us_mainstem = _make_cl_gdf([(0, 0), (10, 0)]).set_crs(5070)
     inflow = _make_cl_gdf([(7, -5), (7, 5)]).set_crs(5070)
 
-    result = generate_other_geometries(
-        reach, us_mainstem, inflow, [], 1
-    )
+    result = generate_other_geometries(reach, us_mainstem, inflow, [], 1)
 
     buffer_distance = bieger_bankfull_width(100.0)
     expected_buffer = LineString([(7, 0), (10, 0)]).buffer(buffer_distance)
@@ -427,7 +425,9 @@ def test_generate_other_geometries_loads_geojson_path():
                         "properties": {"name": "extra"},
                         "geometry": {
                             "type": "Polygon",
-                            "coordinates": [[[12, -1], [13, -1], [13, 1], [12, 1], [12, -1]]],
+                            "coordinates": [
+                                [[12, -1], [13, -1], [13, 1], [12, 1], [12, -1]]
+                            ],
                         },
                     }
                 ],

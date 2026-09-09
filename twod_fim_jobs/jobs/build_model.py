@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import geopandas as gpd
@@ -279,7 +280,7 @@ def generate_other_geometries(
 
 
 def _load_other_geometries(
-    other_geometries: list[str], crs: object
+    other_geometries: list[str], crs: Any
 ) -> gpd.GeoDataFrame:
     """Load WKT strings or storage-backed GeoJSON geometries."""
     parsed_geometries = [
@@ -294,7 +295,7 @@ def _load_other_geometries(
     )
 
 
-def _parse_other_geometry(value: str, crs: object) -> gpd.GeoDataFrame:
+def _parse_other_geometry(value: str, crs: Any) -> gpd.GeoDataFrame:
     """Parse one WKT string or storage-backed GeoJSON value."""
     try:
         return gpd.GeoDataFrame(

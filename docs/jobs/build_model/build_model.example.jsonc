@@ -19,6 +19,7 @@
     "domain_buffer": 100.0,  // An additional buffer for the model domain. Since the reach centerline will already be buffered by 10x bankfull width to generate the domain, 0 is typically appropriate.
     "grid_resolution": 10.0,  // Resolution that grid will snap to and that DEM and roughness will resample to
     "walk_us_dist_pct": 0.25,  // How far to walk up the upstream mainstem centerline to place the inflow boundary condition, as percent of upstream centerline length
+    "ds_of_lake": false,  // Whether this reach is downstream of a lake/waterbody/reservoir.  If so, inflow line is placed walk_us_dist_pct downstream of the reach end instead of upstream.
     "epsg_code": 5070,  // EPSG integer for all georeferenced output artifacts
     "bankfull_width_multiplier": 1.0,  // How much to multiply bankfull width to arrive at inflow line width
     "lulc_lookup": {

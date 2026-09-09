@@ -230,6 +230,15 @@
           "title": "Walk Us Dist Pct",
           "type": "number"
         },
+        "ds_of_lake": {
+          "default": false,
+          "description": "Whether this reach is downstream of a lake/waterbody/reservoir.  If so, inflow line is placed walk_us_dist_pct downstream of the reach end instead of upstream.",
+          "examples": [
+            false
+          ],
+          "title": "Ds Of Lake",
+          "type": "boolean"
+        },
         "epsg_code": {
           "default": 5070,
           "description": "EPSG integer for all georeferenced output artifacts",

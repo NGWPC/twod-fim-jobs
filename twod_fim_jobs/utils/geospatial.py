@@ -136,6 +136,7 @@ def make_inflow_line(
     us_mainstem: gpd.GeoDataFrame,
     bankfull_width_multiplier: float,
     walk_us_dist_pct: float,
+    ds_of_lake: bool = False,
 ) -> gpd.GeoDataFrame:
     """Create an inflow boundary line perpendicular to the reach at the upstream end."""
     inflow_width = (
@@ -143,7 +144,11 @@ def make_inflow_line(
         * bankfull_width_multiplier
     )
     reach_geom = reach.geometry.iloc[0]
-    if us_mainstem.empty:
+    if ds_of_lake:
+        walk_ds_dist = reach_geom.length * walk_us_dist_pct
+        ds_bc_pt = reach_geom.interpolate(walk_ds_dist)
+        inflow_geom = perpendicular_line(reach_geom, ds_bc_pt, inflow_width)
+    elif us_mainstem.empty:
         us_bc_pt = Point(reach_geom.coords[0])
         inflow_geom = perpendicular_line(reach_geom, us_bc_pt, inflow_width)
     else:

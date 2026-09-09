@@ -89,6 +89,7 @@ class BuildModelJob(Job[BuildModelInputs]):
             us_mainstem,
             inputs.bankfull_width_multiplier,
             inputs.walk_us_dist_pct,
+            inputs.ds_of_lake,
         )
         cl_inf_intersections = _check_inflow_cl_intersection(reach, inflow_line)
         if cl_inf_intersections:

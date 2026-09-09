@@ -199,6 +199,11 @@ class BuildModelInputs(BaseModel):
         description="How far to walk up the upstream mainstem centerline to place the inflow boundary condition, as percent of upstream centerline length",
         examples=[0.25],
     )
+    ds_of_lake: bool = Field(
+        default=False,
+        description="Whether this reach is downstream of a lake/waterbody/reservoir.  If so, inflow line is placed walk_us_dist_pct downstream of the reach end instead of upstream.",
+        examples=[False],
+    )
     epsg_code: int = Field(
         default=DEFAULT_EPSG_CODE,
         gt=0,

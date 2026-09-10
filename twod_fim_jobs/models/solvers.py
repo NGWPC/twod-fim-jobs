@@ -325,9 +325,25 @@ class RunScenarioInputs(BaseModel):
         return self
 
     @property
+    def model_identity_hash(self) -> str:
+        """The identity half of model_id, without the domain code.
+
+        model_id is <identity_hash>_<domain_code>, and the pattern on the field
+        guarantees both halves, so the split is total.
+        """
+        return self.model_id.partition("_")[0]
+
+    @property
     def scenario_out_dir(self) -> str:
-        """Derive path where this scenario's data will be saved."""
-        return f"{self.base_out_dir}/reach={self.reach_id}/{self.model_id}/{self.run_identity_hash}/{self.scenario_dir_name}"
+        """Derive path where this scenario's data will be saved.
+
+        Filed under the model's IDENTITY hash, not its full model_id. The domain
+        code is a realization, not an identity: widening a reach's domain gives
+        it a new model_id, and results addressed by model_id would all be
+        stranded by that. Under the identity hash they stay where the loop looks
+        (system-design/guide.md, "runs file under identity, not under id").
+        """
+        return f"{self.base_out_dir}/reach={self.reach_id}/{self.model_identity_hash}/{self.run_identity_hash}/{self.scenario_dir_name}"
 
     @property
     def manifest_href(self) -> str:

@@ -27,7 +27,8 @@ Iteratively runs the model for a reach using a normal depth downstream boundary 
 | `max_simulation_length_seconds` | `number` | 86400 | Maximum time (in model seconds) that a model will be allowed to run before it is forcefully terminated |
 | `save_interval_seconds` | `number` | 3600.0 | Frequency (in model seconds) with which a model will export depth rasters |
 | `max_simulation_wall_time_seconds` | `number` | 10000000000.0 | Maximum time (in wall time) that a model will be allowed to run before it is forcefully terminated |
-| `q_grid_resolution` | `integer` | 1 | Discharge grid every scenario must land on, in whole cms, anchored to zero. It is the finest step the sweep can take, so a step between two adjacent grid lines is one nothing could improve on. Defaults to 1, which is the integer discharge axis and no constraint at all. |
+| `existing_scenarios` | `list[string]` |  | Scenario manifests already in this reach's library, from earlier attempts. The job reads their metrics rather than re-simulating those discharges, and re-judges them against the bands in force now. Anything naming a different reach, model or run identity is ignored. |
+| `q_grid_resolution` | `integer` | 1 | Discharge grid every scenario must land on, in whole cms, anchored to zero. It is the finest step the sweep can take, so a step between two adjacent grid values is one nothing could improve on. Defaults to 1, which is the integer discharge axis and no constraint at all. |
 | `save_velocity` | `boolean` | false | Whether or not to generate and save velocity tifs |
 | `save_zarr` | `boolean` | false | Whether or not to generate and save a zarr file with wse and depth at each print interval |
 | `ld_q_max_depth_increase_range` | `list[any]` | [0.75, 1.25] | [min, max] increase in max depth (m) between consecutive library entries. Under min the step was too small, over max it was too large. |
@@ -138,8 +139,9 @@ The window can land somewhere the sweep cannot run. Where it landed is itself a 
 
 | Case                                                         | What happens                                                                                         |
 | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| Window falls within one grid line of the reference | Run the next grid line up. Nothing finer exists on the axis, so a `reject_high` there is taken rather than narrowing again — narrowing has nowhere to go. |
+| No grid value falls inside the window | Try the largest value below it — the closest the axis gets from underneath, and a step that falls short is legal however long it is. If that value is at or below the position it is already simulated, so the first value above the position is tried instead. |
 | Window opens beyond `max_upstream_inflow`                    | Run `max_upstream_inflow`.                                                                           |
+| Trial is the next value above everything already run | Nothing finer is left to try, so a `reject_high` there is accepted rather than narrowed again. Anywhere else the verdict stands as measured: a surprise further out is the curve being corrected, not a limit of the axis. |
 
 Every proposal is rounded to the reach's `q_grid_resolution`, and the distance to the reference — never to the position — decides whether anything finer was available. The bands are measured reference-to-trial, so that question has to be asked the same way (DR-041).
 

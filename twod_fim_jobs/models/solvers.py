@@ -471,9 +471,15 @@ class CompletedScenario(BaseModel):
 
     @property
     def depth(self) -> Asset:
-        """The depth grid, wherever it can be read from right now."""
-        if self.processed is None:
-            return self.manifest.assets.depth
-        return self.manifest.assets.depth.model_copy(
-            update={"href": str(self.processed.depth_path)}
-        )
+        """The depth grid, at its published address.
+
+        Always the manifest's own href, never the local working copy. This is
+        what a hot-started scenario records as its seed, so it has to be an
+        address that outlives the job: a container-local temp path makes the
+        run unreproducible, unreadable as provenance, and impossible to match
+        against on a later attempt.
+
+        The caller must therefore publish a scenario before using it to seed
+        another. The sweep does, for every trial it runs.
+        """
+        return self.manifest.assets.depth

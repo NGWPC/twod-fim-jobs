@@ -85,10 +85,15 @@ class RunNDScenariosInputs(BaseModel):
         description="Maximum time (in wall time) that a model will be allowed to run before it is forcefully terminated",
         examples=[60.0],
     )
+    existing_scenarios: list[str] = Field(
+        default_factory=list,
+        description="Scenario manifests already in this reach's library, from earlier attempts. The job reads their metrics rather than re-simulating those discharges, and re-judges them against the bands in force now. Anything naming a different reach, model or run identity is ignored.",
+        examples=[["s3://bucket/.../nd=3.9E04/q=290/scenario_manifest.json"]],
+    )
     q_grid_resolution: int = Field(
         default=Q_GRID_RESOLUTION,
         gt=0,
-        description="Discharge grid every scenario must land on, in whole cms, anchored to zero. It is the finest step the sweep can take, so a step between two adjacent grid lines is one nothing could improve on. Defaults to 1, which is the integer discharge axis and no constraint at all.",
+        description="Discharge grid every scenario must land on, in whole cms, anchored to zero. It is the finest step the sweep can take, so a step between two adjacent grid values is one nothing could improve on. Defaults to 1, which is the integer discharge axis and no constraint at all.",
         examples=[10],
     )
     save_velocity: bool = Field(

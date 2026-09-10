@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import NamedTuple
 
 import geopandas as gpd
+from pydantic import ValidationError
 from shapely.geometry import Point, Polygon
 
 from twod_fim_jobs.consts import (
@@ -250,12 +251,13 @@ class Proposal(NamedTuple):
     q: int
     # The window landed at or beyond the top of the range: nothing further fits.
     at_max: bool
-    # No grid line falls inside the window at all: the band asks for a step
-    # finer than the axis allows. The next line above the reference is run and
-    # kept WHATEVER it says, because there is nothing else to try -- taking the
-    # line below the band leaves a near-duplicate, which is cheaper than the
-    # hole that skipping it would leave.
-    forced: bool
+    # The trial is the very next grid value above the highest discharge already
+    # run, so nothing finer is left to try. A step over a ceiling there is one
+    # no re-run can improve on, and it is kept rather than narrowed again --
+    # narrowing has nowhere to go. Everywhere else the verdict stands as
+    # measured, because a proposal further out is only the curve's estimate and
+    # a surprise there is the curve being corrected, not a limit of the axis.
+    finest: bool
 
 
 def _propose(
@@ -273,29 +275,96 @@ def _propose(
     opens, closes = window
     if math.isinf(closes):
         return Proposal(max_q, True, False)
-    # Every scenario lands on the grid, so the window is satisfied by a LINE or
-    # by nothing. Measured from the REFERENCE, never the position: the bands are
+    # Every scenario lands on the grid, so the window is satisfied by a grid
+    # VALUE or by nothing. Measured from the REFERENCE, never the position: the bands are
     # reference-to-trial, so the question has to be asked the same way.
     grid = inputs.q_grid_resolution
     lowest = max(math.ceil(opens / grid) * grid, ref_q + grid)
     highest = math.floor(closes / grid) * grid
     if lowest <= highest:
-        # Aim at the line nearest the middle of the window, kept inside it.
+        # Aim at the grid value nearest the middle of the window.
         middle = round((opens + closes) / 2 / grid) * grid
-        proposed, forced = min(max(middle, lowest), highest), False
+        proposed = min(max(middle, lowest), highest)
     else:
-        # The window falls between two lines. Nothing on the axis satisfies the
-        # bands, so take the next line up and keep whatever it gives.
-        proposed, forced = ref_q + grid, True
+        # The window falls between two grid values, so nothing on the axis
+        # satisfies the bands and whatever is run will be kept as it comes.
+        #
+        # Aim just under the window: the largest value below it is the closest
+        # the axis can get from underneath, and a step that falls short is legal
+        # however long it is -- only steps that overshoot are held to adjacent
+        # values. Going for the next value above the POSITION instead would
+        # inch up one value at a time, publishing near-duplicates all the way.
+        #
+        # Unless that value is one already simulated. The position is the
+        # highest discharge run so far, so a candidate at or below it teaches
+        # nothing that is not already in hand; the first value above the
+        # position is then the nearest thing left to learn from.
+        proposed = math.ceil((opens - grid) / grid) * grid
+        if proposed <= position_q:
+            proposed = position_q + grid
+    # Nothing finer is available only when the trial is the very next value
+    # above everything already run. Anywhere else a surprising verdict is the
+    # curve being corrected, and the search should narrow rather than settle.
+    finest = proposed == position_q + grid
+    inside = lowest <= highest
     logger.info(
-        f"Window {opens:.1f} to {closes:.1f} against reference {ref_q}; proposing "
-        f"{proposed} on a {grid} cms grid"
-        + (" -- no line lands in the window, so it is taken as it comes"
-           if forced else "")
+        f"Window {opens:.1f} to {closes:.1f} against reference {ref_q}; "
+        + (f"proposing {proposed}" if inside
+           else f"no grid value falls inside it, so trying {proposed}")
+        + f" on a {grid} cms grid"
+        + (" -- the finest step left, so its verdict stands as it comes"
+           if finest else "")
     )
     if proposed >= max_q:
         return Proposal(max_q, True, False)
-    return Proposal(proposed, False, forced)
+    return Proposal(proposed, False, finest)
+
+
+def _adopt_existing(
+    inputs: RunNDScenariosInputs, model_manifest: ModelManifest, run_hash: str
+) -> dict[int, CompletedScenario]:
+    """Scenarios the orchestrator says are already in this reach's library.
+
+    The expensive part of a scenario is the simulation; the part this job needs
+    is the three readings on its manifest. Anything already run is therefore
+    free to reuse, and the loop that observes storage is better placed to say
+    what is there than this job is to go looking.
+
+    They are re-judged against the bands in force NOW, not the ones they were
+    run under, so a library built to different intent is reconsidered rather
+    than trusted. Each is checked to be a scenario of THIS reach, model and run
+    identity before it is believed; anything else names a different thing that
+    happens to sit nearby.
+    """
+    adopted: dict[int, CompletedScenario] = {}
+    for href in inputs.existing_scenarios:
+        raw = read_json(href)
+        if raw is None:
+            logger.warning(f"Existing scenario {href} could not be read; ignoring")
+            continue
+        try:
+            manifest = RunScenarioManifest.model_validate_json(raw)
+        except ValidationError:
+            logger.warning(f"Existing scenario {href} is not a scenario manifest")
+            continue
+        q = manifest.properties.us_discharge
+        wrong = (
+            manifest.reach_id != model_manifest.reach_id
+            or manifest.model_id != model_manifest.model_id
+            or manifest.identity_hash != run_hash
+        )
+        if wrong or not (
+            inputs.min_upstream_inflow <= q <= inputs.max_upstream_inflow
+        ):
+            logger.warning(f"Existing scenario {href} is not part of this library")
+            continue
+        adopted[q] = CompletedScenario(manifest=manifest)
+    if adopted:
+        logger.info(
+            f"Adopted {len(adopted)} already-simulated discharge(s) from the "
+            f"library: {sorted(adopted)}"
+        )
+    return adopted
 
 
 class RunNDScenariosJob(Job[RunNDScenariosInputs]):
@@ -327,10 +396,22 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 published.add(q)
                 publish_scenario(scenario)
 
-        ref_scenario = _run_scenario(
-            inputs.min_upstream_inflow, downstream_bc, model_manifest, inputs, tmp_dir
+        run_hash = get_run_identity_hash()
+        # Every scenario simulated this run, plus everything the orchestrator
+        # says is already in the library. Rejections are kept because the next
+        # reference may accept them, and re-judging one costs no simulation.
+        done: dict[int, CompletedScenario] = _adopt_existing(
+            inputs, model_manifest, run_hash
         )
-        publish(ref_scenario)
+        if inputs.min_upstream_inflow in done:
+            ref_scenario = done[inputs.min_upstream_inflow]
+        else:
+            ref_scenario = _run_scenario(
+                inputs.min_upstream_inflow, downstream_bc, model_manifest, inputs,
+                tmp_dir
+            )
+            publish(ref_scenario)
+            done[inputs.min_upstream_inflow] = ref_scenario
         current_scenario = ref_scenario
         scenario_comparison = compare_scenario_changes(
             current_scenario.manifest, inputs, None
@@ -338,12 +419,6 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
         results = RunNDScenariosResult(
             scenario_comparison_results=[scenario_comparison], warnings=[]
         )
-        # Every scenario simulated this run, published or not. Rejections are
-        # kept because the next reference may accept them, and re-judging one
-        # costs no simulation.
-        done: dict[int, CompletedScenario] = {
-            ref_scenario.manifest.properties.us_discharge: ref_scenario
-        }
         # The bootstrap. One point is not a curve, so the opening step is the
         # authored one; every step after that is read off the curves.
         q_trial = inputs.min_upstream_inflow + delta_us_discharge
@@ -354,9 +429,9 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
             if len(done) == 1:
                 # One point is not a curve: use the authored opening step.
                 at_max = q_trial >= max_q
-                q_trial, forced = min(q_trial, max_q), False
+                q_trial, finest = min(q_trial, max_q), False
             else:
-                q_trial, at_max, forced = _propose(
+                q_trial, at_max, finest = _propose(
                     done,
                     inputs,
                     ref_scenario.manifest.properties.us_discharge,
@@ -370,12 +445,13 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 f"position={current_scenario.manifest.properties.us_discharge} "
                 f"trial={q_trial}"
                 + (" (top of range)" if at_max else "")
-                + (" (taken as it comes)" if forced else "")
+                + (" (finest step left)" if finest else "")
             )
             if q_trial in done:
-                # Reached by the forced branch, which proposes the next line up
-                # without knowing whether it has been tried. Re-running would
-                # cost a simulation to learn what is already in hand.
+                # A proposal can name a discharge already in hand -- the
+                # orchestrator supplies the whole library at startup, and the
+                # window can settle on one of them. Re-running would cost a
+                # simulation to learn what is already known.
                 logger.info(f"Reusing already-simulated discharge {q_trial}")
                 trial_scenario = done[q_trial]
             else:
@@ -392,6 +468,11 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                     logger.error("Aborting adaptive step algorithm for edge error")
                     results.warnings.append(WaterOnEdgeWarning())
                     return results
+                # Published straight away, whatever the verdict. A rejected
+                # trial is a real simulation at a real discharge: keeping it
+                # makes the next attempt cheap, and costs only storage now that
+                # the loop adopts a subset rather than taking the folder whole.
+                publish(trial_scenario)
                 done[q_trial] = trial_scenario
             scenario_comparison = compare_scenario_changes(
                 trial_scenario.manifest, inputs, ref_scenario.manifest
@@ -411,13 +492,14 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 logger.info(
                     f"Maximum discharge {max_q} is too large a step; filling below it"
                 )
-            elif forced and verdict != "accept":
-                # No line on the axis satisfies the bands, so this is as close
-                # as this reach can be sampled. Keeping it is also what stops
-                # the sweep proposing the same line forever.
+            elif finest and verdict == "reject_high":
+                # The next grid value up already overshoots, so no discharge
+                # this reach can be sampled at would land in the bands. Only
+                # reject_high: a step that fell SHORT here simply moves the
+                # position, and the value above it is still worth trying.
                 logger.info(
-                    f"Taking {q_trial} despite {verdict}: "
-                    f"no grid line satisfies the bands"
+                    f"Taking {q_trial} despite reject_high: "
+                    f"no finer step exists on the grid"
                 )
                 verdict = "accept"
 

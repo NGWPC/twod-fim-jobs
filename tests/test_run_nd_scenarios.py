@@ -383,7 +383,7 @@ def test_a_proposal_is_never_the_reference_itself():
         110: _completed(110, 2.01, 0.51, 1.001),
     }
     q, _, _ = _propose(done, _grid_inputs(10), 100, 110)
-    assert q >= 110, "must move at least one grid line above the reference"
+    assert q >= 110, "must move at least one grid step above the reference"
 
 
 def test_being_one_grid_line_from_the_reference_is_measured_from_the_reference():
@@ -403,27 +403,51 @@ def test_being_one_grid_line_from_the_reference_is_measured_from_the_reference()
         assert q - 100 > 10 and not below
 
 
-def test_a_window_between_two_grid_lines_takes_the_next_line_up():
+def test_a_window_between_two_grid_values_aims_just_under_it():
     """Reach 1269869556169965 as it actually ran: reference 40 on a 10 cms grid,
-    window 50.9 to 56.3. Fifty is below it, sixty above, and no line lands
-    inside. The sweep must take the next line up and keep it whatever it says --
-    proposing the window's own answer again is what looped forever."""
+    window 50.7 to 56.1. Fifty is below it, sixty above, and nothing is inside.
+    Fifty is also the position -- already simulated -- so taking it would learn
+    nothing, and the first value above the position is run instead."""
     done = {
         40: _completed(40, 2.00, 0.50, 1.00),
         50: _completed(50, 2.21, 0.55, 1.09),
         80: _completed(80, 2.60, 0.65, 1.37),
     }
-    q, at_max, forced = _propose(done, _grid_inputs(10), ref_q=40, position_q=50)
-    assert not at_max
-    assert forced, "no line fits, so the verdict is taken as it comes"
-    assert q == 50, "the next line above the REFERENCE, not above the position"
+    q, at_max, finest = _propose(done, _grid_inputs(10), ref_q=40, position_q=50)
+    assert not at_max and finest
+    assert q == 60, "50 is the position, so the next value above it"
+    assert finest, "60 is the next value above everything run"
 
 
-def test_a_forced_proposal_never_climbs_past_the_reference():
-    """The forced line is measured from the reference even when the position has
-    run ahead of it, because the bands are measured from the reference too."""
+def test_a_distant_window_is_reached_in_one_step_not_a_crawl():
+    """A window far above the reference has grid values between them. Aiming at
+    the largest value BELOW the window crosses that ground in one simulation;
+    stepping up one value at a time would publish near-duplicates the whole way.
+    A step that falls short is legal however long it is -- only steps that
+    overshoot are held to adjacent values."""
+    done = {50: _completed(50, 2.0, 0.5, 1.0), 200: _completed(200, 9.0, 4.0, 8.0)}
+    q, _, finest = _propose(done, _grid_inputs(10), ref_q=50, position_q=50)
+    if finest:
+        assert q >= 60, "never backwards"
+        assert q % 10 == 0
+
+
+def test_a_forced_proposal_is_never_one_already_simulated():
+    """The position is the highest discharge run so far, so a candidate at or
+    below it is already in hand and would cost a cycle to re-adopt."""
     done = {100: _completed(100, 2.0, 0.5, 1.0), 110: _completed(110, 2.02, 0.51, 1.002),
             120: _completed(120, 2.04, 0.52, 1.004)}
-    q, _, forced = _propose(done, _grid_inputs(10), ref_q=100, position_q=120)
-    if forced:
-        assert q == 110, "one line above the reference, whatever the position did"
+    q, _, finest = _propose(done, _grid_inputs(10), ref_q=100, position_q=120)
+    if finest:
+        assert q > 120, "must be above the highest discharge already run"
+
+
+def test_a_distant_forced_trial_does_not_settle_for_its_verdict():
+    """The window is an estimate. A trial well above the position could come
+    back over a ceiling, and accepting that would publish a step breaching
+    across grid values that were never tried -- which observe refuses. Only a
+    trial with nothing finer left below it settles for what it gets."""
+    done = {50: _completed(50, 2.0, 0.5, 1.0), 200: _completed(200, 9.0, 4.0, 8.0)}
+    q, _, finest = _propose(done, _grid_inputs(10), ref_q=50, position_q=50)
+    if q > 60:
+        assert not finest, "values remain between the position and this trial"

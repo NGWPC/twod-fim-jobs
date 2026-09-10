@@ -16,6 +16,7 @@ from twod_fim_jobs.jobs.run_nd_scenarios import (
     _acceptance_window,
     _crossing,
     _curves,
+    _propose,
     _monotone,
     _reuse_finished_runs,
     compare_scenario_changes,
@@ -352,3 +353,77 @@ def test_flat_curves_leave_no_window():
         300: _completed(300, 2.0, 0.5, 1.0),
     }
     assert _window(done, 100) is None
+
+
+### THE DISCHARGE GRID ###
+
+
+def _grid_inputs(grid: int):
+    return RUN_ND_DEFAULTS.model_copy(
+        update={"q_grid_resolution": grid, "max_upstream_inflow": 100000}
+    )
+
+
+def test_a_proposal_lands_on_a_grid_line():
+    """Every scenario sits on the axis, so the window's answer is rounded to a
+    line rather than taken as the raw number."""
+    done = {
+        100: _completed(100, 2.00, 0.50, 1.00),
+        200: _completed(200, 3.00, 0.90, 1.12),
+    }
+    q, at_max, _ = _propose(done, _grid_inputs(10), 100, 200)
+    assert not at_max and q % 10 == 0
+
+
+def test_a_proposal_is_never_the_reference_itself():
+    """The nearest line can round back onto the reference. The next line up is
+    the closest a trial may be placed."""
+    done = {
+        100: _completed(100, 2.00, 0.50, 1.00),
+        110: _completed(110, 2.01, 0.51, 1.001),
+    }
+    q, _, _ = _propose(done, _grid_inputs(10), 100, 110)
+    assert q >= 110, "must move at least one grid line above the reference"
+
+
+def test_being_one_grid_line_from_the_reference_is_measured_from_the_reference():
+    """The bands are reference-to-trial, so the question 'is anything finer
+    available' has to be asked the same way. Measuring from the position let a
+    library gap exceed the step that produced it, which is what put out-of-band
+    entries into published libraries."""
+    done = {
+        100: _completed(100, 2.00, 0.50, 1.00),
+        110: _completed(110, 2.02, 0.51, 1.002),
+    }
+    # position is well ahead of the reference; the answer must not depend on it
+    q, _, below = _propose(done, _grid_inputs(10), 100, 110)
+    if q == 110:
+        assert below, "one line from the reference means nothing finer exists"
+    else:
+        assert q - 100 > 10 and not below
+
+
+def test_a_window_between_two_grid_lines_takes_the_next_line_up():
+    """Reach 1269869556169965 as it actually ran: reference 40 on a 10 cms grid,
+    window 50.9 to 56.3. Fifty is below it, sixty above, and no line lands
+    inside. The sweep must take the next line up and keep it whatever it says --
+    proposing the window's own answer again is what looped forever."""
+    done = {
+        40: _completed(40, 2.00, 0.50, 1.00),
+        50: _completed(50, 2.21, 0.55, 1.09),
+        80: _completed(80, 2.60, 0.65, 1.37),
+    }
+    q, at_max, forced = _propose(done, _grid_inputs(10), ref_q=40, position_q=50)
+    assert not at_max
+    assert forced, "no line fits, so the verdict is taken as it comes"
+    assert q == 50, "the next line above the REFERENCE, not above the position"
+
+
+def test_a_forced_proposal_never_climbs_past_the_reference():
+    """The forced line is measured from the reference even when the position has
+    run ahead of it, because the bands are measured from the reference too."""
+    done = {100: _completed(100, 2.0, 0.5, 1.0), 110: _completed(110, 2.02, 0.51, 1.002),
+            120: _completed(120, 2.04, 0.52, 1.004)}
+    q, _, forced = _propose(done, _grid_inputs(10), ref_q=100, position_q=120)
+    if forced:
+        assert q == 110, "one line above the reference, whatever the position did"

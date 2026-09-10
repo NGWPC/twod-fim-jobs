@@ -250,10 +250,12 @@ class Proposal(NamedTuple):
     q: int
     # The window landed at or beyond the top of the range: nothing further fits.
     at_max: bool
-    # The window asked for a step finer than min_delta_q. The step is run as
-    # asked -- min_delta_q is not a floor on the step -- but a reject_high is
-    # then accepted rather than narrowing the search again.
-    below_min_step: bool
+    # No grid line falls inside the window at all: the band asks for a step
+    # finer than the axis allows. The next line above the reference is run and
+    # kept WHATEVER it says, because there is nothing else to try -- taking the
+    # line below the band leaves a near-duplicate, which is cheaper than the
+    # hole that skipping it would leave.
+    forced: bool
 
 
 def _propose(
@@ -271,16 +273,29 @@ def _propose(
     opens, closes = window
     if math.isinf(closes):
         return Proposal(max_q, True, False)
-    middle = max(round((opens + closes) / 2), position_q + 1)
+    # Every scenario lands on the grid, so the window is satisfied by a LINE or
+    # by nothing. Measured from the REFERENCE, never the position: the bands are
+    # reference-to-trial, so the question has to be asked the same way.
+    grid = inputs.q_grid_resolution
+    lowest = max(math.ceil(opens / grid) * grid, ref_q + grid)
+    highest = math.floor(closes / grid) * grid
+    if lowest <= highest:
+        # Aim at the line nearest the middle of the window, kept inside it.
+        middle = round((opens + closes) / 2 / grid) * grid
+        proposed, forced = min(max(middle, lowest), highest), False
+    else:
+        # The window falls between two lines. Nothing on the axis satisfies the
+        # bands, so take the next line up and keep whatever it gives.
+        proposed, forced = ref_q + grid, True
     logger.info(
-        f"Window {opens:.1f} to {closes:.1f} against reference {ref_q}; "
-        f"proposing {middle}"
+        f"Window {opens:.1f} to {closes:.1f} against reference {ref_q}; proposing "
+        f"{proposed} on a {grid} cms grid"
+        + (" -- no line lands in the window, so it is taken as it comes"
+           if forced else "")
     )
-    if middle >= max_q:
+    if proposed >= max_q:
         return Proposal(max_q, True, False)
-    return Proposal(
-        middle, False, middle - position_q < inputs.adaptive_step_min_delta_q
-    )
+    return Proposal(proposed, False, forced)
 
 
 class RunNDScenariosJob(Job[RunNDScenariosInputs]):
@@ -339,9 +354,9 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
             if len(done) == 1:
                 # One point is not a curve: use the authored opening step.
                 at_max = q_trial >= max_q
-                q_trial, below_min_step = min(q_trial, max_q), False
+                q_trial, forced = min(q_trial, max_q), False
             else:
-                q_trial, at_max, below_min_step = _propose(
+                q_trial, at_max, forced = _propose(
                     done,
                     inputs,
                     ref_scenario.manifest.properties.us_discharge,
@@ -355,22 +370,29 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 f"position={current_scenario.manifest.properties.us_discharge} "
                 f"trial={q_trial}"
                 + (" (top of range)" if at_max else "")
-                + (" (finer than min_delta_q)" if below_min_step else "")
+                + (" (taken as it comes)" if forced else "")
             )
-            trial_scenario = _run_scenario(
-                q_trial,
-                downstream_bc,
-                model_manifest,
-                inputs,
-                tmp_dir,
-                hot_start=current_scenario.depth,
-            )
-            if trial_scenario.manifest.properties.termination_condition == "edge_error":
-                logger.error("Aborting adaptive step algorithm for edge error")
-                results.warnings.append(WaterOnEdgeWarning())
-                return results
-
-            done[q_trial] = trial_scenario
+            if q_trial in done:
+                # Reached by the forced branch, which proposes the next line up
+                # without knowing whether it has been tried. Re-running would
+                # cost a simulation to learn what is already in hand.
+                logger.info(f"Reusing already-simulated discharge {q_trial}")
+                trial_scenario = done[q_trial]
+            else:
+                trial_scenario = _run_scenario(
+                    q_trial,
+                    downstream_bc,
+                    model_manifest,
+                    inputs,
+                    tmp_dir,
+                    hot_start=current_scenario.depth,
+                )
+                if (trial_scenario.manifest.properties.termination_condition
+                        == "edge_error"):
+                    logger.error("Aborting adaptive step algorithm for edge error")
+                    results.warnings.append(WaterOnEdgeWarning())
+                    return results
+                done[q_trial] = trial_scenario
             scenario_comparison = compare_scenario_changes(
                 trial_scenario.manifest, inputs, ref_scenario.manifest
             )
@@ -389,10 +411,14 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 logger.info(
                     f"Maximum discharge {max_q} is too large a step; filling below it"
                 )
-            elif verdict == "reject_high" and below_min_step:
-                # Nothing finer is worth chasing, so this is as close to the
-                # band as this reach can be sampled.
-                logger.info(f"Taking {q_trial} despite reject_high: below min_delta_q")
+            elif forced and verdict != "accept":
+                # No line on the axis satisfies the bands, so this is as close
+                # as this reach can be sampled. Keeping it is also what stops
+                # the sweep proposing the same line forever.
+                logger.info(
+                    f"Taking {q_trial} despite {verdict}: "
+                    f"no grid line satisfies the bands"
+                )
                 verdict = "accept"
 
             if verdict == "accept":

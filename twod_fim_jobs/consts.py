@@ -146,6 +146,7 @@ DEPTH_ZARR_FILENAME = "depths.zarr"
 LD_Q_MAX_DEPTH_INCREASE_RANGE: tuple[float, float] = (0.75, 1.25)
 LD_Q_MEDIAN_DEPTH_INCREASE_RANGE: tuple[float, float] = (0.25, 0.5)
 LD_Q_FLOODED_AREA_PRCNT_INCREASE_RANGE: tuple[float, float] = (10.0, 15.0)
-ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q: int = int(
-    os.environ.get("ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q", 10)
-)
+# The discharge axis a library lands on, cms, anchored to zero. One means the
+# integer axis: every whole discharge is available, so nothing is constrained.
+# The orchestrator sends a real grid per reach (DR-041).
+Q_GRID_RESOLUTION: int = int(os.environ.get("Q_GRID_RESOLUTION", 1))

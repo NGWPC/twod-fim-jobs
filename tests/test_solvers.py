@@ -515,7 +515,7 @@ def test_publishing_an_adopted_scenario_uploads_nothing(tmp_path: Path) -> None:
             / "test_data"
             / "results"
             / "reach=1257410937935512"
-            / "10850311_N48S45E47W42"
+            / "10850311"
             / "0c24be7a"
             / "nd=1.0E04"
             / "q=18500"
@@ -533,16 +533,22 @@ def test_publishing_an_adopted_scenario_uploads_nothing(tmp_path: Path) -> None:
     assert write_json.call_count == 0
 
 
-def test_an_unpublished_scenario_hotstarts_from_its_local_depth_grid() -> None:
-    """A rejected candidate is never uploaded, so the next simulation has to
-    read its depth grid off disk rather than from the address it would have had."""
+def test_a_hot_start_always_names_the_published_depth_grid() -> None:
+    """Whatever a scenario's local working copy, its depth is advertised at the
+    address it was published to.
+
+    A hot-started scenario records its seed in its own manifest. A
+    container-local temp path there is a dead reference the moment the job
+    exits: it cannot be read as provenance, and it can never match on a later
+    attempt, so every retry re-simulates work already done. Every trial is
+    published as it is run, so the published address is always valid."""
     manifest = RunScenarioManifest.model_validate_json(
         (
             Path(__file__).parent
             / "test_data"
             / "results"
             / "reach=1257410937935512"
-            / "10850311_N48S45E47W42"
+            / "10850311"
             / "0c24be7a"
             / "nd=1.0E04"
             / "q=18500"
@@ -560,6 +566,6 @@ def test_an_unpublished_scenario_hotstarts_from_its_local_depth_grid() -> None:
     adopted = CompletedScenario(manifest=manifest)
     assert adopted.depth.href == manifest.assets.depth.href
 
-    local = CompletedScenario(manifest=manifest, processed=processed)
-    assert local.depth.href == "/tmp/working/q=18500/depth.tif"
-    assert local.depth.checksum == manifest.assets.depth.checksum
+    just_run = CompletedScenario(manifest=manifest, processed=processed)
+    assert just_run.depth.href == manifest.assets.depth.href
+    assert not just_run.depth.href.startswith("/tmp")

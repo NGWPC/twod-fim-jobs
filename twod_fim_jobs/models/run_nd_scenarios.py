@@ -1,7 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Literal
 from twod_fim_jobs.consts import (
-    ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q,
+    Q_GRID_RESOLUTION,
     LD_Q_FLOODED_AREA_PRCNT_INCREASE_RANGE,
     LD_Q_MAX_DEPTH_INCREASE_RANGE,
     LD_Q_MEDIAN_DEPTH_INCREASE_RANGE,
@@ -85,9 +85,15 @@ class RunNDScenariosInputs(BaseModel):
         description="Maximum time (in wall time) that a model will be allowed to run before it is forcefully terminated",
         examples=[60.0],
     )
-    adaptive_step_min_delta_q: int = Field(
-        default=ADAPTIVE_STEP_ALGORITHM_MIN_DELTA_Q,
-        description="Discharge step below which refining stops being worth another simulation. Not a minimum step: a finer step is run if that is where the acceptance window falls. But when the window asks for less than this and the trial still rejects high, it is accepted rather than narrowing again.",
+    existing_scenarios: list[str] = Field(
+        default_factory=list,
+        description="Scenario manifests already in this reach's library, from earlier attempts. The job reads their metrics rather than re-simulating those discharges, and re-judges them against the bands in force now. Anything naming a different reach, model or run identity is ignored.",
+        examples=[["s3://bucket/.../nd=3.9E04/q=290/scenario_manifest.json"]],
+    )
+    q_grid_resolution: int = Field(
+        default=Q_GRID_RESOLUTION,
+        gt=0,
+        description="Discharge grid every scenario must land on, in whole cms, anchored to zero. It is the finest step the sweep can take, so a step between two adjacent grid values is one nothing could improve on. Defaults to 1, which is the integer discharge axis and no constraint at all.",
         examples=[10],
     )
     save_velocity: bool = Field(

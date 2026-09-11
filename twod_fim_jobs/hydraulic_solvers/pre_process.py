@@ -4,31 +4,32 @@ import logging
 from pathlib import Path
 from typing import Literal
 
+import geopandas as gpd
 import numpy as np
 import rasterio
 import rasterio.transform
 from affine import Affine
 from shapely import LineString, MultiLineString, MultiPolygon, Point, Polygon
 from shapely.geometry.base import BaseGeometry
-from shapely.ops import linemerge, unary_union
-import geopandas as gpd
-from twod_fim_jobs.exceptions import NonIntersectingKWSELine
-from twod_fim_jobs.models.build_model import Domain, GridProperties
-from twod_fim_jobs.models.common import Asset
-from twod_fim_jobs.utils.geospatial import Raster, rasterize_geometry, tif_to_asc
-from twod_fim_jobs.models.solvers import (
-    BoundaryConditionElement,
-    QFixBC,
-    RunConfig,
-    RunScenarioInputs,
-    BoundaryCondition,
-    TransferBC,
-)
+from shapely.ops import linemerge
+
 from twod_fim_jobs.consts import (
     DEFAULT_RESROOT_LISFLOOD,
     SCENARIO_SOLVER,
     SupportedSolver,
 )
+from twod_fim_jobs.exceptions import NonIntersectingKWSELine
+from twod_fim_jobs.models.build_model import Domain, GridProperties
+from twod_fim_jobs.models.common import Asset
+from twod_fim_jobs.models.solvers import (
+    BoundaryCondition,
+    BoundaryConditionElement,
+    QFixBC,
+    RunConfig,
+    RunScenarioInputs,
+    TransferBC,
+)
+from twod_fim_jobs.utils.geospatial import Raster, rasterize_geometry, tif_to_asc
 from twod_fim_jobs.utils.storage import ASSET_CACHE
 
 logger = logging.getLogger(__name__)
@@ -443,16 +444,8 @@ def geometry_to_bc_points(
             geometry, grid_properties.rows, grid_properties.cols, transform
         )
         return [["P", pt[0], pt[1]] for pt in pts]
-    elif isinstance(geometry, Polygon):
+    elif isinstance(geometry, (Polygon, MultiPolygon)):
         return _poly_to_edge_bc_points(geometry, domain)
-    elif isinstance(geometry, MultiPolygon):
-        merged = unary_union(geometry)
-        if not isinstance(merged, Polygon):
-            raise ValueError(
-                f"geometry_to_bc_points: MultiPolygon union produced a {type(merged).__name__}, not a Polygon; "
-                "parts are likely non-contiguous or non-overlapping."
-            )
-        return _poly_to_edge_bc_points(merged, domain)
     else:
         raise ValueError(
             f"Unsupported geometry type '{geometry.geom_type}'; "
@@ -461,10 +454,16 @@ def geometry_to_bc_points(
 
 
 def _poly_to_edge_bc_points(
-    poly: Polygon,
+    poly: Polygon | MultiPolygon,
     domain: Domain,
 ) -> list[list[str | float]]:
-    """Intersect a polygon with each domain edge and return N/S/E/W cardinal BC points."""
+    """Intersect a polygon with each domain edge and return N/S/E/W cardinal BC points.
+
+    One BC per edge, spanning the outer bounds of whatever touched it. The
+    intersection is usually several disjoint segments -- a flood meets a domain
+    edge in a broken line -- and taking `bounds` deliberately covers the dry
+    gaps between them, because a cardinal bci line is a single contiguous span.
+    """
     xmin, ymin, xmax, ymax = domain.bbox
     edges = {
         "N": LineString([(xmin, ymax), (xmax, ymax)]),

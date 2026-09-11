@@ -43,7 +43,10 @@ class RunKWSEScenariosJob(Job[RunKWSEScenariosInputs]):
         )
         run_identity_hash = get_run_identity_hash()
         manifests = []
-        for scenario in inputs.scenarios:
+        total = len(inputs.scenarios)
+        adopted = 0
+        logger.info("Running %d KWSE scenarios", total)
+        for position, scenario in enumerate(inputs.scenarios, start=1):
             ds_scenario_asset = RunScenarioManifest.model_validate_json(
                 read_json(scenario.downstream_Scenario)
             )
@@ -113,9 +116,41 @@ class RunKWSEScenariosJob(Job[RunKWSEScenariosInputs]):
                 run_scenario_inputs.hot_start = hot_scenario_manifest.assets.depth
 
             working_dir = tmp_dir / run_scenario_inputs.scenario_dir_name
+            logger.info(
+                "Scenario %d/%d: %s",
+                position,
+                total,
+                run_scenario_inputs.scenario_dir_name,
+            )
             # Every scenario here was chosen by the orchestrator, so all are kept.
             completed = run_scenario(run_scenario_inputs, working_dir)
+            # processed is None exactly when check_run_exists found this scenario
+            # already in storage with identical inputs, so nothing was simulated
+            # and there is nothing to upload. Worth saying out loud: a library
+            # that resumes after a failure is otherwise indistinguishable from
+            # one that is mysteriously fast.
+            if completed.processed is None:
+                adopted += 1
+                logger.info(
+                    "Scenario %d/%d re-adopted from storage, not simulated: %s",
+                    position,
+                    total,
+                    run_scenario_inputs.scenario_dir_name,
+                )
             scenario_manifest = publish_scenario(completed)
             manifests.append(scenario_manifest.self_href)
+            logger.info(
+                "Scenario %d/%d done; %d simulated and %d re-adopted so far",
+                position,
+                total,
+                position - adopted,
+                adopted,
+            )
 
+        logger.info(
+            "Completed %d KWSE scenarios: %d simulated, %d re-adopted from storage",
+            total,
+            total - adopted,
+            adopted,
+        )
         return RunKWSEScenariosResult(manifests=manifests, warnings=[])

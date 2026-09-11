@@ -325,9 +325,25 @@ class RunScenarioInputs(BaseModel):
         return self
 
     @property
+    def model_identity_hash(self) -> str:
+        """The identity half of model_id, without the domain code.
+
+        model_id is <identity_hash>_<domain_code>, and the pattern on the field
+        guarantees both halves, so the split is total.
+        """
+        return self.model_id.partition("_")[0]
+
+    @property
     def scenario_out_dir(self) -> str:
-        """Derive path where this scenario's data will be saved."""
-        return f"{self.base_out_dir}/reach={self.reach_id}/{self.model_id}/{self.run_identity_hash}/{self.scenario_dir_name}"
+        """Derive path where this scenario's data will be saved.
+
+        Filed under the model's IDENTITY hash, not its full model_id. The domain
+        code is a realization, not an identity: widening a reach's domain gives
+        it a new model_id, and results addressed by model_id would all be
+        stranded by that. Under the identity hash they stay where the loop looks
+        (system-design/guide.md, "runs file under identity, not under id").
+        """
+        return f"{self.base_out_dir}/reach={self.reach_id}/{self.model_identity_hash}/{self.run_identity_hash}/{self.scenario_dir_name}"
 
     @property
     def manifest_href(self) -> str:
@@ -471,9 +487,15 @@ class CompletedScenario(BaseModel):
 
     @property
     def depth(self) -> Asset:
-        """The depth grid, wherever it can be read from right now."""
-        if self.processed is None:
-            return self.manifest.assets.depth
-        return self.manifest.assets.depth.model_copy(
-            update={"href": str(self.processed.depth_path)}
-        )
+        """The depth grid, at its published address.
+
+        Always the manifest's own href, never the local working copy. This is
+        what a hot-started scenario records as its seed, so it has to be an
+        address that outlives the job: a container-local temp path makes the
+        run unreproducible, unreadable as provenance, and impossible to match
+        against on a later attempt.
+
+        The caller must therefore publish a scenario before using it to seed
+        another. The sweep does, for every trial it runs.
+        """
+        return self.manifest.assets.depth

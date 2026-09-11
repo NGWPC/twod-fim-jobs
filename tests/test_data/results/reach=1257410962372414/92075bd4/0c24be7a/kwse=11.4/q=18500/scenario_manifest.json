@@ -11,7 +11,7 @@
         "sdr_commit_id": "826a602ddcaf58bf4081dc04b65ba15b82cc8c8a",
         "solver": "lisflood"
     },
-    "self_href": "tests/test_data/results/reach=1257410962372414/92075bd4_N66S58E73W66/0c24be7a/kwse=11.4/q=18500/scenario_manifest.json",
+    "self_href": "tests/test_data/results/reach=1257410962372414/92075bd4/0c24be7a/kwse=11.4/q=18500/scenario_manifest.json",
     "inputs": {
         "domain": {
             "bbox": [
@@ -63,7 +63,7 @@
             },
             {
                 "vector": {
-                    "href": "tests/test_data/results/reach=1257410937935512/10850311_N48S45E47W42/0c24be7a/nd=1.0E04/q=18500/inundated_area.geojson",
+                    "href": "tests/test_data/results/reach=1257410937935512/10850311/0c24be7a/nd=1.0E04/q=18500/inundated_area.geojson",
                     "checksum": "65a568ded3c51cc6",
                     "source_url": null,
                     "retrieved": null,
@@ -74,7 +74,7 @@
             },
             {
                 "vector": {
-                    "href": "tests/test_data/results/reach=1257410937935512/10850311_N48S45E47W42/0c24be7a/nd=1.0E04/q=18500/stl.geojson",
+                    "href": "tests/test_data/results/reach=1257410937935512/10850311/0c24be7a/nd=1.0E04/q=18500/stl.geojson",
                     "checksum": "e5a4626c3f50c7f1",
                     "source_url": null,
                     "retrieved": null,
@@ -83,7 +83,7 @@
                 "bc_type": "TRANSFER",
                 "value": 11.4,
                 "transfer_depths": {
-                    "href": "tests/test_data/results/reach=1257410937935512/10850311_N48S45E47W42/0c24be7a/nd=1.0E04/q=18500/depth.tif",
+                    "href": "tests/test_data/results/reach=1257410937935512/10850311/0c24be7a/nd=1.0E04/q=18500/depth.tif",
                     "checksum": "3b0d69684570e7b1",
                     "source_url": null,
                     "retrieved": null,
@@ -121,7 +121,7 @@
             }
         ],
         "hot_start": {
-            "href": "tests/test_data/results/reach=1257410962372414/92075bd4_N66S58E73W66/0c24be7a/nd=1.0E04/q=18500/depth.tif",
+            "href": "tests/test_data/results/reach=1257410962372414/92075bd4/0c24be7a/nd=1.0E04/q=18500/depth.tif",
             "checksum": "6c110c2f308f6576",
             "source_url": null,
             "retrieved": null,
@@ -164,21 +164,21 @@
     },
     "assets": {
         "depth": {
-            "href": "tests/test_data/results/reach=1257410962372414/92075bd4_N66S58E73W66/0c24be7a/kwse=11.4/q=18500/depth.tif",
+            "href": "tests/test_data/results/reach=1257410962372414/92075bd4/0c24be7a/kwse=11.4/q=18500/depth.tif",
             "checksum": "001395d227d58550",
             "source_url": null,
             "retrieved": null,
             "derived": true
         },
         "inundation_polygon": {
-            "href": "tests/test_data/results/reach=1257410962372414/92075bd4_N66S58E73W66/0c24be7a/kwse=11.4/q=18500/inundated_area.geojson",
+            "href": "tests/test_data/results/reach=1257410962372414/92075bd4/0c24be7a/kwse=11.4/q=18500/inundated_area.geojson",
             "checksum": "517e852dbe86e2b3",
             "source_url": null,
             "retrieved": null,
             "derived": true
         },
         "stage_transfer_line": {
-            "href": "tests/test_data/results/reach=1257410962372414/92075bd4_N66S58E73W66/0c24be7a/kwse=11.4/q=18500/stl.geojson",
+            "href": "tests/test_data/results/reach=1257410962372414/92075bd4/0c24be7a/kwse=11.4/q=18500/stl.geojson",
             "checksum": "0c85a9c695b50eeb",
             "source_url": null,
             "retrieved": null,

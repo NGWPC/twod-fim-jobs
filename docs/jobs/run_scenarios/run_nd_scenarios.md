@@ -27,7 +27,8 @@ Iteratively runs the model for a reach using a normal depth downstream boundary 
 | `max_simulation_length_seconds` | `number` | 86400 | Maximum time (in model seconds) that a model will be allowed to run before it is forcefully terminated |
 | `save_interval_seconds` | `number` | 3600.0 | Frequency (in model seconds) with which a model will export depth rasters |
 | `max_simulation_wall_time_seconds` | `number` | 10000000000.0 | Maximum time (in wall time) that a model will be allowed to run before it is forcefully terminated |
-| `adaptive_step_min_delta_q` | `integer` | 10 | Discharge step below which refining stops being worth another simulation. Not a minimum step: a finer step is run if that is where the acceptance window falls. But when the window asks for less than this and the trial still rejects high, it is accepted rather than narrowing again. |
+| `existing_scenarios` | `list[string]` |  | Scenario manifests already in this reach's library, from earlier attempts. The job reads their metrics rather than re-simulating those discharges, and re-judges them against the bands in force now. Anything naming a different reach, model or run identity is ignored. |
+| `q_grid_resolution` | `integer` | 1 | Discharge grid every scenario must land on, in whole cms, anchored to zero. It is the finest step the sweep can take, so a step between two adjacent grid values is one nothing could improve on. Defaults to 1, which is the integer discharge axis and no constraint at all. |
 | `save_velocity` | `boolean` | false | Whether or not to generate and save velocity tifs |
 | `save_zarr` | `boolean` | false | Whether or not to generate and save a zarr file with wse and depth at each print interval |
 | `ld_q_max_depth_increase_range` | `list[any]` | [0.75, 1.25] | [min, max] increase in max depth (m) between consecutive library entries. Under min the step was too small, over max it was too large. |
@@ -138,10 +139,11 @@ The window can land somewhere the sweep cannot run. Where it landed is itself a 
 
 | Case                                                         | What happens                                                                                         |
 | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| Window is within `adaptive_step_min_delta_q` of the position | Run exactly what the window asked for — the step is **not** widened. But the band is finer than this is worth chasing, so a `reject_high` is accepted rather than narrowing again. |
+| No grid value falls inside the window | Try the largest value below it — the closest the axis gets from underneath, and a step that falls short is legal however long it is. If that value is at or below the position it is already simulated, so the first value above the position is tried instead. |
 | Window opens beyond `max_upstream_inflow`                    | Run `max_upstream_inflow`.                                                                           |
+| Trial is the next value above everything already run | Nothing finer is left to try, so a `reject_high` there is accepted rather than narrowed again. Anywhere else the verdict stands as measured: a surprise further out is the curve being corrected, not a limit of the axis. |
 
-`adaptive_step_min_delta_q` is not a minimum step. A four cms step is run if that is where the window falls; the setting marks only where refinement stops earning another simulation.
+Every proposal is rounded to the reach's `q_grid_resolution`, and the distance to the reference — never to the position — decides whether anything finer was available. The bands are measured reference-to-trial, so that question has to be asked the same way (DR-041).
 
 If all three curves have gone flat, no criterion reaches a floor at any discharge, so the window opens at infinity — which is the second case, and it becomes "go and check the top." Flatness therefore needs no test of its own and raises no error.
 
@@ -150,7 +152,7 @@ If all three curves have gone flat, no criterion reaches a floor at any discharg
 The sweep cold-starts at `min_upstream_inflow` and publishes it as the first library entry. One point is not a curve, so the opening step is the authored `delta_upstream_inflow`; every step after that is read off the curves. Then it repeats:
 
 1. Choose the next discharge from the curves (above).
-2. Simulate it, warm-started from the position's depth grid, and keep it in memory without publishing.
+2. Snap it to the reach's discharge grid, simulate it warm-started from the position's depth grid, and keep it in memory without publishing.
 3. Compare it against the **reference** on three criteria, each an increase between the two scenarios' published metrics:
 
 | Criterion    | Quantity                                                             | Accepted when                                   |
@@ -209,7 +211,7 @@ The acceptance ranges are job inputs, defaulting to the values in `twod_fim_jobs
 - Runs are strictly sequential, since each simulation warm-starts from the previous one, so the sweep cannot be parallelised.
 - Dense sampling through floodplain-spillover transitions is not guaranteed, because those are governed by the normal-depth downstream boundary condition, which may not capture all backwater effects.
 - An edge-error termination aborts the whole sweep, and the reach is left with whatever it had published up to that point.
-- The flooded-area criterion is scale-dependent, because its denominator is the reference's own area while the two depth criteria are absolute. Low in the range the wetted area is small and spreading quickly, so a step finer than `adaptive_step_min_delta_q` can be needed to stay inside the band; high in the range the area has largely saturated, so a step of several hundred cms can fall below the floor and acceptance passes to the depth criteria. One band therefore does not describe the same thing at both ends of a reach.
+- The flooded-area criterion is scale-dependent, because its denominator is the reference's own area while the two depth criteria are absolute. Low in the range the wetted area is small and spreading quickly, so the band can ask for a step finer than the reach's discharge grid allows; high in the range the area has largely saturated, so a step of several hundred cms can fall below the floor and acceptance passes to the depth criteria. One band therefore does not describe the same thing at both ends of a reach.
 
 ## Performance
 

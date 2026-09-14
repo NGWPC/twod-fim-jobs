@@ -469,10 +469,10 @@
         "reach_id": {
           "description": "Primary key for the reach in the reach network",
           "examples": [
-            1257410937935512
+            "1257410937935512"
           ],
           "title": "Reach Id",
-          "type": "integer"
+          "type": "string"
         },
         "model_id": {
           "description": "<identity_hash>+<domain_code>. Also the folder name.",
@@ -732,10 +732,10 @@
     "reach_id": {
       "description": "Primary key for the reach in the reach network",
       "examples": [
-        1257410937935512
+        "1257410937935512"
       ],
       "title": "Reach Id",
-      "type": "integer"
+      "type": "string"
     },
     "identity_hash": {
       "description": "Hash of the run identity object.",

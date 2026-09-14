@@ -79,9 +79,9 @@ class Properties(BaseModel):
         gt=0,
         examples=[35.2],
     )
-    upstream_reach_ids: list[int] = Field(
+    upstream_reach_ids: list[str] = Field(
         description="Reach IDs of any reaches tributary to this model's reach",
-        examples=[[1257410937935510]],
+        examples=[["1257410937935510"]],
     )
     stream_order: int | None = Field(
         description="Strahler order of the reach for this model",
@@ -91,13 +91,13 @@ class Properties(BaseModel):
         description="Length of the reach centerline for this model",
         examples=[2340.5],
     )
-    downstream_reach_id: int | None = Field(
+    downstream_reach_id: str | None = Field(
         description="ID of the reach downstream of this model's reach",
-        examples=[1257410937935513],
+        examples=["1257410937935513"],
     )
-    upstream_mainstem_reach_id: int | None = Field(
+    upstream_mainstem_reach_id: str | None = Field(
         description="ID of the reach with the largest drainage area of the reaches draining to this reach",
-        examples=[1257410937935510],
+        examples=["1257410937935510"],
     )
 
 
@@ -133,25 +133,25 @@ class BuildModelInputs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # Required
-    reach_id: int = Field(
+    reach_id: str = Field(
         description="Primary key for the reach in the reach network",
-        examples=[1257410937935512],
+        examples=["1257410937935512"],
     )
     reach_network_path: str = Field(
         description="Path to the reach network GeoParquet, sorted by reach_id",
         examples=["s3://twod-fim/version=v1/reference_data/reach_network.parquet"],
     )
-    upstream_reach_ids: list[int] = Field(
+    upstream_reach_ids: list[str] = Field(
         default_factory=list,
         description="Ids of the reaches draining into this one",
-        examples=[[1257410937935511, 1257410937935510]],
+        examples=[["1257410937935511", "1257410937935510"]],
     )
-    upstream_mainstem_reach_id: int | None = Field(
+    upstream_mainstem_reach_id: str | None = Field(
         default=None,
         description=(
             "Upstream reach with the largest drainage area; null for a headwater"
         ),
-        examples=[1257410937935511],
+        examples=["1257410937935511"],
     )
     base_output_path: str = Field(
         description="Path where output artifacts will be written",
@@ -272,9 +272,9 @@ class ModelManifest(BaseModel):
         description="Build completion time (UTC). model.json is written last.",
         examples=["2026-08-06T22:17:07.406819Z"],
     )
-    reach_id: int = Field(
+    reach_id: str = Field(
         description="Primary key for the reach in the reach network",
-        examples=[1257410937935512],
+        examples=["1257410937935512"],
     )
     identity_hash: str = Field(
         pattern=r"^[0-9a-f]{8}$",

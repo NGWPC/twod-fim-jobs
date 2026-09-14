@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 def read_reaches(
-    reach_network_path: str, reach_ids: list[int], epsg: int | None = None
+    reach_network_path: str, reach_ids: list[str], epsg: int | None = None
 ) -> gpd.GeoDataFrame:
     """Fetch specific reaches from the reach network GeoParquet, by id."""
     if not reach_ids:
@@ -70,7 +70,7 @@ def read_reaches(
 
 
 def query_reach(
-    reach_id: int, reach_network_path: str, epsg: int | None = None
+    reach_id: str, reach_network_path: str, epsg: int | None = None
 ) -> gpd.GeoDataFrame:
     """Load one reach's geometry and attributes from the reach network."""
     gdf = read_reaches(reach_network_path, [reach_id], epsg=epsg)

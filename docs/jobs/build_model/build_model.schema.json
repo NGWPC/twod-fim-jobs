@@ -118,10 +118,10 @@
         "reach_id": {
           "description": "Primary key for the reach in the reach network",
           "examples": [
-            1257410937935512
+            "1257410937935512"
           ],
           "title": "Reach Id",
-          "type": "integer"
+          "type": "string"
         },
         "reach_network_path": {
           "description": "Path to the reach network GeoParquet, sorted by reach_id",
@@ -135,12 +135,12 @@
           "description": "Ids of the reaches draining into this one",
           "examples": [
             [
-              1257410937935511,
-              1257410937935510
+              "1257410937935511",
+              "1257410937935510"
             ]
           ],
           "items": {
-            "type": "integer"
+            "type": "string"
           },
           "title": "Upstream Reach Ids",
           "type": "array"
@@ -148,7 +148,7 @@
         "upstream_mainstem_reach_id": {
           "anyOf": [
             {
-              "type": "integer"
+              "type": "string"
             },
             {
               "type": "null"
@@ -157,7 +157,7 @@
           "default": null,
           "description": "Upstream reach with the largest drainage area; null for a headwater",
           "examples": [
-            1257410937935511
+            "1257410937935511"
           ],
           "title": "Upstream Mainstem Reach Id"
         },
@@ -560,11 +560,11 @@
           "description": "Reach IDs of any reaches tributary to this model's reach",
           "examples": [
             [
-              1257410937935510
+              "1257410937935510"
             ]
           ],
           "items": {
-            "type": "integer"
+            "type": "string"
           },
           "title": "Upstream Reach Ids",
           "type": "array"
@@ -602,7 +602,7 @@
         "downstream_reach_id": {
           "anyOf": [
             {
-              "type": "integer"
+              "type": "string"
             },
             {
               "type": "null"
@@ -610,14 +610,14 @@
           ],
           "description": "ID of the reach downstream of this model's reach",
           "examples": [
-            1257410937935513
+            "1257410937935513"
           ],
           "title": "Downstream Reach Id"
         },
         "upstream_mainstem_reach_id": {
           "anyOf": [
             {
-              "type": "integer"
+              "type": "string"
             },
             {
               "type": "null"
@@ -625,7 +625,7 @@
           ],
           "description": "ID of the reach with the largest drainage area of the reaches draining to this reach",
           "examples": [
-            1257410937935510
+            "1257410937935510"
           ],
           "title": "Upstream Mainstem Reach Id"
         }
@@ -679,10 +679,10 @@
     "reach_id": {
       "description": "Primary key for the reach in the reach network",
       "examples": [
-        1257410937935512
+        "1257410937935512"
       ],
       "title": "Reach Id",
-      "type": "integer"
+      "type": "string"
     },
     "identity_hash": {
       "description": "Hash of the identity object. Stable across domain changes; results group under it.",

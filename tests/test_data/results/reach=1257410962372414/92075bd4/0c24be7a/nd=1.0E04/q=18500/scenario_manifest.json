@@ -3,7 +3,7 @@
     "hash_algo": "sha256",
     "twod_fim_version": "0.1.0",
     "created_at": "2026-09-04T14:04:39.956078Z",
-    "reach_id": 1257410962372414,
+    "reach_id": "1257410962372414",
     "identity_hash": "0c24be7a",
     "scenario_code": "ND1.0E04Q18500",
     "model_id": "92075bd4_N66S58E73W66",
@@ -87,7 +87,7 @@
             "save_zarr": false
         },
         "base_out_dir": "tests/test_data/results",
-        "reach_id": 1257410962372414,
+        "reach_id": "1257410962372414",
         "model_id": "92075bd4_N66S58E73W66",
         "centerline": {
             "href": "tests/test_data/models/reach=1257410962372414/92075bd4_N66S58E73W66/reach.geojson",

@@ -36,7 +36,7 @@ TEST_MODEL_DATA = (
 
 
 def create_test_run_scenario_inputs(
-    base_out_dir: str, reach_id: int, model_id: str = "fceb20c6_N164S214E230W107"
+    base_out_dir: str, reach_id: str, model_id: str = "fceb20c6_N164S214E230W107"
 ) -> RunScenarioInputs:
     """Helper to create minimal valid RunScenarioInputs for testing."""
     return RunScenarioInputs(
@@ -156,7 +156,7 @@ def test_build_scenario_manifest_preserves_s3_double_slash(tmp_path: Path) -> No
             max_simulation_wall_time_seconds=3600.0,
         ),
         base_out_dir="s3://bucket/results",
-        reach_id=12345,
+        reach_id="12345",
         model_id="fceb20c6_N164S214E230W107",
         centerline=Asset(
             href="s3://bucket/centerline.geojson",
@@ -279,7 +279,7 @@ def test_write_model_results_to_s3_works(tmp_path: Path) -> None:
             max_simulation_wall_time_seconds=3600.0,
         ),
         base_out_dir="s3://bucket/results/reach-123",
-        reach_id=9876543210,
+        reach_id="9876543210",
         model_id="fceb20c6_N164S214E230W107",
         centerline=Asset(
             href="s3://bucket/centerline.geojson",
@@ -357,7 +357,7 @@ def test_check_model_skips_when_run_exists() -> None:
     model_id = "fceb20c6_N164S214E230W107"
     run_scenario_inputs = create_test_run_scenario_inputs(
         base_out_dir="s3://bucket/results",
-        reach_id=54321,
+        reach_id="54321",
         model_id=model_id,
     )
 
@@ -366,7 +366,7 @@ def test_check_model_skips_when_run_exists() -> None:
         created_at=datetime.now(timezone.utc),
         identity_hash="fceb20c6",
         scenario_code="KWSE1.0Q100",
-        reach_id=54321,
+        reach_id="54321",
         model_id=model_id,
         identity=RunIdentity(
             sdr_commit_id="826a602ddcaf58bf4081dc04b65ba15b82cc8c8a",
@@ -425,7 +425,7 @@ def test_check_model_skips_when_run_exists() -> None:
     # Verify the function returns the manifest instead of None (skipping re-run)
     assert result is not None
     assert isinstance(result, RunScenarioManifest)
-    assert result.reach_id == 54321
+    assert result.reach_id == "54321"
     assert result.model_id == model_id
 
 
@@ -433,7 +433,7 @@ def test_check_run_exists_returns_none_when_manifest_not_found() -> None:
     """Test that check_run_exists returns None when manifest file does not exist."""
     run_scenario_inputs = create_test_run_scenario_inputs(
         base_out_dir="/nonexistent/path",
-        reach_id=11111,
+        reach_id="11111",
         model_id="00000000_N0S0E0W0",
     )
 

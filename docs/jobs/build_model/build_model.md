@@ -11,7 +11,7 @@ Initialize a model for a single reach by generating the terrain, roughness, geom
 
 | Name | Type | Description |
 | --- | --- | --- |
-| `reach_id` | `integer` | Primary key for the reach in the reach network |
+| `reach_id` | `string` | Primary key for the reach in the reach network |
 | `reach_network_path` | `string` | Path to the reach network GeoParquet, sorted by reach_id |
 | `base_output_path` | `string` | Path where output artifacts will be written |
 
@@ -19,8 +19,8 @@ Initialize a model for a single reach by generating the terrain, roughness, geom
 
 | Name | Type | Default | Description |
 | --- | --- | --- | --- |
-| `upstream_reach_ids` | `list[integer]` |  | Ids of the reaches draining into this one |
-| `upstream_mainstem_reach_id` | `integer` | null | Upstream reach with the largest drainage area; null for a headwater |
+| `upstream_reach_ids` | `list[string]` |  | Ids of the reaches draining into this one |
+| `upstream_mainstem_reach_id` | `string` | null | Upstream reach with the largest drainage area; null for a headwater |
 | `dem_source` | `string` | "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt" | Connection string for the DEM dataset |
 | `lulc_source` | `string` | "/vsis3/usgs-landcover/annual-nlcd/c1/v0/cu/mosaic/Annual_NLCD_LndCov_2023_CU_C1V0.tif" | Connection string for the LULC source dataset |
 | `other_geometries` | `list[string]` |  | A list of geometries that will be included when making the model domain bounding box. Could be a WKT string or the path to a geojson. |

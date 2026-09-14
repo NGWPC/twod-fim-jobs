@@ -293,9 +293,9 @@ class RunScenarioInputs(BaseModel):
         description="Path where results will be saved",
         examples=["s3://twod-fim/version=v1/results"],
     )
-    reach_id: int = Field(
+    reach_id: str = Field(
         description="Primary key for the reach in the reach network",
-        examples=[1257410937935512],
+        examples=["1257410937935512"],
     )
     model_id: str = Field(
         pattern=r"^[0-9a-f]{8}_N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
@@ -430,9 +430,9 @@ class RunScenarioManifest(BaseModel):
         description="Run completion time (UTC). model.json is written last.",
         examples=["2026-08-06T22:17:07.406819Z"],
     )
-    reach_id: int = Field(
+    reach_id: str = Field(
         description="Primary key for the reach in the reach network",
-        examples=[1257410937935512],
+        examples=["1257410937935512"],
     )
     identity_hash: str = Field(
         pattern=r"^[0-9a-f]{8}$",

@@ -112,7 +112,7 @@ def mock_extract_raster(mocker: pytest_mock.MockerFixture, tmp_path: Path):
 @pytest.fixture
 def build_model_input():
     return BuildModelInputs(
-        reach_id=1257410962372414,
+        reach_id="1257410962372414",
         reach_network_path=str(SMALL_NETWORK.resolve()),
         base_output_path="/tmp/test-output",
     )
@@ -121,7 +121,7 @@ def build_model_input():
 @pytest.fixture
 def build_model_input_headwater():
     return BuildModelInputs(
-        reach_id=1257411073114277,
+        reach_id="1257411073114277",
         reach_network_path=str(SMALL_NETWORK.resolve()),
         base_output_path="/tmp/test-output",
     )
@@ -130,7 +130,7 @@ def build_model_input_headwater():
 @pytest.fixture
 def build_model_input_bad_connection():
     return BuildModelInputs(
-        reach_id=1257410962372414,
+        reach_id="1257410962372414",
         reach_network_path="FAKE_PATH",
         base_output_path="/tmp/test-output",
     )
@@ -139,7 +139,7 @@ def build_model_input_bad_connection():
 @pytest.fixture
 def build_model_input_bad_attributes():
     return BuildModelInputs(
-        reach_id=1257410962372414,
+        reach_id="1257410962372414",
         reach_network_path=str(SMALL_NETWORK_BAD_ATTRIBUTES.resolve()),
         base_output_path="/tmp/test-output",
     )
@@ -148,7 +148,7 @@ def build_model_input_bad_attributes():
 @pytest.fixture
 def build_model_input_missing_reach():
     return BuildModelInputs(
-        reach_id=1,
+        reach_id="1",
         reach_network_path=str(SMALL_NETWORK.resolve()),
         base_output_path="/tmp/test-output",
     )
@@ -157,7 +157,7 @@ def build_model_input_missing_reach():
 @pytest.fixture
 def build_model_input_duplicate_ids():
     return BuildModelInputs(
-        reach_id=1257410962372414,
+        reach_id="1257410962372414",
         reach_network_path=str(SMALL_NETWORK_DUPLICATE_ID.resolve()),
         base_output_path="/tmp/test-output",
     )
@@ -166,7 +166,7 @@ def build_model_input_duplicate_ids():
 @pytest.fixture
 def build_model_input_w_extra_geometries():
     return BuildModelInputs(
-        reach_id=1257410962372414,
+        reach_id="1257410962372414",
         reach_network_path=str(SMALL_NETWORK.resolve()),
         base_output_path="/tmp/test-output",
         other_geometries=[ADDITIONAL_GEOMETRY_STR],
@@ -176,7 +176,7 @@ def build_model_input_w_extra_geometries():
 @pytest.fixture
 def build_model_input_w_bad_extra_geometries():
     return BuildModelInputs(
-        reach_id=1257410962372414,
+        reach_id="1257410962372414",
         reach_network_path=str(SMALL_NETWORK.resolve()),
         base_output_path="/tmp/test-output",
         other_geometries=["BAD"],
@@ -276,7 +276,7 @@ def test_inputs_missing_required_arg_raises():
     """Build_model input validation fails when required args are omitted."""
     with pytest.raises(ValidationError):
         BuildModelInputs(
-            reach_id=1257410962372414,
+            reach_id="1257410962372414",
             reach_network_path=f"sqlite:///{SMALL_NETWORK.resolve()}",
         )
 

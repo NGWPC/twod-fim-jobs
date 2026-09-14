@@ -80,6 +80,9 @@ _REQUIRED_SOURCE_FIELDS = (
     FP_TO_ID_FIELD,
     DA_FIELD,
 )
+# Two chain members closer than this (meters) are treated as touching when
+# their geometry is joined in a merge.
+_JOIN_TOLERANCE_M = 0.01
 
 
 @dataclass
@@ -862,7 +865,7 @@ def merge_short_reaches(
     finalize. Merged rows keep the chain start's attributes — it is the most
     downstream reach of the chain, so its total_da_sqkm, lake_inlet,
     terminal state and lake_to_id all carry through untouched — plus the
-    unioned geometry, the top member's is_headwater /
+    joined geometry (see _join_in_flow_order), the top member's is_headwater /
     lake_outlet (both describe the upstream end), and any member's
     is_trimmed. Tributary pointers into absorbed members are re-pointed at
     the surviving reach_id.
@@ -954,9 +957,8 @@ def merge_short_reaches(
     absorbed: list[int] = []
     remap: dict[str, str] = {}
     for start, members in chains.items():
-        merged_geom = shapely.line_merge(
-            shapely.union_all(gdf.geometry.to_numpy()[members])
-        )
+        # members run downstream -> upstream; geometry is joined in flow order.
+        merged_geom = _join_in_flow_order(gdf.geometry.to_numpy()[members[::-1]])
         top = members[-1]
         gdf.loc[start, geom] = merged_geom
         gdf.loc[start, IS_HEADWATER_FIELD] = bool(gdf[IS_HEADWATER_FIELD].iloc[top])
@@ -985,6 +987,38 @@ def merge_short_reaches(
     return gdf.reset_index(drop=True)
 
 
+def _join_in_flow_order(lines) -> shapely.LineString:
+    """Concatenate a chain's members, most upstream first, into one LineString.
+
+    Joined by walking coordinates, never by union: union_all nodes lines
+    wherever they touch, so any chain whose geometry is not a clean
+    end-to-start sequence came back as a MultiLineString. Three shapes do
+    that on real hydrofabric, and each is handled here:
+
+    - A member that meets its downstream neighbour partway along it (a
+      T-junction; the neighbour's head above the contact carried only
+      tributaries the filter removed). The neighbour is joined from the
+      contact, so the merged reach follows the flow path and the stub above
+      the contact is not carried.
+    - A member whose own line passes back through a point on itself (a
+      self-touching digitisation). Coordinates are kept verbatim, so the
+      loop survives exactly as the source drew it.
+    - Members separated by a gap (the parts of an exploded multipart reach).
+      The gap is bridged by a straight segment.
+    """
+    joined = [shapely.get_coordinates(lines[0])]
+    for line in lines[1:]:
+        tail = Point(joined[-1][-1])
+        cut = line.project(tail)
+        if tail.distance(line) <= _JOIN_TOLERANCE_M and 0.0 < cut < line.length:
+            line = substring(line, cut, line.length)
+        coords = shapely.get_coordinates(line)
+        if Point(coords[0]).distance(tail) <= _JOIN_TOLERANCE_M:
+            coords = coords[1:]
+        joined.append(coords)
+    return shapely.LineString(np.vstack(joined))
+
+
 ### FINALIZE ###
 
 
@@ -1005,6 +1039,16 @@ def finalize_network(
     # and length drift apart, and left the column mixing NHF's own measure
     # with ours. A consumer can now verify any row against its geometry.
     gdf[LENGTH_KM_FIELD] = gdf.geometry.length / 1000.0
+
+    # The contract is LineString only. One stray multipart row makes the GPKG
+    # writer promote the whole layer to MultiLineString, so fail loudly here
+    # rather than publish that.
+    non_line = gdf.loc[gdf.geom_type != "LineString", REACH_ID_FIELD]
+    if len(non_line):
+        raise ValueError(
+            f"output must be LineString only; non-LineString reach(es): "
+            f"{sorted(non_line.astype(str))}"
+        )
 
     missing = [c for c in OUTPUT_COLUMNS if c not in gdf.columns]
     if missing:

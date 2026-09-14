@@ -395,8 +395,8 @@ class ModifyNetworkInputs(BaseModel):
     coastal_influence_layer_path: str | None = Field(
         default=None,
         description="Coastal/tidal-influence surface boundary vector dataset. "
-        "Must be a GPKG file; default layer name is coastal_influence. Omit to "
-        "skip coastal processing entirely.",
+        "Must be a GPKG file; default layer name is coastal_influence_polygons, "
+        "with polygon ids in coast_id. Omit to skip coastal processing entirely.",
         examples=["s3://bucket/reference/coastal_boundary.gpkg"],
     )
     drainage_area_threshold_percent: float = Field(

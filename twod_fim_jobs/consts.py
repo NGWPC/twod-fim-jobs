@@ -148,7 +148,7 @@ NETWORK_MANIFEST_FILENAME = "network.json"
 # modify_network's output network is build_model's input reach db.
 FLOWPATHS_LAYER = "flowpaths"  # NHF input layer; the OUTPUT layer is REACH_TABLE
 LAKES_LAYER = "lakes_polygons"
-COASTAL_LAYER = "coastal_influence"
+COASTAL_LAYER = "coastal_influence_polygons"
 FP_ID_FIELD = "fp_id"
 FP_TO_ID_FIELD = "fp_to_id"
 AREA_SQKM_FIELD = "area_sqkm"
@@ -157,7 +157,7 @@ LENGTH_KM_FIELD = "length_km"
 # they touch. A layer without its column yields a null reference, never a
 # fabricated one.
 LAKE_ID_FIELD = "lake_id"
-COAST_ID_FIELD = "id"
+COAST_ID_FIELD = "coast_id"
 
 # Output tag columns - the literal GPKG column names in network.gpkg
 # (contract: specs-and-manifests/network.schema.json assets.network).

@@ -17,7 +17,9 @@ import pytest
 from pydantic import ValidationError
 from shapely.geometry import LineString, box
 from twod_fim_jobs.consts import (
+    COAST_ID_FIELD,
     COAST_TO_ID_FIELD,
+    COASTAL_LAYER,
     DA_FIELD,
     LAKE_ID_FIELD,
     IS_HEADWATER_FIELD,
@@ -122,8 +124,10 @@ def lakes_layer(tmp_path: Path) -> Path:
 def coastal_layer(tmp_path: Path) -> Path:
     path = tmp_path / "coastal.gpkg"
     gpd.GeoDataFrame(
-        {"id": [42], "name": ["coast"]}, geometry=[box(300, -50, 315, 50)], crs=CRS
-    ).to_file(path, layer="coastal_influence", driver="GPKG")
+        {COAST_ID_FIELD: [42], "name": ["coast"]},
+        geometry=[box(300, -50, 315, 50)],
+        crs=CRS,
+    ).to_file(path, layer=COASTAL_LAYER, driver="GPKG")
     return path
 
 
@@ -728,6 +732,16 @@ def test_written_gpkg_matches_the_output_schema(output_network):
     assert "8_1" in output_network.index
 
 
+def test_written_gpkg_layer_is_linestring(result):
+    """Declared layer type, not just row types: QGIS and build_model read it."""
+    import pyogrio
+
+    info = pyogrio.read_info(
+        Path(result.network_dir) / "network.gpkg", layer=REACH_TABLE
+    )
+    assert info["geometry_type"] == "LineString"
+
+
 def test_merge_uses_cumulative_drainage_area_not_local_catchment(pipeline):
     """The rule asks whether two reaches carry the same flow.
 
@@ -858,14 +872,18 @@ def test_drainage_area_still_blocks_merging_through_a_real_confluence(
 
 @pytest.fixture
 def linear_chain(tmp_path):
-    """A single-thread chain, downstream first, with equal drainage areas."""
+    """A single-thread chain, downstream first, with equal drainage areas.
+
+    Each reach is digitised upstream -> downstream like NHF: flow runs toward
+    x=0, so every line is drawn from its high-x end.
+    """
 
     def _build(lengths_km: list[float]) -> Path:
         ids = [chr(65 + i) for i in range(len(lengths_km))]
         rows, x = [], 0.0
         for i, length in enumerate(lengths_km):
             rows.append(
-                (ids[i], ids[i - 1] if i else None, [(x, 0), (x + length * 1000, 0)])
+                (ids[i], ids[i - 1] if i else None, [(x + length * 1000, 0), (x, 0)])
             )
             x += length * 1000
         geoms = [LineString(c) for *_, c in rows]
@@ -917,6 +935,92 @@ def test_upstream_tail_can_remain_below_the_floor(linear_chain):
     topology allows it.
     """
     assert _merged_lengths(linear_chain([1] * 12), 5.0)["K"] == 2.0
+
+
+### MERGED GEOMETRY ###
+
+
+def _merge_geometry(tmp_path, rows, floor_km=5.0):
+    """Run load -> merge -> finalize over (fp_id, fp_to_id, coords) rows."""
+    path = tmp_path / "merge_geometry.gpkg"
+    gpd.GeoDataFrame(
+        {
+            "fp_id": [r[0] for r in rows],
+            "fp_to_id": [r[1] for r in rows],
+            "total_da_sqkm": [100.0] * len(rows),
+            "stream_order": [3] * len(rows),
+        },
+        geometry=[LineString(r[2]) for r in rows],
+        crs=CRS,
+    ).to_file(path, layer="flowpaths", driver="GPKG")
+    gdf, counters = nw.load_reach_network(str(path), None)
+    gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
+    gdf = nw.merge_short_reaches(gdf, 5.0, floor_km, counters)
+    return nw.finalize_network(gdf, counters), counters
+
+
+def test_member_meeting_its_neighbour_partway_joins_at_the_contact(tmp_path):
+    """U ends 100 m into D rather than at D's start (a T-junction).
+
+    Seen on NHF where a filtered tributary owned D's head. A union split D at
+    the contact and shipped a 100 m spur as a third part; the join follows
+    the flow path instead and leaves the spur behind.
+    """
+    rows = [
+        ("D", None, [(0, 0), (1000, 0)]),
+        ("U", "D", [(100, 500), (100, 0)]),
+    ]
+    gdf, counters = _merge_geometry(tmp_path, rows)
+    assert counters.n_reaches_merged == 1
+    (line,) = gdf.geometry
+    assert line.geom_type == "LineString"
+    assert list(line.coords) == [(100, 500), (100, 0), (1000, 0)]
+    np.testing.assert_allclose(gdf[LENGTH_KM_FIELD], 1.4)
+
+
+def test_self_touching_member_is_kept_verbatim(tmp_path):
+    """U loops back through its own end point before handing over to D.
+
+    A union nodes the self-intersection and cuts the loop out as a closed
+    ring; joining by coordinates keeps the line exactly as digitised.
+    """
+    loop = [(0, 1000), (0, 0), (300, 0), (300, -300), (0, -300), (0, 0)]
+    rows = [
+        ("D", None, [(0, 0), (-1000, 0)]),
+        ("U", "D", loop),
+    ]
+    gdf, counters = _merge_geometry(tmp_path, rows)
+    assert counters.n_reaches_merged == 1
+    (line,) = gdf.geometry
+    assert line.geom_type == "LineString"
+    assert list(line.coords) == [*loop, (-1000, 0)]
+    np.testing.assert_allclose(gdf[LENGTH_KM_FIELD], 3.2)
+
+
+def test_merging_exploded_parts_bridges_their_gaps(multipart_network):
+    """3434's parts are 10 m apart; merging them back must still be one line."""
+    gdf, counters = nw.load_reach_network(str(multipart_network), None)
+    gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
+    gdf = nw.merge_short_reaches(gdf, 5.0, 5.0, counters)
+    gdf = nw.finalize_network(gdf, counters)
+    assert counters.n_reaches_merged == 4
+    (line,) = gdf.geometry
+    assert line.geom_type == "LineString"
+    assert line.coords[0] == (0, 500) and line.coords[-1] == (400, 0)
+    np.testing.assert_allclose(gdf[LENGTH_KM_FIELD], 0.9)
+
+
+def test_finalize_refuses_multipart_geometry(linear_chain):
+    """One multipart row would promote the whole GPKG layer to Multi."""
+    from shapely.geometry import MultiLineString
+
+    gdf, counters = nw.load_reach_network(str(linear_chain([1, 1])), None)
+    gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
+    gdf.loc[0, gdf.geometry.name] = MultiLineString(
+        [[(0, 0), (1, 0)], [(2, 0), (3, 0)]]
+    )
+    with pytest.raises(ValueError, match="LineString only"):
+        nw.finalize_network(gdf, counters)
 
 
 ### ORPHANS LEFT BY LAKE REMOVAL ###
@@ -1544,7 +1648,7 @@ def test_missing_coastal_id_records_null_not_a_row_number(tmp_path, caplog):
     coast = tmp_path / "c.gpkg"
     gpd.GeoDataFrame(  # no 'id' column
         {"name": ["shore"]}, geometry=[box(500, -100, 900, 100)], crs=CRS
-    ).to_file(coast, layer="coastal_influence", driver="GPKG")
+    ).to_file(coast, layer=COASTAL_LAYER, driver="GPKG")
 
     gdf, counters = nw.load_reach_network(str(net), None)
     gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
@@ -1555,7 +1659,7 @@ def test_missing_coastal_id_records_null_not_a_row_number(tmp_path, caplog):
     assert counters.n_reaches_trimmed_coastal == 1
     assert row[TERMINAL_REASON_FIELD] == "coast", "tagging is unaffected"
     assert pd.isna(row[COAST_TO_ID_FIELD]), "no fabricated reference"
-    assert any("coastal_influence" in m for m in caplog.messages), (
+    assert any(COASTAL_LAYER in m for m in caplog.messages), (
         "the warning must name the layer that is missing the column"
     )
 
@@ -1608,8 +1712,8 @@ def _coastal_run(tmp_path, reach_coords, coast_geom, label):
         crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
     coast = tmp_path / f"{label}_c.gpkg"
-    gpd.GeoDataFrame({"id": [1]}, geometry=[coast_geom], crs=CRS).to_file(
-        coast, layer="coastal_influence", driver="GPKG"
+    gpd.GeoDataFrame({COAST_ID_FIELD: [1]}, geometry=[coast_geom], crs=CRS).to_file(
+        coast, layer=COASTAL_LAYER, driver="GPKG"
     )
     gdf, counters = nw.load_reach_network(str(net), None)
     gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
@@ -1683,9 +1787,9 @@ def test_reach_passing_straight_through_is_trimmed_at_entry(tmp_path):
         crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
     coast = tmp_path / "through_c.gpkg"
-    gpd.GeoDataFrame({"id": [1]}, geometry=[box(300, -50, 500, 50)], crs=CRS).to_file(
-        coast, layer="coastal_influence", driver="GPKG"
-    )
+    gpd.GeoDataFrame(
+        {COAST_ID_FIELD: [1]}, geometry=[box(300, -50, 500, 50)], crs=CRS
+    ).to_file(coast, layer=COASTAL_LAYER, driver="GPKG")
 
     gdf, counters = nw.load_reach_network(str(net), None)
     gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
@@ -1760,9 +1864,9 @@ def test_reach_beginning_inside_coastal_is_dropped_with_its_downstream(tmp_path)
         crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
     coast = tmp_path / "starts_inside_c.gpkg"
-    gpd.GeoDataFrame({"id": [1]}, geometry=[box(0, -100, 500, 100)], crs=CRS).to_file(
-        coast, layer="coastal_influence", driver="GPKG"
-    )
+    gpd.GeoDataFrame(
+        {COAST_ID_FIELD: [1]}, geometry=[box(0, -100, 500, 100)], crs=CRS
+    ).to_file(coast, layer=COASTAL_LAYER, driver="GPKG")
 
     gdf, counters = nw.load_reach_network(str(net), None)
     gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
@@ -1789,8 +1893,8 @@ def test_reach_with_both_ends_inside_coastal_is_dropped(tmp_path):
         crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
     cpath = tmp_path / "island_coast_c.gpkg"
-    gpd.GeoDataFrame({"id": [1]}, geometry=[coast], crs=CRS).to_file(
-        cpath, layer="coastal_influence", driver="GPKG"
+    gpd.GeoDataFrame({COAST_ID_FIELD: [1]}, geometry=[coast], crs=CRS).to_file(
+        cpath, layer=COASTAL_LAYER, driver="GPKG"
     )
 
     gdf, counters = nw.load_reach_network(str(net), None)
@@ -1815,9 +1919,9 @@ def test_first_contact_partway_still_trims_rather_than_drops(tmp_path):
         crs=CRS,
     ).to_file(net, layer="flowpaths", driver="GPKG")
     cpath = tmp_path / "partway_c.gpkg"
-    gpd.GeoDataFrame({"id": [1]}, geometry=[box(400, -100, 900, 100)], crs=CRS).to_file(
-        cpath, layer="coastal_influence", driver="GPKG"
-    )
+    gpd.GeoDataFrame(
+        {COAST_ID_FIELD: [1]}, geometry=[box(400, -100, 900, 100)], crs=CRS
+    ).to_file(cpath, layer=COASTAL_LAYER, driver="GPKG")
 
     gdf, counters = nw.load_reach_network(str(net), None)
     gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))

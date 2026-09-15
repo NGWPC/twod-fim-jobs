@@ -212,13 +212,6 @@ def build_model_domain(
     buffer_distance: float,
 ) -> Domain:
     """Build a model domain from a set of geometries."""
-    # Define anchor as reach centroid
-    anchor = reach_cl.centroid
-    ax = anchor.x.iloc[0]
-    ay = anchor.y.iloc[0]
-    ax = floor(ax / resolution) * resolution
-    ay = floor(ay / resolution) * resolution
-
     # Get bbox
     (xmin, ymin, xmax, ymax) = gpd.GeoDataFrame(
         pd.concat([reach_cl, other_geometries])
@@ -233,6 +226,29 @@ def build_model_domain(
     ymin = floor(ymin / resolution) * resolution
     xmax = ceil(xmax / resolution) * resolution
     ymax = ceil(ymax / resolution) * resolution
+
+    return domain_from_bbox(reach_cl, (xmin, ymin, xmax, ymax), resolution)
+
+
+def domain_from_bbox(
+    reach_cl: gpd.GeoDataFrame,
+    bbox: tuple[float, float, float, float],
+    resolution: float,
+) -> Domain:
+    """Anchor a grid-aligned bbox to the reach and express it as a domain.
+
+    The bbox is used exactly as given. A computed bbox arrives here already
+    snapped; an authored one must be snapped by its author, because snapping a
+    snapped bbox again is not guaranteed to return the same floats.
+    """
+    xmin, ymin, xmax, ymax = bbox
+
+    # Define anchor as reach centroid
+    anchor = reach_cl.centroid
+    ax = anchor.x.iloc[0]
+    ay = anchor.y.iloc[0]
+    ax = floor(ax / resolution) * resolution
+    ay = floor(ay / resolution) * resolution
 
     # Calculate offsets
     w = (ax - xmin) / resolution

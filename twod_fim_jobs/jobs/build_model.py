@@ -46,6 +46,7 @@ from twod_fim_jobs.models.warnings import (
 )
 from twod_fim_jobs.utils.geospatial import (
     build_model_domain,
+    domain_from_bbox,
     download_dem,
     download_roughness,
     ensure_linestring,
@@ -108,18 +109,24 @@ class BuildModelJob(Job[BuildModelInputs]):
         if cl_inf_intersections:
             job_warnings.append(cl_inf_intersections)
 
-        all_other_geometries = generate_other_geometries(
-            reach,
-            us_mainstem,
-            inflow_line,
-            inputs.other_geometries,
-            inputs.centerline_buffer_bankfull_multiplier,
-        )
-
-        # Build domain
-        domain = build_model_domain(
-            reach, all_other_geometries, inputs.grid_resolution, inputs.domain_buffer
-        )
+        # Build domain: the authored bbox when given, otherwise computed from the
+        # reach and every geometry the domain must cover.
+        if inputs.domain is not None:
+            domain = domain_from_bbox(reach, inputs.domain, inputs.grid_resolution)
+        else:
+            all_other_geometries = generate_other_geometries(
+                reach,
+                us_mainstem,
+                inflow_line,
+                inputs.other_geometries,
+                inputs.centerline_buffer_bankfull_multiplier,
+            )
+            domain = build_model_domain(
+                reach,
+                all_other_geometries,
+                inputs.grid_resolution,
+                inputs.domain_buffer,
+            )
         cols = int((domain.bbox[2] - domain.bbox[0]) / inputs.grid_resolution)
         rows = int((domain.bbox[3] - domain.bbox[1]) / inputs.grid_resolution)
         if domain.area > LARGE_DOMAIN_AREA_THRESHOLD:

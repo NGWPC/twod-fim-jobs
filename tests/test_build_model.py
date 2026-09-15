@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from shapely.geometry import LineString
 
 from twod_fim_jobs.exceptions import (
+    AnchorOutsideDomainError,
     DuplicateReachError,
     InvalidAttributeError,
     InvalidWKTGeometryError,
@@ -314,6 +315,139 @@ def test_bad_other_geometries_raises(build_model_input_w_bad_extra_geometries):
     workflow = BuildModelJob()
     with pytest.raises(InvalidWKTGeometryError):
         workflow.run(build_model_input_w_bad_extra_geometries)
+
+
+def _manifest(tmp_path: Path, result) -> dict:
+    return json.loads(read_json(tmp_path / result.model_id / "model_manifest.json"))
+
+
+def test_authored_domain_equal_to_computed_builds_the_same_model(
+    build_model_input, tmp_path, mock_extract_raster
+):
+    """Handing back the bbox the job computed reproduces the same model_id."""
+    computed = BuildModelJob().run(
+        build_model_input.model_copy(update={"base_output_path": str(tmp_path / "a")})
+    )
+    bbox = _manifest(tmp_path / "a", computed)["domain"]["bbox"]
+
+    authored = BuildModelJob().run(
+        build_model_input.model_copy(
+            update={"base_output_path": str(tmp_path / "b"), "domain": tuple(bbox)}
+        )
+    )
+
+    assert authored.model_id == computed.model_id
+    assert _manifest(tmp_path / "b", authored)["domain"]["bbox"] == bbox
+
+
+def test_authored_domain_is_used_exactly_as_given(
+    build_model_input, tmp_path, mock_extract_raster
+):
+    """No buffering, no snapping, and other geometries do not move it: the
+    manifest records the authored bbox and the domain code measures it."""
+    computed = BuildModelJob().run(
+        build_model_input.model_copy(update={"base_output_path": str(tmp_path / "a")})
+    )
+    base = _manifest(tmp_path / "a", computed)["domain"]
+    res = build_model_input.grid_resolution
+    cells = 5
+    bbox = [
+        base["bbox"][0] - cells * res,
+        base["bbox"][1] - cells * res,
+        base["bbox"][2] + cells * res,
+        base["bbox"][3] + cells * res,
+    ]
+
+    result = BuildModelJob().run(
+        build_model_input.model_copy(
+            update={
+                "base_output_path": str(tmp_path / "b"),
+                "domain": tuple(bbox),
+                "other_geometries": [ADDITIONAL_GEOMETRY_STR],
+                "domain_buffer": 1000.0,
+            }
+        )
+    )
+
+    domain = _manifest(tmp_path / "b", result)["domain"]
+    assert domain["bbox"] == bbox
+    assert domain["anchor"] == base["anchor"]
+    assert domain["offsets"] == [o + cells for o in base["offsets"]]
+    assert result.identity_hash == computed.identity_hash
+    assert result.model_id != computed.model_id
+
+
+def test_authored_domain_missing_the_anchor_raises(
+    build_model_input, mock_extract_raster
+):
+    """A domain that does not contain the reach's anchor cannot be coded."""
+    far = (0.0, 0.0, 100.0, 100.0)
+    with pytest.raises(AnchorOutsideDomainError):
+        BuildModelJob().run(build_model_input.model_copy(update={"domain": far}))
+
+
+@pytest.mark.parametrize(
+    "bbox",
+    [(10.0, 0.0, 0.0, 10.0), (0.0, 10.0, 10.0, 0.0), (0.0, 0.0, 0.0, 10.0)],
+)
+def test_authored_domain_without_extent_is_rejected(bbox):
+    with pytest.raises(ValidationError):
+        BuildModelInputs(
+            reach_id="1257410962372414",
+            reach_network_path=str(SMALL_NETWORK.resolve()),
+            base_output_path="/tmp/test-output",
+            domain=bbox,
+        )
+
+
+@pytest.mark.parametrize(
+    "bbox,resolution",
+    [
+        ((11075.0, 758850.0, 12660.0, 760320.0), 10.0),
+        ((11070.0, 758852.0, 12660.0, 760320.0), 10.0),
+        ((11070.0, 758850.0, 12660.001, 760320.0), 10.0),
+        ((11070.0, 758850.0, 12660.0, 760320.0), 20.0),
+    ],
+)
+def test_authored_domain_off_the_grid_is_rejected(bbox, resolution):
+    with pytest.raises(ValidationError, match="not on the"):
+        BuildModelInputs(
+            reach_id="1257410962372414",
+            reach_network_path=str(SMALL_NETWORK.resolve()),
+            base_output_path="/tmp/test-output",
+            grid_resolution=resolution,
+            domain=bbox,
+        )
+
+
+@pytest.mark.parametrize(
+    "bbox,resolution",
+    [
+        ((11070.0, 758850.0, 12660.0, 760320.0), 10.0),
+        ((-2058195.0, 2809098.0, -2056977.0, 2810022.0), 3.0),
+        # What snapping [0.03, 0.51, 1.37, 2.96] to 0.1 produces in floats.
+        ((0.0, 0.5, 1.4000000000000001, 3.0), 0.1),
+    ],
+)
+def test_authored_domain_on_the_grid_is_accepted(bbox, resolution):
+    inputs = BuildModelInputs(
+        reach_id="1257410962372414",
+        reach_network_path=str(SMALL_NETWORK.resolve()),
+        base_output_path="/tmp/test-output",
+        grid_resolution=resolution,
+        domain=bbox,
+    )
+    assert inputs.domain == bbox
+
+
+def test_authored_domain_must_have_four_values():
+    with pytest.raises(ValidationError):
+        BuildModelInputs(
+            reach_id="1257410962372414",
+            reach_network_path=str(SMALL_NETWORK.resolve()),
+            base_output_path="/tmp/test-output",
+            domain=[0.0, 0.0, 10.0],
+        )
 
 
 @pytest.mark.parametrize(

@@ -200,6 +200,43 @@
           "title": "Other Geometries",
           "type": "array"
         },
+        "domain": {
+          "anyOf": [
+            {
+              "maxItems": 4,
+              "minItems": 4,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Authored model domain bbox [xmin, ymin, xmax, ymax] in epsg_code CRS units. When given it is used exactly as the domain bbox, with no buffering and no snapping, so every value must be a multiple of grid_resolution or the inputs are rejected; other_geometries, domain_buffer and centerline_buffer_bankfull_multiplier then do not affect the domain. When omitted the domain is computed.",
+          "examples": [
+            [
+              11070.0,
+              758850.0,
+              12660.0,
+              760320.0
+            ]
+          ],
+          "title": "Domain"
+        },
         "domain_buffer": {
           "default": 0.0,
           "description": "An additional buffer for the model domain. Since the reach centerline will already be buffered by 10x bankfull width to generate the domain, 0 is typically appropriate.",

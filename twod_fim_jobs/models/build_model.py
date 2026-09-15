@@ -1,3 +1,4 @@
+import math
 from datetime import datetime
 from typing import Iterator, Literal
 
@@ -8,7 +9,7 @@ from twod_fim_jobs.models.common import Asset
 from twod_fim_jobs.models.warnings import JobWarning
 
 
-from pydantic import Field
+from pydantic import Field, field_validator, model_validator
 
 from twod_fim_jobs.consts import (
     DEFAULT_BANKFULL_WIDTH_MULTIPLIER,
@@ -178,6 +179,11 @@ class BuildModelInputs(BaseModel):
         description="A list of geometries that will be included when making the model domain bounding box. Could be a WKT string or the path to a geojson.",
         examples=[["POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"]],
     )
+    domain: tuple[float, float, float, float] | None = Field(
+        default=None,
+        description="Authored model domain bbox [xmin, ymin, xmax, ymax] in epsg_code CRS units. When given it is used exactly as the domain bbox, with no buffering and no snapping, so every value must be a multiple of grid_resolution or the inputs are rejected; other_geometries, domain_buffer and centerline_buffer_bankfull_multiplier then do not affect the domain. When omitted the domain is computed.",
+        examples=[[11070.0, 758850.0, 12660.0, 760320.0]],
+    )
     domain_buffer: float = Field(
         default=DEFAULT_DOMAIN_BUFFER,
         ge=0,
@@ -223,6 +229,37 @@ class BuildModelInputs(BaseModel):
         description="This value is multiplied by the reach bankfull width to obtain the centerline buffer distance.  The buffered centerline becomes one of the geometries in the total bounds calculation that determines domain.",
         examples=[10.0],
     )
+
+    @field_validator("domain")
+    @classmethod
+    def _domain_has_extent(
+        cls, v: tuple[float, float, float, float] | None
+    ) -> tuple[float, float, float, float] | None:
+        if v is not None and not (v[0] < v[2] and v[1] < v[3]):
+            raise ValueError(
+                f"domain must be [xmin, ymin, xmax, ymax] with xmin < xmax and ymin < ymax, got {list(v)}"
+            )
+        return v
+
+    @model_validator(mode="after")
+    def _domain_on_grid(self) -> "BuildModelInputs":
+        """An authored domain must already sit on the grid_resolution grid.
+
+        It is used exactly as given, so an off-grid value would make the model
+        grid disagree with the bbox it was asked for. Checked with isclose
+        rather than %: floats cannot hold 0.1 or 1.4 exactly, so 1.4 % 0.1 is
+        not 0 even though 1.4 is on the grid.
+        """
+        if self.domain is None:
+            return self
+        res = self.grid_resolution
+        off_grid = [v for v in self.domain if not math.isclose(v / res, round(v / res))]
+        if off_grid:
+            raise ValueError(
+                f"domain {list(self.domain)} is not on the {res} grid_resolution grid: "
+                f"{off_grid} are not multiples of it"
+            )
+        return self
 
     @property
     def authority_str(self) -> str:

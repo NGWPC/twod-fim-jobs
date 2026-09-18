@@ -1,5 +1,9 @@
 # Two-Dimensional Flood Inundation Modeling (2D-FIM) Pipeline Jobs
 
+> [!NOTE]
+>
+> This repo is draft software developed for OWP by the NGWPC team led by Entarian. Further experiments, testing, quality control, and careful considerations are required before adopting this software.
+
 Jobs to support automated generation of reach-scale 2D hydraulic flood inundation model libraries at continental scale.
 
 This library provides the three core jobs within a continental-scale flood inundation modeling pipeline. An external reconciler is responsible for sequencing them, tracking what has been computed, and deciding what needs to run.  Each job takes a JSON payload and writes its outputs to S3 — no database access, no internal state.

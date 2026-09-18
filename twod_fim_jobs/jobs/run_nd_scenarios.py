@@ -329,7 +329,7 @@ def _propose(
 def _adopt_existing(
     inputs: RunNDScenariosInputs, model_manifest: ModelManifest, run_hash: str
 ) -> dict[int, CompletedScenario]:
-    """Scenarios the orchestrator says are already in this reach's library.
+    """Scenarios the reconciler says are already in this reach's library.
 
     The expensive part of a scenario is the simulation; the part this job needs
     is the three readings on its manifest. Anything already run is therefore
@@ -401,7 +401,7 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                 publish_scenario(scenario)
 
         run_hash = get_run_identity_hash()
-        # Every scenario simulated this run, plus everything the orchestrator
+        # Every scenario simulated this run, plus everything the reconciler
         # says is already in the library. Rejections are kept because the next
         # reference may accept them, and re-judging one costs no simulation.
         done: dict[int, CompletedScenario] = _adopt_existing(
@@ -456,7 +456,7 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
             )
             if q_trial in done:
                 # A proposal can name a discharge already in hand -- the
-                # orchestrator supplies the whole library at startup, and the
+                # reconciler supplies the whole library at startup, and the
                 # window can settle on one of them. Re-running would cost a
                 # simulation to learn what is already known.
                 logger.info(f"Reusing already-simulated discharge {q_trial}")

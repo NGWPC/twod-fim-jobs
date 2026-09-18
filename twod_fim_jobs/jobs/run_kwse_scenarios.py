@@ -122,7 +122,7 @@ class RunKWSEScenariosJob(Job[RunKWSEScenariosInputs]):
                 total,
                 run_scenario_inputs.scenario_dir_name,
             )
-            # Every scenario here was chosen by the orchestrator, so all are kept.
+            # Every scenario here was chosen by the reconciler, so all are kept.
             completed = run_scenario(run_scenario_inputs, working_dir)
             # processed is None exactly when check_run_exists found this scenario
             # already in storage with identical inputs, so nothing was simulated

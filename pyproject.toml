@@ -23,8 +23,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0.3,<10",
+    "pytest-mock>=3.14,<4",
     "ruff>=0.15.17,<0.16",
-    "pyright>=1.1.410,<2",
+    "pyright[nodejs]>=1.1.410,<2",
 ]
 
 [tool.pixi.dependencies]
@@ -66,6 +67,19 @@ scripts = ["load_env.sh"]
 lint = "ruff check ."
 format = "ruff format ."
 lint-fix = "ruff check --fix ."
-ruff = { depends-on = ["lint-fix", "format"] }
+ruff = "ruff format . && ruff check --fix ."
 pyright = "pyright twod_fim_jobs"
 generate_docs = "python -m twod_fim_jobs.models.generate_docs"
+test = "pytest -m 'not e2e'"
+test-e2e = "./tests/end_to_end/test_e2e.sh"
+test-e2e-cpu = "./tests/end_to_end/test_e2e.sh cpu"
+test-e2e-gpu = "./tests/end_to_end/test_e2e.sh gpu"
+
+[tool.pytest.ini_options]
+markers = [
+    "e2e: end-to-end test",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "ERA", "RUF"]
+ignore = ["E501"]

@@ -2,6 +2,7 @@ from math import floor, ceil
 import logging
 import math
 import shutil
+import tempfile
 from collections.abc import Iterable
 from functools import cached_property
 from pathlib import Path
@@ -49,6 +50,7 @@ from twod_fim_jobs.exceptions import (
     DatasetUnavailableError,
     RasterProcessingError,
 )
+from twod_fim_jobs.utils.storage import ASSET_CACHE
 
 ### CLASSES ###
 
@@ -134,6 +136,7 @@ def make_inflow_line(
     us_mainstem: gpd.GeoDataFrame,
     bankfull_width_multiplier: float,
     walk_us_dist_pct: float,
+    ds_of_lake: bool = False,
 ) -> gpd.GeoDataFrame:
     """Create an inflow boundary line perpendicular to the reach at the upstream end."""
     inflow_width = (
@@ -141,14 +144,18 @@ def make_inflow_line(
         * bankfull_width_multiplier
     )
     reach_geom = reach.geometry.iloc[0]
-    if us_mainstem.empty:
+    if ds_of_lake:
+        walk_ds_dist = reach_geom.length * walk_us_dist_pct
+        ds_bc_pt = reach_geom.interpolate(walk_ds_dist)
+        inflow_geom = perpendicular_line(reach_geom, ds_bc_pt, inflow_width)
+    elif us_mainstem.empty:
         us_bc_pt = Point(reach_geom.coords[0])
         inflow_geom = perpendicular_line(reach_geom, us_bc_pt, inflow_width)
     else:
         us_geom = us_mainstem.geometry.iloc[0]
         # Walk upstream a bit for u/s boundary condition
         walk_us_dist = us_geom.length * walk_us_dist_pct
-        us_bc_pt = us_geom.interpolate(1 - walk_us_dist)
+        us_bc_pt = us_geom.interpolate(us_geom.length - walk_us_dist)
         inflow_geom = perpendicular_line(us_geom, us_bc_pt, inflow_width)
     return gpd.GeoDataFrame({"ind": [1]}, geometry=[inflow_geom], crs=reach.crs)
 
@@ -205,13 +212,6 @@ def build_model_domain(
     buffer_distance: float,
 ) -> Domain:
     """Build a model domain from a set of geometries."""
-    # Define anchor as reach centroid
-    anchor = reach_cl.centroid
-    ax = anchor.x.iloc[0]
-    ay = anchor.y.iloc[0]
-    ax = floor(ax / resolution) * resolution
-    ay = floor(ay / resolution) * resolution
-
     # Get bbox
     (xmin, ymin, xmax, ymax) = gpd.GeoDataFrame(
         pd.concat([reach_cl, other_geometries])
@@ -226,6 +226,29 @@ def build_model_domain(
     ymin = floor(ymin / resolution) * resolution
     xmax = ceil(xmax / resolution) * resolution
     ymax = ceil(ymax / resolution) * resolution
+
+    return domain_from_bbox(reach_cl, (xmin, ymin, xmax, ymax), resolution)
+
+
+def domain_from_bbox(
+    reach_cl: gpd.GeoDataFrame,
+    bbox: tuple[float, float, float, float],
+    resolution: float,
+) -> Domain:
+    """Anchor a grid-aligned bbox to the reach and express it as a domain.
+
+    The bbox is used exactly as given. A computed bbox arrives here already
+    snapped; an authored one must be snapped by its author, because snapping a
+    snapped bbox again is not guaranteed to return the same floats.
+    """
+    xmin, ymin, xmax, ymax = bbox
+
+    # Define anchor as reach centroid
+    anchor = reach_cl.centroid
+    ax = anchor.x.iloc[0]
+    ay = anchor.y.iloc[0]
+    ax = floor(ax / resolution) * resolution
+    ay = floor(ay / resolution) * resolution
 
     # Calculate offsets
     w = (ax - xmin) / resolution
@@ -280,9 +303,11 @@ def _extract_raster(
                 "dtype": "float32",
                 "compress": "deflate",
                 "predictor": 3,
-                "tiled": True,
+                "tiled": False,
             }
         )
+        profile.pop("blockxsize", None)
+        profile.pop("blockysize", None)
 
         # Reproject into memory
         data = np.empty(
@@ -323,7 +348,9 @@ def download_dem(
     def noop(data):
         return data
 
-    return extract_raster(src_path, out_path, bbox, cols, rows, dst_crs, noop)
+    return extract_raster(
+        src_path, out_path, bbox, cols, rows, dst_crs, value_transform=noop
+    )
 
 
 def download_roughness(
@@ -344,7 +371,7 @@ def download_roughness(
         cols,
         rows,
         dst_crs,
-        lambda x: manning_lut[x.astype(np.uint8)],
+        value_transform=lambda x: manning_lut[x.astype(np.uint8)],
     )
 
 
@@ -470,8 +497,10 @@ def raster_to_polygon(raster_path: Path, out_path: Path) -> None:
 
 
 def tif_to_asc(tif_path: Path) -> Path:
-    """Convert a GeoTIFF to an Arc ASCII raster alongside the source file."""
-    out_path = tif_path.with_suffix(".asc")
+    """Convert a GeoTIFF to an Arc ASCII raster in the system temp directory."""
+    temp_file = tempfile.NamedTemporaryFile(suffix=".asc", delete=False)
+    out_path = Path(temp_file.name)
+    temp_file.close()
     src = Raster(tif_path)
     asc_profile = {
         "driver": "AAIGrid",
@@ -617,8 +646,10 @@ def compute_wse_contour(
     # Extract contour
     contour, wse_val = extract_contour(smooth_wse, wse_pt, dem.transform)
     if clip_poly is not None:
-        clip_geom = gpd.read_file(clip_poly).geometry.iloc[0]
-        contour = contour.intersection(clip_geom)
+        clip_geom = gpd.read_file(clip_poly)
+        if not clip_geom.empty:
+            clip_geom = clip_geom.geometry.iloc[0]
+            contour = contour.intersection(clip_geom)
 
     gdf = gpd.GeoDataFrame(
         {"wse": [wse_val]},
@@ -695,3 +726,28 @@ def wd_files_to_zarr(
             ds.to_zarr(zarr_path, mode="w", encoding=encoding, zarr_format=2)
 
     return zarr_path
+
+
+def load_dem_and_get_pt_indices(
+    centerline_asset: Asset, terrain_asset: Asset
+) -> tuple[np.ndarray, tuple[tuple[int, int], tuple[int, int]]]:
+    """Load data from a DEM and get the indices of centerline endpoints (convenience func)."""
+    resolved_centerline = ASSET_CACHE.materialize_path(centerline_asset)
+    resolved_terrain = ASSET_CACHE.materialize_path(terrain_asset)
+    centerline = gpd.read_file(resolved_centerline).geometry.iloc[0]
+    us_point: Point = Point(centerline.coords[0])
+    ds_point: Point = Point(centerline.coords[-1])
+    raster = Raster(resolved_terrain)
+    us_col, us_row = ~raster.transform * (us_point.x, us_point.y)
+    ds_col, ds_row = ~raster.transform * (ds_point.x, ds_point.y)
+    us_inds = (int(np.floor(us_row)), int(np.floor(us_col)))
+    ds_inds = (int(np.floor(ds_row)), int(np.floor(ds_col)))
+    endpoint_indices = (us_inds, ds_inds)
+    return (raster.data, endpoint_indices)
+
+
+def get_us_pt(centerline_asset: Asset) -> Point:
+    """Get a Point representing the upstream end of a reach centerline."""
+    resolved_centerline = ASSET_CACHE.materialize_path(centerline_asset)
+    centerline = gpd.read_file(resolved_centerline).geometry.iloc[0]
+    return Point(centerline.coords[0])

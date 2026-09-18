@@ -1,0 +1,35 @@
+name: check_docs
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  check-docs:
+    name: Check documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.70.2
+          cache: true
+
+      - name: Generate docs
+        run: pixi run --locked generate_docs
+
+      - name: Check generated docs
+        run: |
+          if ! git diff --quiet -- docs schemas ||
+             [[ -n "$(git ls-files --others --exclude-standard -- docs schemas)" ]]; then
+            echo "::error::Generated documentation is out of date."
+            git diff -- docs schemas
+            git ls-files --others --exclude-standard -- docs schemas
+            exit 1
+          fi

@@ -1,15 +1,22 @@
 import json
+import json
+import logging
 import os
 import shutil
+import shutil
+from pathlib import Path
 from typing import IO, cast
 from urllib.parse import urlparse
 
 import fsspec
 import geopandas as gpd
+import pyarrow as pa
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import ArgumentError, OperationalError
 from twod_fim_jobs.consts import (
-    DA_FIELD,
+    ASSET_CACHE_DIR,
+    MAX_ASSET_CACHE_SIZE_GB,
+    REACH_FIELDS_PARQUET,
     REACH_FIELDS,
     REACH_ID_FIELD,
     REACH_TABLE,
@@ -22,86 +29,56 @@ from twod_fim_jobs.exceptions import (
     ReachNotFoundError,
     WriteFailureError,
 )
+from twod_fim_jobs.models.common import Asset
+
+logger = logging.getLogger(__name__)
 
 
-def validate_db_connection(db_uri: str, layer: str, fields: list[str]) -> None:
-    # Validate connection
+def read_reaches(
+    reach_network_path: str, reach_ids: list[str], epsg: int | None = None
+) -> gpd.GeoDataFrame:
+    """Fetch specific reaches from the reach network GeoParquet, by id."""
+    if not reach_ids:
+        return gpd.GeoDataFrame()
+
     try:
-        engine = create_engine(db_uri)
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-    except (ArgumentError, OperationalError) as e:
-        raise ReachDatasetUnavailable(f"Cannot connect to database: {db_uri}") from e
-
-    # Validate table exists
-    inspector = inspect(engine)
-    if layer not in inspector.get_table_names():
-        raise ReachDatasetUnavailable(
-            f"Table '{layer}' not found in database: {db_uri}"
+        gdf = gpd.read_parquet(
+            reach_network_path,
+            columns=REACH_FIELDS_PARQUET,
+            filters=[
+                (REACH_ID_FIELD, "in", list(reach_ids))
+            ],  # predicate pushed down to parquet reader
         )
+    except FileNotFoundError as e:
+        raise ReachDatasetUnavailable(
+            f"Reach network not found: {reach_network_path}"
+        ) from e
+    except pa.lib.ArrowInvalid as e:
+        raise InvalidAttributeError(
+            f"Reach network {reach_network_path} is missing required fields: {e}"
+        ) from e
+    except Exception as e:
+        raise ReachDatasetUnavailable(
+            f"Cannot read reach network {reach_network_path}: {e}"
+        ) from e
 
-    # Validate table schema
-    db_columns = {col["name"] for col in inspector.get_columns(layer)}
-    missing = set(fields) - db_columns
+    missing = set(REACH_FIELDS) - set(gdf.columns)
     if missing:
         raise InvalidAttributeError(
-            f"Table '{layer}' is missing required fields: {sorted(missing)}"
+            f"Reach network {reach_network_path} is missing required fields: {sorted(missing)}"
         )
-
-
-def query_database(sql: str, db_uri: str, epsg: int | None = None) -> gpd.GeoDataFrame:
-    scheme = urlparse(db_uri).scheme
-    if scheme in {"postgresql", "postgres"}:
-        engine = create_engine(db_uri)
-        gdf = gpd.read_postgis(sql, engine, geom_col="geom")
-        gdf = gdf.rename_geometry("geometry")
-    elif scheme == "sqlite":
-        path = db_uri.removeprefix("sqlite:///")
-        gdf = gpd.read_file(path, sql=sql)
-    else:
-        raise ValueError(f"scheme '{scheme}' is not supported for db_uri '{db_uri}'")
     if epsg is not None and gdf.crs is not None and gdf.crs.to_epsg() != epsg:
         raise InvalidAttributeError(
-            f"Expected CRS EPSG:{epsg}, got {gdf.crs.to_string()} from '{db_uri}'"
+            f"Expected CRS EPSG:{epsg}, got {gdf.crs.to_string()} from '{reach_network_path}'"
         )
     return gdf
 
 
-def query_upstream_reach(
-    reach_id: int, db_uri: str, epsg: int | None = None, layer: str = REACH_TABLE
-) -> tuple[list[int], gpd.GeoDataFrame]:
-    # Validate 1
-    fields = [REACH_ID_FIELD, REACH_TO_ID_FIELD, DA_FIELD, "geom"]
-    validate_db_connection(db_uri=db_uri, layer=layer, fields=fields)
-
-    # Query
-    reach_fields_str = ", ".join(fields)
-    sql = (
-        f"SELECT {reach_fields_str} FROM {layer} WHERE {REACH_TO_ID_FIELD} = {reach_id}"
-    )
-    gdf = query_database(sql, db_uri, epsg=epsg)
-
-    if gdf.empty:
-        return [], gpd.GeoDataFrame()
-
-    us_mainstem = gdf[gdf[DA_FIELD] == gdf[DA_FIELD].max()].iloc[:1]
-    us_reach_ids = gdf[REACH_ID_FIELD].to_list()
-    return us_reach_ids, us_mainstem
-
-
 def query_reach(
-    reach_id: int, db_uri: str, epsg: int | None = None, layer: str = REACH_TABLE
+    reach_id: str, reach_network_path: str, epsg: int | None = None
 ) -> gpd.GeoDataFrame:
-    """Load reach geometry and attributes from a reach provider."""
-    # Validate 1
-    validate_db_connection(db_uri=db_uri, layer=layer, fields=REACH_FIELDS)
-
-    # Query
-    reach_fields_str = ", ".join(REACH_FIELDS)
-    sql = f"SELECT {reach_fields_str} FROM {layer} WHERE {REACH_ID_FIELD} = {reach_id}"
-    gdf = query_database(sql, db_uri, epsg=epsg)
-
-    # Validate 2
+    """Load one reach's geometry and attributes from the reach network."""
+    gdf = read_reaches(reach_network_path, [reach_id], epsg=epsg)
     if gdf.empty:
         raise ReachNotFoundError(f"No reach found for {REACH_ID_FIELD}={reach_id}")
     if len(gdf) > 1:
@@ -109,8 +86,9 @@ def query_reach(
     return gdf
 
 
-def check_model_exists(model_uri: str) -> bool:
-    # TODO: Implement this
+def check_file_exists(uri: str) -> bool:
+    """Check whether a local or remote file exists."""
+    fs, path = fsspec.core.url_to_fs(uri)
     return False
 
 
@@ -125,7 +103,7 @@ def check_path_exists(uri: str) -> bool:
         fs, path = fsspec.core.url_to_fs(uri)
         return bool(fs.exists(path))
     except Exception:
-        return False
+        return fs.exists(path)
 
 
 def copy_file(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:
@@ -174,3 +152,51 @@ def write_json(path: str, content: str, indent: int | None = 4) -> None:
             cast(IO[str], f).write(content)
     except Exception as e:
         raise WriteFailureError(str(e)) from e
+
+
+class AssetCache:
+    """Manages pulling remote assets to local cache."""
+
+    def __init__(self, cache_root: Path):
+        """Initialize class."""
+        self.cache_root = cache_root
+
+    def materialize_path(self, asset: Asset) -> Path:
+        """Return local path to an asset, caching from remote, if necessary."""
+        parsed = urlparse(asset.href)
+        if not parsed.scheme or parsed.scheme in {"", "file"}:
+            return Path(asset.href)
+        return self._cache_asset(asset)
+
+    def _cache_asset(self, asset: Asset) -> Path:
+        """Copy a remote asset to cache_root."""
+        filename = Path(urlparse(asset.href).path).name
+        cached_path = self.cache_root / asset.checksum / filename
+
+        if cached_path.exists():
+            return cached_path
+
+        max_bytes = int(MAX_ASSET_CACHE_SIZE_GB) * 1024**3
+        self._evict_to_fit(max_bytes)
+
+        cached_path.parent.mkdir(parents=True, exist_ok=True)
+        copy_file(asset.href, cached_path)
+        return cached_path
+
+    def _evict_to_fit(self, max_bytes: int) -> None:
+        """Remove oldest cached files until total cache size is under max_bytes."""
+        if not self.cache_root.exists():
+            return
+        files = sorted(self.cache_root.rglob("*"), key=lambda p: p.stat().st_mtime)
+        total = sum(p.stat().st_size for p in files if p.is_file())
+        for path in files:
+            if total <= max_bytes:
+                break
+            if path.is_file():
+                size = path.stat().st_size
+                path.unlink()
+                logger.info("Evicted cached asset: %s", path)
+                total -= size
+
+
+ASSET_CACHE = AssetCache(Path(ASSET_CACHE_DIR))

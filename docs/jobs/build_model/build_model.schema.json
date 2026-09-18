@@ -7,7 +7,7 @@
         "href": {
           "description": "Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.",
           "examples": [
-            "s3://twod-fim/version=v1/models/1257410937935512/fceb20c6_N164S214E230W107/terrain.tif"
+            "s3://bucket/prefix/file.ext"
           ],
           "title": "Href",
           "type": "string"
@@ -30,9 +30,10 @@
               "type": "null"
             }
           ],
-          "description": "External provenance URL (DEM/land-cover endpoint, or db_uri). null for purely computed assets.",
+          "default": null,
+          "description": "External provenance URL (DEM/land-cover endpoint, or reach network file). null for purely computed assets.",
           "examples": [
-            "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt"
+            "https://bucket.s3.amazonaws.com/prefix/source.ext"
           ],
           "title": "Source Url"
         },
@@ -65,8 +66,7 @@
       },
       "required": [
         "href",
-        "checksum",
-        "source_url"
+        "checksum"
       ],
       "title": "Asset",
       "type": "object"
@@ -116,20 +116,50 @@
       "description": "Inputs for the build_model workflow.",
       "properties": {
         "reach_id": {
-          "description": "Primary key for the reach in the reach db",
+          "description": "Primary key for the reach in the reach network",
           "examples": [
-            1257410937935512
+            "1257410937935512"
           ],
           "title": "Reach Id",
-          "type": "integer"
-        },
-        "db_uri": {
-          "description": "Connection string for the refactored hydrofabric",
-          "examples": [
-            "sqlite:///tests/build_model/data/reach_network.gpkg"
-          ],
-          "title": "Db Uri",
           "type": "string"
+        },
+        "reach_network_path": {
+          "description": "Path to the reach network GeoParquet, sorted by reach_id",
+          "examples": [
+            "s3://twod-fim/version=v1/reference_data/reach_network.parquet"
+          ],
+          "title": "Reach Network Path",
+          "type": "string"
+        },
+        "upstream_reach_ids": {
+          "description": "Ids of the reaches draining into this one",
+          "examples": [
+            [
+              "1257410937935511",
+              "1257410937935510"
+            ]
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Upstream Reach Ids",
+          "type": "array"
+        },
+        "upstream_mainstem_reach_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Upstream reach with the largest drainage area; null for a headwater",
+          "examples": [
+            "1257410937935511"
+          ],
+          "title": "Upstream Mainstem Reach Id"
         },
         "base_output_path": {
           "description": "Path where output artifacts will be written",
@@ -158,7 +188,7 @@
           "type": "string"
         },
         "other_geometries": {
-          "description": "A list of geometries that will be included when making the model domain bounding box",
+          "description": "A list of geometries that will be included when making the model domain bounding box. Could be a WKT string or the path to a geojson.",
           "examples": [
             [
               "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"
@@ -170,9 +200,46 @@
           "title": "Other Geometries",
           "type": "array"
         },
+        "domain": {
+          "anyOf": [
+            {
+              "maxItems": 4,
+              "minItems": 4,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Authored model domain bbox [xmin, ymin, xmax, ymax] in epsg_code CRS units. When given it is used exactly as the domain bbox, with no buffering and no snapping, so every value must be a multiple of grid_resolution or the inputs are rejected; other_geometries, domain_buffer and centerline_buffer_bankfull_multiplier then do not affect the domain. When omitted the domain is computed.",
+          "examples": [
+            [
+              11070.0,
+              758850.0,
+              12660.0,
+              760320.0
+            ]
+          ],
+          "title": "Domain"
+        },
         "domain_buffer": {
           "default": 0.0,
-          "description": "How far to buffer the bounding box on model geometries",
+          "description": "An additional buffer for the model domain. Since the reach centerline will already be buffered by 10x bankfull width to generate the domain, 0 is typically appropriate.",
           "examples": [
             100.0
           ],
@@ -200,6 +267,15 @@
           "title": "Walk Us Dist Pct",
           "type": "number"
         },
+        "ds_of_lake": {
+          "default": false,
+          "description": "Whether this reach is downstream of a lake/waterbody/reservoir.  If so, inflow line is placed walk_us_dist_pct downstream of the reach end instead of upstream.",
+          "examples": [
+            false
+          ],
+          "title": "Ds Of Lake",
+          "type": "boolean"
+        },
         "epsg_code": {
           "default": 5070,
           "description": "EPSG integer for all georeferenced output artifacts",
@@ -221,9 +297,17 @@
           "type": "number"
         },
         "lulc_lookup": {
-          "additionalProperties": {
-            "type": "number"
-          },
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            {
+              "type": "string"
+            }
+          ],
           "default": {
             "11": 0.04,
             "21": 0.04,
@@ -241,7 +325,7 @@
             "90": 0.12,
             "95": 0.07
           },
-          "description": "A dictionary mapping land use codes to Manning's roughness values",
+          "description": "A dictionary mapping land use codes to Manning's roughness values or the path to a json dict with that mapping.",
           "examples": [
             {
               "11": 0.04,
@@ -251,13 +335,21 @@
               "82": 0.035
             }
           ],
-          "title": "Lulc Lookup",
-          "type": "object"
+          "title": "Lulc Lookup"
+        },
+        "centerline_buffer_bankfull_multiplier": {
+          "default": 15,
+          "description": "This value is multiplied by the reach bankfull width to obtain the centerline buffer distance.  The buffered centerline becomes one of the geometries in the total bounds calculation that determines domain.",
+          "examples": [
+            10.0
+          ],
+          "title": "Centerline Buffer Bankfull Multiplier",
+          "type": "number"
         }
       },
       "required": [
         "reach_id",
-        "db_uri",
+        "reach_network_path",
         "base_output_path"
       ],
       "title": "BuildModelInputs",
@@ -484,7 +576,7 @@
           "$ref": "#/$defs/GridProperties"
         },
         "drainage_area_sqkm": {
-          "description": "From the reach DB; missing/invalid raises InvalidAttributeError (no model.json written).",
+          "description": "From the reach network; missing/invalid raises InvalidAttributeError (no model.json written).",
           "examples": [
             142.7
           ],
@@ -502,14 +594,14 @@
           "type": "number"
         },
         "upstream_reach_ids": {
-          "description": "Reach IDs in the network db of any reaches tributary to this model's reach",
+          "description": "Reach IDs of any reaches tributary to this model's reach",
           "examples": [
             [
-              1257410937935510
+              "1257410937935510"
             ]
           ],
           "items": {
-            "type": "integer"
+            "type": "string"
           },
           "title": "Upstream Reach Ids",
           "type": "array"
@@ -544,25 +636,10 @@
           ],
           "title": "Length M"
         },
-        "slope": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Slope along the reach centerline for this model",
-          "examples": [
-            0.0012
-          ],
-          "title": "Slope"
-        },
         "downstream_reach_id": {
           "anyOf": [
             {
-              "type": "integer"
+              "type": "string"
             },
             {
               "type": "null"
@@ -570,14 +647,14 @@
           ],
           "description": "ID of the reach downstream of this model's reach",
           "examples": [
-            1257410937935513
+            "1257410937935513"
           ],
           "title": "Downstream Reach Id"
         },
         "upstream_mainstem_reach_id": {
           "anyOf": [
             {
-              "type": "integer"
+              "type": "string"
             },
             {
               "type": "null"
@@ -585,7 +662,7 @@
           ],
           "description": "ID of the reach with the largest drainage area of the reaches draining to this reach",
           "examples": [
-            1257410937935510
+            "1257410937935510"
           ],
           "title": "Upstream Mainstem Reach Id"
         }
@@ -597,7 +674,6 @@
         "upstream_reach_ids",
         "stream_order",
         "length_m",
-        "slope",
         "downstream_reach_id",
         "upstream_mainstem_reach_id"
       ],
@@ -638,12 +714,12 @@
       "type": "string"
     },
     "reach_id": {
-      "description": "Primary key for the reach in the reach db",
+      "description": "Primary key for the reach in the reach network",
       "examples": [
-        1257410937935512
+        "1257410937935512"
       ],
       "title": "Reach Id",
-      "type": "integer"
+      "type": "string"
     },
     "identity_hash": {
       "description": "Hash of the identity object. Stable across domain changes; results group under it.",

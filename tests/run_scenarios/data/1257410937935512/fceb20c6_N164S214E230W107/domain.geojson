@@ -1,8 +1,0 @@
-{
-"type": "FeatureCollection",
-"name": "domain",
-"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::5070" } },
-"features": [
-{ "type": "Feature", "properties": { "xmin": -2059240.0, "ymin": 2806980.0, "xmax": -2055870.0, "ymax": 2810760.0, "offset_n": 164.0, "offset_s": 214.0, "offset_e": 230.0, "offset_w": 107.0, "offset_str": "N164S214E230W107" }, "geometry": { "type": "Polygon", "coordinates": [ [ [ -2055870.0, 2806980.0 ], [ -2055870.0, 2810760.0 ], [ -2059240.0, 2810760.0 ], [ -2059240.0, 2806980.0 ], [ -2055870.0, 2806980.0 ] ] ] } }
-]
-}

@@ -1,18 +1,19 @@
+import math
 from datetime import datetime
 from typing import Iterator, Literal
 
 from pydantic import BaseModel, ConfigDict
 
 import twod_fim_jobs
-from twod_fim_jobs.models.common import Asset, JobWarning
+from twod_fim_jobs.models.common import Asset
+from twod_fim_jobs.models.warnings import JobWarning
 
 
-import geopandas as gpd
-from pydantic import Field
-from shapely.wkt import loads as load_wkt
+from pydantic import Field, field_validator, model_validator
 
 from twod_fim_jobs.consts import (
     DEFAULT_BANKFULL_WIDTH_MULTIPLIER,
+    DEFAULT_CENTERLINE_BUFFER,
     DEFAULT_DEM_SOURCE,
     DEFAULT_DOMAIN_BUFFER,
     DEFAULT_EPSG_CODE,
@@ -21,7 +22,6 @@ from twod_fim_jobs.consts import (
     DEFAULT_LULC_SOURCE,
     DEFAULT_WALK_US_DIST_PCT,
 )
-from twod_fim_jobs.exceptions import InvalidWKTGeometryError
 from twod_fim_jobs.models.common import Domain, GridProperties
 
 ### HELPER JOB MODELS ###
@@ -71,7 +71,7 @@ class Properties(BaseModel):
 
     grid: GridProperties
     drainage_area_sqkm: float = Field(
-        description="From the reach DB; missing/invalid raises InvalidAttributeError (no model.json written).",
+        description="From the reach network; missing/invalid raises InvalidAttributeError (no model.json written).",
         gt=0,
         examples=[142.7],
     )
@@ -80,9 +80,9 @@ class Properties(BaseModel):
         gt=0,
         examples=[35.2],
     )
-    upstream_reach_ids: list[int] = Field(
-        description="Reach IDs in the network db of any reaches tributary to this model's reach",
-        examples=[[1257410937935510]],
+    upstream_reach_ids: list[str] = Field(
+        description="Reach IDs of any reaches tributary to this model's reach",
+        examples=[["1257410937935510"]],
     )
     stream_order: int | None = Field(
         description="Strahler order of the reach for this model",
@@ -92,17 +92,13 @@ class Properties(BaseModel):
         description="Length of the reach centerline for this model",
         examples=[2340.5],
     )
-    slope: float | None = Field(
-        description="Slope along the reach centerline for this model",
-        examples=[0.0012],
-    )
-    downstream_reach_id: int | None = Field(
+    downstream_reach_id: str | None = Field(
         description="ID of the reach downstream of this model's reach",
-        examples=[1257410937935513],
+        examples=["1257410937935513"],
     )
-    upstream_mainstem_reach_id: int | None = Field(
+    upstream_mainstem_reach_id: str | None = Field(
         description="ID of the reach with the largest drainage area of the reaches draining to this reach",
-        examples=[1257410937935510],
+        examples=["1257410937935510"],
     )
 
 
@@ -138,13 +134,25 @@ class BuildModelInputs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # Required
-    reach_id: int = Field(
-        description="Primary key for the reach in the reach db",
-        examples=[1257410937935512],
+    reach_id: str = Field(
+        description="Primary key for the reach in the reach network",
+        examples=["1257410937935512"],
     )
-    db_uri: str = Field(
-        description="Connection string for the refactored hydrofabric",
-        examples=["sqlite:///tests/build_model/data/reach_network.gpkg"],
+    reach_network_path: str = Field(
+        description="Path to the reach network GeoParquet, sorted by reach_id",
+        examples=["s3://twod-fim/version=v1/reference_data/reach_network.parquet"],
+    )
+    upstream_reach_ids: list[str] = Field(
+        default_factory=list,
+        description="Ids of the reaches draining into this one",
+        examples=[["1257410937935511", "1257410937935510"]],
+    )
+    upstream_mainstem_reach_id: str | None = Field(
+        default=None,
+        description=(
+            "Upstream reach with the largest drainage area; null for a headwater"
+        ),
+        examples=["1257410937935511"],
     )
     base_output_path: str = Field(
         description="Path where output artifacts will be written",
@@ -168,13 +176,18 @@ class BuildModelInputs(BaseModel):
     )
     other_geometries: list[str] = Field(
         default_factory=list,
-        description="A list of geometries that will be included when making the model domain bounding box",
+        description="A list of geometries that will be included when making the model domain bounding box. Could be a WKT string or the path to a geojson.",
         examples=[["POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"]],
+    )
+    domain: tuple[float, float, float, float] | None = Field(
+        default=None,
+        description="Authored model domain bbox [xmin, ymin, xmax, ymax] in epsg_code CRS units. When given it is used exactly as the domain bbox, with no buffering and no snapping, so every value must be a multiple of grid_resolution or the inputs are rejected; other_geometries, domain_buffer and centerline_buffer_bankfull_multiplier then do not affect the domain. When omitted the domain is computed.",
+        examples=[[11070.0, 758850.0, 12660.0, 760320.0]],
     )
     domain_buffer: float = Field(
         default=DEFAULT_DOMAIN_BUFFER,
         ge=0,
-        description="How far to buffer the bounding box on model geometries",
+        description="An additional buffer for the model domain. Since the reach centerline will already be buffered by 10x bankfull width to generate the domain, 0 is typically appropriate.",
         examples=[100.0],
     )
     grid_resolution: float = Field(
@@ -189,6 +202,11 @@ class BuildModelInputs(BaseModel):
         description="How far to walk up the upstream mainstem centerline to place the inflow boundary condition, as percent of upstream centerline length",
         examples=[0.25],
     )
+    ds_of_lake: bool = Field(
+        default=False,
+        description="Whether this reach is downstream of a lake/waterbody/reservoir.  If so, inflow line is placed walk_us_dist_pct downstream of the reach end instead of upstream.",
+        examples=[False],
+    )
     epsg_code: int = Field(
         default=DEFAULT_EPSG_CODE,
         gt=0,
@@ -201,32 +219,47 @@ class BuildModelInputs(BaseModel):
         description="How much to multiply bankfull width to arrive at inflow line width",
         examples=[1.0],
     )
-    lulc_lookup: dict[int, float] = Field(
+    lulc_lookup: dict[int, float] | str = Field(
         default=DEFAULT_LULC_LOOKUP,
-        description="A dictionary mapping land use codes to Manning's roughness values",
+        description="A dictionary mapping land use codes to Manning's roughness values or the path to a json dict with that mapping.",
         examples=[{11: 0.04, 21: 0.04, 31: 0.025, 41: 0.16, 82: 0.035}],
     )
+    centerline_buffer_bankfull_multiplier: float = Field(
+        default=DEFAULT_CENTERLINE_BUFFER,
+        description="This value is multiplied by the reach bankfull width to obtain the centerline buffer distance.  The buffered centerline becomes one of the geometries in the total bounds calculation that determines domain.",
+        examples=[10.0],
+    )
 
-    @property
-    def other_geometries_gdf(self) -> gpd.GeoDataFrame:
-        """Convert optional WKT geometries into a GeoDataFrame."""
-        if not self.other_geometries:
-            return gpd.GeoDataFrame(geometry=[])
+    @field_validator("domain")
+    @classmethod
+    def _domain_has_extent(
+        cls, v: tuple[float, float, float, float] | None
+    ) -> tuple[float, float, float, float] | None:
+        if v is not None and not (v[0] < v[2] and v[1] < v[3]):
+            raise ValueError(
+                f"domain must be [xmin, ymin, xmax, ymax] with xmin < xmax and ymin < ymax, got {list(v)}"
+            )
+        return v
 
-        geometries = []
-        for index, wkt_text in enumerate(self.other_geometries):
-            try:
-                geometries.append(load_wkt(wkt_text))
-            except Exception as exc:
-                raise InvalidWKTGeometryError(
-                    f"Invalid WKT at other_geometries[{index}]: {wkt_text}"
-                ) from exc
+    @model_validator(mode="after")
+    def _domain_on_grid(self) -> "BuildModelInputs":
+        """An authored domain must already sit on the grid_resolution grid.
 
-        return gpd.GeoDataFrame(
-            {"source_wkt": self.other_geometries},
-            geometry=geometries,
-            crs=self.epsg_code,
-        )
+        It is used exactly as given, so an off-grid value would make the model
+        grid disagree with the bbox it was asked for. Checked with isclose
+        rather than %: floats cannot hold 0.1 or 1.4 exactly, so 1.4 % 0.1 is
+        not 0 even though 1.4 is on the grid.
+        """
+        if self.domain is None:
+            return self
+        res = self.grid_resolution
+        off_grid = [v for v in self.domain if not math.isclose(v / res, round(v / res))]
+        if off_grid:
+            raise ValueError(
+                f"domain {list(self.domain)} is not on the {res} grid_resolution grid: "
+                f"{off_grid} are not multiples of it"
+            )
+        return self
 
     @property
     def authority_str(self) -> str:
@@ -276,9 +309,9 @@ class ModelManifest(BaseModel):
         description="Build completion time (UTC). model.json is written last.",
         examples=["2026-08-06T22:17:07.406819Z"],
     )
-    reach_id: int = Field(
-        description="Primary key for the reach in the reach db",
-        examples=[1257410937935512],
+    reach_id: str = Field(
+        description="Primary key for the reach in the reach network",
+        examples=["1257410937935512"],
     )
     identity_hash: str = Field(
         pattern=r"^[0-9a-f]{8}$",

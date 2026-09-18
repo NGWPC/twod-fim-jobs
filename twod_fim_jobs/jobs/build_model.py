@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import geopandas as gpd
 import pandas as pd
+from pydantic import ValidationError
+from shapely.ops import split
+from shapely.wkt import loads as load_wkt
 
 from twod_fim_jobs.consts import (
     ANCHOR_FILENAME,
@@ -19,11 +24,9 @@ from twod_fim_jobs.consts import (
     REACH_ID_FIELD,
     ROUGHNESS_FILENAME,
     SDR_COMMIT,
-    SLOPE_FIELD,
     STREAM_ORDER_FIELD,
     bieger_bankfull_width,
 )
-
 from twod_fim_jobs.jobs.common import Job
 from twod_fim_jobs.models.build_model import (
     Assets,
@@ -34,14 +37,16 @@ from twod_fim_jobs.models.build_model import (
     ModelManifest,
     Properties,
 )
+from twod_fim_jobs.models.common import Asset
+from twod_fim_jobs.exceptions import InvalidWKTGeometryError
 from twod_fim_jobs.models.warnings import (
     CenterlineInflowMultiIntersectionWarning,
     JobWarning,
     LargeDomainAreaWarning,
 )
-from twod_fim_jobs.models.common import Asset
 from twod_fim_jobs.utils.geospatial import (
     build_model_domain,
+    domain_from_bbox,
     download_dem,
     download_roughness,
     ensure_linestring,
@@ -51,7 +56,12 @@ from twod_fim_jobs.utils.geospatial import (
     write_gdf_asset,
 )
 from twod_fim_jobs.utils.hashing import hash_dict, hash_geometry, hash_str
-from twod_fim_jobs.utils.storage import copy_file, query_reach, query_upstream_reach
+from twod_fim_jobs.utils.storage import (
+    check_file_exists,
+    copy_file,
+    query_reach,
+    read_json,
+)
 
 
 class BuildModelJob(Job[BuildModelInputs]):
@@ -64,17 +74,28 @@ class BuildModelJob(Job[BuildModelInputs]):
         # Initialize empty warnings
         job_warnings: list[JobWarning] = []
 
-        # Query database for relevant geometries
-        reach = query_reach(inputs.reach_id, inputs.db_uri, inputs.epsg_code)
-        reach = ensure_linestring(reach)
-        us_reaches, us_mainstem = query_upstream_reach(
-            inputs.reach_id, inputs.db_uri, inputs.epsg_code
+        # Read the reaches this model needs from the network file.
+        reach = query_reach(
+            inputs.reach_id, inputs.reach_network_path, inputs.epsg_code
         )
-        if not us_mainstem.empty:
-            us_mainstem_id = us_mainstem[REACH_ID_FIELD].iloc[0]
+        reach = ensure_linestring(reach)
+        us_reaches = list(inputs.upstream_reach_ids)
+        us_mainstem_id = inputs.upstream_mainstem_reach_id
+        us_mainstem = gpd.GeoDataFrame()
+        if us_mainstem_id is not None:
+            us_mainstem = query_reach(
+                us_mainstem_id, inputs.reach_network_path, inputs.epsg_code
+            )
             us_mainstem = ensure_linestring(us_mainstem)
+
+        # Load lulc dict, if necessary, without mutating the validated inputs.
+        if isinstance(inputs.lulc_lookup, dict):
+            lulc_lookup = inputs.lulc_lookup
         else:
-            us_mainstem_id = None
+            lulc_lookup = {
+                int(code): roughness
+                for code, roughness in json.loads(read_json(inputs.lulc_lookup)).items()
+            }
 
         # Make inflow line and validate
         inflow_line = make_inflow_line(
@@ -82,18 +103,30 @@ class BuildModelJob(Job[BuildModelInputs]):
             us_mainstem,
             inputs.bankfull_width_multiplier,
             inputs.walk_us_dist_pct,
+            inputs.ds_of_lake,
         )
         cl_inf_intersections = _check_inflow_cl_intersection(reach, inflow_line)
         if cl_inf_intersections:
             job_warnings.append(cl_inf_intersections)
-        all_other_geometries = gpd.GeoDataFrame(
-            pd.concat([inflow_line, inputs.other_geometries_gdf])
-        )
 
-        # Build domain
-        domain = build_model_domain(
-            reach, all_other_geometries, inputs.grid_resolution, inputs.domain_buffer
-        )
+        # Build domain: the authored bbox when given, otherwise computed from the
+        # reach and every geometry the domain must cover.
+        if inputs.domain is not None:
+            domain = domain_from_bbox(reach, inputs.domain, inputs.grid_resolution)
+        else:
+            all_other_geometries = generate_other_geometries(
+                reach,
+                us_mainstem,
+                inflow_line,
+                inputs.other_geometries,
+                inputs.centerline_buffer_bankfull_multiplier,
+            )
+            domain = build_model_domain(
+                reach,
+                all_other_geometries,
+                inputs.grid_resolution,
+                inputs.domain_buffer,
+            )
         cols = int((domain.bbox[2] - domain.bbox[0]) / inputs.grid_resolution)
         rows = int((domain.bbox[3] - domain.bbox[1]) / inputs.grid_resolution)
         if domain.area > LARGE_DOMAIN_AREA_THRESHOLD:
@@ -111,12 +144,20 @@ class BuildModelJob(Job[BuildModelInputs]):
             epsg_code=inputs.epsg_code,
             dem_source_inputs_hash=hash_str(inputs.dem_source, role_length=8),
             lulc_source_inputs_hash=hash_str(inputs.lulc_source, role_length=8),
-            lulc_lookup_dict_hash=hash_dict(inputs.lulc_lookup, role_length=8),
+            lulc_lookup_dict_hash=hash_dict(lulc_lookup, role_length=8),
         )
         identity_hash = hash_dict(identitiy.model_dump(), role_length=8)
         model_id = f"{identity_hash}_{domain.offset_str}"
         model_dir = f"{inputs.base_output_path.rstrip('/')}/{model_id}/"
-        # TODO: Check that model dir doesn't exist.  Exit if it does.
+        manifest_path = tmp_dir / MANIFEST_FILENAME
+        dest_manifest_path = _normalize_href(str(manifest_path), model_dir)
+        if _check_model_built(inputs, dest_manifest_path):
+            return BuildModelResult(
+                identity_hash=identity_hash,
+                model_id=model_id,
+                model_dir=model_dir,
+                warnings=job_warnings,
+            )
 
         # Get DEM
         dem_asset = download_dem(
@@ -137,20 +178,22 @@ class BuildModelJob(Job[BuildModelInputs]):
             cols,
             rows,
             inputs.authority_str,
-            inputs.lulc_lookup,
+            lulc_lookup,
         )
 
         # Write vector artifacts
-        cl_asset = write_gdf_asset(reach, tmp_dir / REACH_FILENAME, inputs.db_uri)
+        cl_asset = write_gdf_asset(
+            reach, tmp_dir / REACH_FILENAME, inputs.reach_network_path
+        )
         inflow_asset = write_gdf_asset(
-            inflow_line, tmp_dir / INFLOW_FILENAME, inputs.db_uri
+            inflow_line, tmp_dir / INFLOW_FILENAME, inputs.reach_network_path
         )
         anchor_gdf, domain_gdf = export_domain_gdfs(domain, inputs.authority_str)
         anchor_asset = write_gdf_asset(
-            anchor_gdf, tmp_dir / ANCHOR_FILENAME, inputs.db_uri
+            anchor_gdf, tmp_dir / ANCHOR_FILENAME, inputs.reach_network_path
         )
         domain_asset = write_gdf_asset(
-            domain_gdf, tmp_dir / DOMAIN_FILENAME, inputs.db_uri
+            domain_gdf, tmp_dir / DOMAIN_FILENAME, inputs.reach_network_path
         )
 
         # Compile assets
@@ -172,7 +215,6 @@ class BuildModelJob(Job[BuildModelInputs]):
             upstream_reach_ids=us_reaches,
             stream_order=reach[STREAM_ORDER_FIELD].iloc[0],
             length_m=round(reach.length.iloc[0], 2),
-            slope=round(reach[SLOPE_FIELD].iloc[0], 7),
             downstream_reach_id=reach[REACH_ID_FIELD].iloc[0],
             upstream_mainstem_reach_id=us_mainstem_id,
         )
@@ -191,10 +233,10 @@ class BuildModelJob(Job[BuildModelInputs]):
             assets=assets,
             warnings=job_warnings,
         )
-        manifest_path = tmp_dir / MANIFEST_FILENAME
+
         with open(manifest_path, mode="w") as f:
             f.write(manifest.model_dump_json(indent=4))
-        copy_job[str(manifest_path)] = _normalize_href(str(manifest_path), model_dir)
+        copy_job[str(manifest_path)] = dest_manifest_path
 
         # Write files to storage
         for src, dst in copy_job.items():
@@ -206,6 +248,80 @@ class BuildModelJob(Job[BuildModelInputs]):
             model_dir=model_dir,
             warnings=job_warnings,
         )
+
+
+def generate_other_geometries(
+    reach: gpd.GeoDataFrame,
+    us_mainstem: gpd.GeoDataFrame,
+    inflow_line: gpd.GeoDataFrame,
+    other_geometries: list[str],
+    centerline_buffer_bankfull_multiplier: float,
+) -> gpd.GeoDataFrame:
+    """Assemble geometries used to determine the model domain."""
+    other_geometries_gdf = _load_other_geometries(other_geometries, reach.crs)
+    buffer_distance = (
+        bieger_bankfull_width(float(reach[DA_FIELD].iloc[0]))
+        * centerline_buffer_bankfull_multiplier
+    )
+    centerlines = [reach.geometry.iloc[0]]
+
+    if not us_mainstem.empty:
+        mainstem = us_mainstem.geometry.iloc[0]
+        clipped_mainstem = min(
+            split(mainstem, inflow_line.geometry.iloc[0]).geoms,
+            key=lambda geometry: geometry.distance(reach.geometry.iloc[0]),
+        )
+        centerlines.append(clipped_mainstem)
+
+    centerline_buffers = gpd.GeoDataFrame(
+        geometry=gpd.GeoSeries(centerlines, crs=reach.crs).buffer(buffer_distance),
+        crs=reach.crs,
+    )
+    return gpd.GeoDataFrame(
+        pd.concat(
+            [inflow_line, centerline_buffers, other_geometries_gdf], ignore_index=True
+        ),
+        geometry="geometry",
+        crs=reach.crs,
+    )
+
+
+def _load_other_geometries(other_geometries: list[str], crs: Any) -> gpd.GeoDataFrame:
+    """Load WKT strings or storage-backed GeoJSON geometries."""
+    parsed_geometries = [
+        _parse_other_geometry(value, crs) for value in other_geometries
+    ]
+    if not parsed_geometries:
+        return gpd.GeoDataFrame(geometry=[], crs=crs)
+    return gpd.GeoDataFrame(
+        pd.concat(parsed_geometries, ignore_index=True),
+        geometry="geometry",
+        crs=crs,
+    )
+
+
+def _parse_other_geometry(value: str, crs: Any) -> gpd.GeoDataFrame:
+    """Parse one WKT string or storage-backed GeoJSON value."""
+    try:
+        return gpd.GeoDataFrame(
+            {"source_wkt": [value]},
+            geometry=[load_wkt(value)],
+            crs=crs,
+        )
+    except Exception:
+        try:
+            geojson = json.loads(read_json(value))
+            if geojson.get("type") == "FeatureCollection":
+                features = geojson["features"]
+            elif geojson.get("type") == "Feature":
+                features = [geojson]
+            else:
+                features = [{"type": "Feature", "properties": {}, "geometry": geojson}]
+            return gpd.GeoDataFrame.from_features(features, crs=crs)
+        except Exception as geojson_error:
+            raise InvalidWKTGeometryError(
+                f"Invalid WKT or GeoJSON at other_geometries entry: {value}"
+            ) from geojson_error
 
 
 def _check_inflow_cl_intersection(
@@ -239,3 +355,14 @@ def _create_copy_job(
         copy_job[asset.href] = dest
         new_asset_fields[field_name] = asset.model_copy(update={"href": dest})
     return Assets(**new_asset_fields), copy_job
+
+
+def _check_model_built(inputs: BuildModelInputs, manifest_href: str) -> bool:
+    """Checks if a model with the same inputs has already been built."""
+    if not check_file_exists(manifest_href):
+        return False
+    try:
+        ref = ModelManifest.model_validate_json(read_json(manifest_href))
+        return ref.inputs == inputs
+    except ValidationError:
+        return False

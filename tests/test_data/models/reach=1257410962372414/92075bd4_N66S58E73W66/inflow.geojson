@@ -1,0 +1,8 @@
+{
+"type": "FeatureCollection",
+"name": "inflow",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::5070" } },
+"features": [
+{ "type": "Feature", "properties": { "ind": 1 }, "geometry": { "type": "LineString", "coordinates": [ [ -2048663.840383709175512, 2801615.128805642016232 ], [ -2048820.921817538095638, 2801347.751936943270266 ] ] } }
+]
+}

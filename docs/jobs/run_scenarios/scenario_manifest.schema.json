@@ -1,0 +1,819 @@
+{
+  "$defs": {
+    "Asset": {
+      "additionalProperties": false,
+      "description": "One output file entry: role-keyed href plus integrity metadata.",
+      "properties": {
+        "href": {
+          "description": "Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.",
+          "examples": [
+            "s3://bucket/prefix/file.ext"
+          ],
+          "title": "Href",
+          "type": "string"
+        },
+        "checksum": {
+          "description": "First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.",
+          "examples": [
+            "a1b2c3d4e5f6a7b8"
+          ],
+          "pattern": "^[0-9a-f]{16}$",
+          "title": "Checksum",
+          "type": "string"
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "External provenance URL (DEM/land-cover endpoint, or reach network file). null for purely computed assets.",
+          "examples": [
+            "https://bucket.s3.amazonaws.com/prefix/source.ext"
+          ],
+          "title": "Source Url"
+        },
+        "retrieved": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the source was fetched, if applicable.",
+          "examples": [
+            "2026-08-06T22:17:07.406819Z"
+          ],
+          "title": "Retrieved"
+        },
+        "derived": {
+          "default": false,
+          "description": "True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.",
+          "examples": [
+            true
+          ],
+          "title": "Derived",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "href",
+        "checksum"
+      ],
+      "title": "Asset",
+      "type": "object"
+    },
+    "Domain": {
+      "additionalProperties": false,
+      "description": "Computed domain realization.",
+      "properties": {
+        "bbox": {
+          "description": "Domain bbox in native CRS [west, south, east, north].",
+          "examples": [
+            [
+              -2059240.0,
+              2806980.0,
+              -2055870.0,
+              2810760.0
+            ]
+          ],
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Bbox",
+          "type": "array"
+        },
+        "anchor": {
+          "description": "Grid-snapped reach centroid in native CRS [x, y]; origin the offsets are measured from.",
+          "examples": [
+            [
+              -2058170.0,
+              2809120.0
+            ]
+          ],
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Anchor",
+          "type": "array"
+        },
+        "offsets": {
+          "description": "[N, S, E, W] grid-snapped offsets in CRS units; matches domain_token.",
+          "examples": [
+            [
+              164.0,
+              214.0,
+              230.0,
+              107.0
+            ]
+          ],
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Offsets",
+          "type": "array"
+        }
+      },
+      "required": [
+        "bbox",
+        "anchor",
+        "offsets"
+      ],
+      "title": "Domain",
+      "type": "object"
+    },
+    "FreeBC": {
+      "properties": {
+        "vector": {
+          "$ref": "#/$defs/Asset"
+        },
+        "bc_type": {
+          "const": "FREE",
+          "default": "FREE",
+          "title": "Bc Type",
+          "type": "string"
+        },
+        "value": {
+          "description": "Normal depth slope in m/m to apply along a this geometry.",
+          "examples": [
+            0.00043
+          ],
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "vector",
+        "value"
+      ],
+      "title": "FreeBC",
+      "type": "object"
+    },
+    "GridProperties": {
+      "additionalProperties": false,
+      "description": "Grid dimensions of the model domain.",
+      "properties": {
+        "rows": {
+          "description": "Number of rows in the model domain",
+          "examples": [
+            378
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Rows",
+          "type": "integer"
+        },
+        "cols": {
+          "description": "Number of columns in the model domain",
+          "examples": [
+            337
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Cols",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rows",
+        "cols"
+      ],
+      "title": "GridProperties",
+      "type": "object"
+    },
+    "HFixBC": {
+      "properties": {
+        "vector": {
+          "$ref": "#/$defs/Asset"
+        },
+        "bc_type": {
+          "const": "HFIX",
+          "default": "HFIX",
+          "title": "Bc Type",
+          "type": "string"
+        },
+        "value": {
+          "description": "Fixed water surface elevation to apply along a geometry.",
+          "examples": [
+            122.3
+          ],
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "vector",
+        "value"
+      ],
+      "title": "HFixBC",
+      "type": "object"
+    },
+    "JobWarning": {
+      "properties": {
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "title": "JobWarning",
+      "type": "object"
+    },
+    "QFixBC": {
+      "properties": {
+        "vector": {
+          "$ref": "#/$defs/Asset"
+        },
+        "bc_type": {
+          "const": "QFIX",
+          "default": "QFIX",
+          "title": "Bc Type",
+          "type": "string"
+        },
+        "value": {
+          "description": "Inflow along this boundary condition into the model in cms.",
+          "examples": [
+            260
+          ],
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "vector",
+        "value"
+      ],
+      "title": "QFixBC",
+      "type": "object"
+    },
+    "RunConfig": {
+      "description": "Solver execution settings; constructed once per job and passed to every worker.",
+      "properties": {
+        "sim_time_seconds": {
+          "examples": [
+            36000.0
+          ],
+          "title": "Sim Time Seconds",
+          "type": "number"
+        },
+        "save_interval_seconds": {
+          "examples": [
+            3600.0
+          ],
+          "title": "Save Interval Seconds",
+          "type": "number"
+        },
+        "mass_interval_seconds": {
+          "default": 60.0,
+          "examples": [
+            60.0
+          ],
+          "title": "Mass Interval Seconds",
+          "type": "number"
+        },
+        "initial_tstep_seconds": {
+          "default": 0.5,
+          "examples": [
+            0.5
+          ],
+          "title": "Initial Tstep Seconds",
+          "type": "number"
+        },
+        "use_cuda": {
+          "default": true,
+          "examples": [
+            true
+          ],
+          "title": "Use Cuda",
+          "type": "boolean"
+        },
+        "use_elevoff": {
+          "default": false,
+          "examples": [
+            false
+          ],
+          "title": "Use Elevoff",
+          "type": "boolean"
+        },
+        "volume_convergence_tolerance": {
+          "default": 0.001,
+          "description": "Volume increase in the reach as a percent of inflow below which model is considered steady",
+          "examples": [
+            0.1
+          ],
+          "title": "Volume Convergence Tolerance",
+          "type": "number"
+        },
+        "allow_water_on_edges": {
+          "default": false,
+          "description": "Whether to ignore or terminate when water pools on an invalid edge",
+          "examples": [
+            false
+          ],
+          "title": "Allow Water On Edges",
+          "type": "boolean"
+        },
+        "max_simulation_wall_time_seconds": {
+          "examples": [
+            36000.0
+          ],
+          "title": "Max Simulation Wall Time Seconds",
+          "type": "number"
+        },
+        "save_zarr": {
+          "default": false,
+          "description": "Whether or not to generate and save a zarr file with wse and depth at each print interval",
+          "examples": [
+            false
+          ],
+          "title": "Save Zarr",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "sim_time_seconds",
+        "save_interval_seconds",
+        "max_simulation_wall_time_seconds"
+      ],
+      "title": "RunConfig",
+      "type": "object"
+    },
+    "RunIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "sdr_commit_id": {
+          "description": "Git commit SHA of the SDR used to run the model",
+          "examples": [
+            "826a602ddcaf58bf4081dc04b65ba15b82cc8c8a"
+          ],
+          "title": "Sdr Commit Id",
+          "type": "string"
+        },
+        "solver": {
+          "$ref": "#/$defs/SupportedSolver",
+          "description": "Solver name"
+        }
+      },
+      "required": [
+        "sdr_commit_id",
+        "solver"
+      ],
+      "title": "RunIdentity",
+      "type": "object"
+    },
+    "RunScenarioInputs": {
+      "properties": {
+        "domain": {
+          "$ref": "#/$defs/Domain"
+        },
+        "grid_properties": {
+          "$ref": "#/$defs/GridProperties"
+        },
+        "terrain": {
+          "$ref": "#/$defs/Asset"
+        },
+        "roughness": {
+          "$ref": "#/$defs/Asset"
+        },
+        "boundary_conditions": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "FREE": "#/$defs/FreeBC",
+                "HFIX": "#/$defs/HFixBC",
+                "QFIX": "#/$defs/QFixBC",
+                "TRANSFER": "#/$defs/TransferBC"
+              },
+              "propertyName": "bc_type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/QFixBC"
+              },
+              {
+                "$ref": "#/$defs/HFixBC"
+              },
+              {
+                "$ref": "#/$defs/FreeBC"
+              },
+              {
+                "$ref": "#/$defs/TransferBC"
+              }
+            ]
+          },
+          "title": "Boundary Conditions",
+          "type": "array"
+        },
+        "hot_start": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Asset"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "run_config": {
+          "$ref": "#/$defs/RunConfig"
+        },
+        "base_out_dir": {
+          "description": "Path where results will be saved",
+          "examples": [
+            "s3://twod-fim/version=v1/results"
+          ],
+          "title": "Base Out Dir",
+          "type": "string"
+        },
+        "reach_id": {
+          "description": "Primary key for the reach in the reach network",
+          "examples": [
+            "1257410937935512"
+          ],
+          "title": "Reach Id",
+          "type": "string"
+        },
+        "model_id": {
+          "description": "<identity_hash>+<domain_code>. Also the folder name.",
+          "examples": [
+            "fceb20c6_N164S214E230W107"
+          ],
+          "pattern": "^[0-9a-f]{8}_N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
+          "title": "Model Id",
+          "type": "string"
+        },
+        "centerline": {
+          "$ref": "#/$defs/Asset"
+        },
+        "run_identity_hash": {
+          "description": "Hash of the run identity object.",
+          "examples": [
+            "fceb20c6"
+          ],
+          "pattern": "^[0-9a-f]{8}$",
+          "title": "Run Identity Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "domain",
+        "grid_properties",
+        "terrain",
+        "roughness",
+        "boundary_conditions",
+        "hot_start",
+        "run_config",
+        "base_out_dir",
+        "reach_id",
+        "model_id",
+        "centerline",
+        "run_identity_hash"
+      ],
+      "title": "RunScenarioInputs",
+      "type": "object"
+    },
+    "RunScenarioResults": {
+      "description": "Convenience holder for solver results.",
+      "properties": {
+        "volume_convergence": {
+          "description": "Ratio of net volume change to total inflow volume over the last mass interval; lower is more converged.",
+          "examples": [
+            0.02
+          ],
+          "title": "Volume Convergence",
+          "type": "number"
+        },
+        "termination_condition": {
+          "$ref": "#/$defs/TerminationCondition",
+          "description": "The reason the simulation ended."
+        },
+        "wall_time": {
+          "description": "How long the model ran in wall time",
+          "examples": [
+            960.0
+          ],
+          "title": "Wall Time",
+          "type": "number"
+        },
+        "nominal_wse": {
+          "description": "Nominal water surface elevation achieved at the reach upstream point",
+          "examples": [
+            121.2
+          ],
+          "title": "Nominal Wse",
+          "type": "number"
+        },
+        "us_discharge": {
+          "description": "Total upstream inflow discharge for this scenario, in whole cms",
+          "examples": [
+            1000
+          ],
+          "title": "Us Discharge",
+          "type": "integer"
+        },
+        "sim_time": {
+          "description": "Simulation time (model time)in seconds at the final timestep",
+          "examples": [
+            960.0
+          ],
+          "title": "Sim Time",
+          "type": "number"
+        },
+        "max_depth": {
+          "description": "Maximum flood depth over wet cells, m.",
+          "examples": [
+            10.0
+          ],
+          "title": "Max Depth",
+          "type": "number"
+        },
+        "median_depth": {
+          "description": "Median flood depth over wet cells, m.",
+          "examples": [
+            1.3
+          ],
+          "title": "Median Depth",
+          "type": "number"
+        },
+        "flooded_area": {
+          "description": "Inundated area, sq km.",
+          "examples": [
+            0.42
+          ],
+          "title": "Flooded Area",
+          "type": "number"
+        }
+      },
+      "required": [
+        "volume_convergence",
+        "termination_condition",
+        "wall_time",
+        "nominal_wse",
+        "us_discharge",
+        "sim_time",
+        "max_depth",
+        "median_depth",
+        "flooded_area"
+      ],
+      "title": "RunScenarioResults",
+      "type": "object"
+    },
+    "ScenarioAssets": {
+      "additionalProperties": false,
+      "properties": {
+        "depth": {
+          "$ref": "#/$defs/Asset",
+          "description": "Depth grid at the final timestep"
+        },
+        "inundation_polygon": {
+          "$ref": "#/$defs/Asset",
+          "description": "Inundated area polygon at the final timestep"
+        },
+        "stage_transfer_line": {
+          "$ref": "#/$defs/Asset",
+          "description": "Stage transfer line"
+        },
+        "zarr_store": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Asset"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Zarr store with depths at each print interval"
+        }
+      },
+      "required": [
+        "depth",
+        "inundation_polygon",
+        "stage_transfer_line"
+      ],
+      "title": "ScenarioAssets",
+      "type": "object"
+    },
+    "SupportedSolver": {
+      "enum": [
+        "sfincs",
+        "lisflood"
+      ],
+      "title": "SupportedSolver",
+      "type": "string"
+    },
+    "TerminationCondition": {
+      "description": "Reason that a solver run ended.",
+      "enum": [
+        "volume_convergence",
+        "edge_error",
+        "max_simulation_time",
+        "max_wall_time"
+      ],
+      "title": "TerminationCondition",
+      "type": "string"
+    },
+    "TransferBC": {
+      "properties": {
+        "vector": {
+          "$ref": "#/$defs/Asset"
+        },
+        "bc_type": {
+          "const": "TRANSFER",
+          "default": "TRANSFER",
+          "title": "Bc Type",
+          "type": "string"
+        },
+        "value": {
+          "description": "Nominal water surface elevation along the STL for the provided transfer depth asset.",
+          "examples": [
+            122.3
+          ],
+          "title": "Value",
+          "type": "number"
+        },
+        "transfer_depths": {
+          "$ref": "#/$defs/Asset"
+        },
+        "transfer_els": {
+          "$ref": "#/$defs/Asset"
+        },
+        "grid_properties": {
+          "$ref": "#/$defs/GridProperties"
+        },
+        "domain": {
+          "$ref": "#/$defs/Domain"
+        }
+      },
+      "required": [
+        "vector",
+        "value",
+        "transfer_depths",
+        "transfer_els",
+        "grid_properties",
+        "domain"
+      ],
+      "title": "TransferBC",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "run",
+      "default": "run",
+      "description": "Discriminator vs. a run record.",
+      "title": "Type",
+      "type": "string"
+    },
+    "hash_algo": {
+      "const": "sha256",
+      "default": "sha256",
+      "description": "Hash function for every hash/checksum in this document. Truncation length is per-field (see build_model-design.md).",
+      "title": "Hash Algo",
+      "type": "string"
+    },
+    "twod_fim_version": {
+      "default": "0.1.0",
+      "description": "Producer software version (provenance).",
+      "title": "Twod Fim Version",
+      "type": "string"
+    },
+    "created_at": {
+      "description": "Run completion time (UTC). model.json is written last.",
+      "examples": [
+        "2026-08-06T22:17:07.406819Z"
+      ],
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "reach_id": {
+      "description": "Primary key for the reach in the reach network",
+      "examples": [
+        "1257410937935512"
+      ],
+      "title": "Reach Id",
+      "type": "string"
+    },
+    "identity_hash": {
+      "description": "Hash of the run identity object.",
+      "examples": [
+        "fceb20c6"
+      ],
+      "pattern": "^[0-9a-f]{8}$",
+      "title": "Identity Hash",
+      "type": "string"
+    },
+    "scenario_code": {
+      "description": "Scenario identifier: bc_type + bc_value (decimal or scientific notation) + 'Q' + integer discharge",
+      "examples": [
+        "KWSE200.2Q200",
+        "ND1.0E04Q1000"
+      ],
+      "pattern": "^[A-Z]+(\\d+(\\.\\d+)?E[+\\-]?\\d+|\\d+(\\.\\d+)?)Q\\d+$",
+      "title": "Scenario Code",
+      "type": "string"
+    },
+    "model_id": {
+      "description": "<identity_hash>+<domain_code>. Also the folder name.",
+      "examples": [
+        "fceb20c6_N164S214E230W107"
+      ],
+      "pattern": "^[0-9a-f]{8}_N(0|[1-9][0-9]*)S(0|[1-9][0-9]*)E(0|[1-9][0-9]*)W(0|[1-9][0-9]*)$",
+      "title": "Model Id",
+      "type": "string"
+    },
+    "identity": {
+      "$ref": "#/$defs/RunIdentity",
+      "description": "Canonical identity of the solver environment used for this run."
+    },
+    "self_href": {
+      "description": "Location of this scenario manifest's json",
+      "examples": [
+        "s3://twod-fim/version=v1/results/nd=1.0E02/q=1000/scenario_manifest.json"
+      ],
+      "title": "Self Href",
+      "type": "string"
+    },
+    "inputs": {
+      "$ref": "#/$defs/RunScenarioInputs",
+      "description": "Inputs used to run the model"
+    },
+    "properties": {
+      "$ref": "#/$defs/RunScenarioResults",
+      "description": "Computed values during the run."
+    },
+    "assets": {
+      "$ref": "#/$defs/ScenarioAssets",
+      "description": "One entry per output (model.json excluded), keyed by role; hrefs are the flat files under <id>/."
+    },
+    "warnings": {
+      "default": [],
+      "description": "Non-fatal check results; the scenario run still completes and writes scenario.json.",
+      "examples": [
+        []
+      ],
+      "items": {
+        "$ref": "#/$defs/JobWarning"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "created_at",
+    "reach_id",
+    "identity_hash",
+    "scenario_code",
+    "model_id",
+    "identity",
+    "self_href",
+    "inputs",
+    "properties",
+    "assets"
+  ],
+  "title": "RunScenarioManifest",
+  "type": "object"
+}

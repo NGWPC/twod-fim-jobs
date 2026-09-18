@@ -2,7 +2,7 @@
 
 Jobs to support automated generation of reach-scale 2D hydraulic flood inundation model libraries at continental scale.
 
-This library provides the three core jobs within a continental-scale flood inundation modeling pipeline. An external orchestrator is responsible for sequencing them, tracking what has been computed, and deciding what needs to run.  Each job takes a JSON payload and writes its outputs to S3 — no database access, no internal state.
+This library provides the three core jobs within a continental-scale flood inundation modeling pipeline. An external reconciler is responsible for sequencing them, tracking what has been computed, and deciding what needs to run.  Each job takes a JSON payload and writes its outputs to S3 — no database access, no internal state.
 
 ## Features
 
@@ -25,7 +25,7 @@ twod_fim_jobs
 │   ├── identities.py         # Identity and hash management for solver runs
 │   ├── post_process.py       # Post-processing of solver outputs
 │   ├── pre_process.py        # Pre-processing of solver inputs
-│   └── run.py                # Solver execution and orchestration
+│   └── run.py                # Solver execution and sequencing
 ├── jobs
 │   ├── __init__.py
 │   ├── build_model.py        # Job: initializes a 2D FIM model for a single reach

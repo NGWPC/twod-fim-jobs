@@ -106,7 +106,7 @@ Run a hydraulic solver for a set of user-defined scenarios.  A scenario is defin
 ## Out of Scope
 
 - Building the Model (`build_model`'s job).
-- Deciding which `(q, z)` scenario points to run (`plan_scenarios`, orchestrator-owned).
+- Deciding which `(q, z)` scenario points to run (`plan_scenarios`, reconciler-owned).
 - ND runs (`run_nd_scenarios`) — a KWSE run may consume an ND run's `depth.tif` as a hotstart, but doesn't produce one.
 - Composite/library post-processing.
 - Determining hotstart and stage transfer.

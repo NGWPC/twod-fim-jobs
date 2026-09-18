@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -76,7 +78,9 @@ class Asset(BaseModel):
     )
 
     @classmethod
-    def from_file(cls, href: str, source_url: str, retrieved: datetime | None):
+    def from_file(
+        cls, href: str, source_url: str | None, retrieved: datetime | None
+    ) -> Asset:
         checksum = hash_file(href, role_length=16)
         return cls(
             href=href,

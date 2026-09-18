@@ -435,8 +435,11 @@ def test_a_distant_window_is_reached_in_one_step_not_a_crawl():
 def test_a_forced_proposal_is_never_one_already_simulated():
     """The position is the highest discharge run so far, so a candidate at or
     below it is already in hand and would cost a cycle to re-adopt."""
-    done = {100: _completed(100, 2.0, 0.5, 1.0), 110: _completed(110, 2.02, 0.51, 1.002),
-            120: _completed(120, 2.04, 0.52, 1.004)}
+    done = {
+        100: _completed(100, 2.0, 0.5, 1.0),
+        110: _completed(110, 2.02, 0.51, 1.002),
+        120: _completed(120, 2.04, 0.52, 1.004),
+    }
     q, _, finest = _propose(done, _grid_inputs(10), ref_q=100, position_q=120)
     if finest:
         assert q > 120, "must be above the highest discharge already run"

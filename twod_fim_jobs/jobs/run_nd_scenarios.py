@@ -309,11 +309,17 @@ def _propose(
     inside = lowest <= highest
     logger.info(
         f"Window {opens:.1f} to {closes:.1f} against reference {ref_q}; "
-        + (f"proposing {proposed}" if inside
-           else f"no grid value falls inside it, so trying {proposed}")
+        + (
+            f"proposing {proposed}"
+            if inside
+            else f"no grid value falls inside it, so trying {proposed}"
+        )
         + f" on a {grid} cms grid"
-        + (" -- the finest step left, so its verdict stands as it comes"
-           if finest else "")
+        + (
+            " -- the finest step left, so its verdict stands as it comes"
+            if finest
+            else ""
+        )
     )
     if proposed >= max_q:
         return Proposal(max_q, True, False)
@@ -353,9 +359,7 @@ def _adopt_existing(
             or manifest.model_id != model_manifest.model_id
             or manifest.identity_hash != run_hash
         )
-        if wrong or not (
-            inputs.min_upstream_inflow <= q <= inputs.max_upstream_inflow
-        ):
+        if wrong or not (inputs.min_upstream_inflow <= q <= inputs.max_upstream_inflow):
             logger.warning(f"Existing scenario {href} is not part of this library")
             continue
         adopted[q] = CompletedScenario(manifest=manifest)
@@ -407,8 +411,11 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
             ref_scenario = done[inputs.min_upstream_inflow]
         else:
             ref_scenario = _run_scenario(
-                inputs.min_upstream_inflow, downstream_bc, model_manifest, inputs,
-                tmp_dir
+                inputs.min_upstream_inflow,
+                downstream_bc,
+                model_manifest,
+                inputs,
+                tmp_dir,
             )
             publish(ref_scenario)
             done[inputs.min_upstream_inflow] = ref_scenario
@@ -463,8 +470,10 @@ class RunNDScenariosJob(Job[RunNDScenariosInputs]):
                     tmp_dir,
                     hot_start=current_scenario.depth,
                 )
-                if (trial_scenario.manifest.properties.termination_condition
-                        == "edge_error"):
+                if (
+                    trial_scenario.manifest.properties.termination_condition
+                    == "edge_error"
+                ):
                     logger.error("Aborting adaptive step algorithm for edge error")
                     results.warnings.append(WaterOnEdgeWarning())
                     return results

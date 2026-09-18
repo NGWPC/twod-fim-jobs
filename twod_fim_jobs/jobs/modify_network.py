@@ -18,7 +18,7 @@ from twod_fim_jobs.consts import (
 )
 from twod_fim_jobs.exceptions import WriteFailureError
 from twod_fim_jobs.jobs.common import Job
-from twod_fim_jobs.models.common import Asset, JobWarning
+from twod_fim_jobs.models.common import Asset
 from twod_fim_jobs.models.modify_network import (
     AmbiguousReachClassificationWarning,
     Assets,
@@ -29,6 +29,7 @@ from twod_fim_jobs.models.modify_network import (
     NetworkManifest,
     Properties,
 )
+from twod_fim_jobs.models.warnings import JobWarning
 from twod_fim_jobs.utils.hashing import hash_dict, hash_str
 from twod_fim_jobs.utils.network import (
     apply_coastal,

@@ -1510,7 +1510,7 @@ def multipart_network(tmp_path):
 
 
 def test_output_contains_no_multipart_geometry(multipart_network):
-    gdf, counters = nw.load_reach_network(str(multipart_network), None)
+    gdf, _ = nw.load_reach_network(str(multipart_network), None)
     assert set(gdf.geom_type) == {"LineString"}
 
 
@@ -1969,7 +1969,7 @@ def test_reach_draining_outside_the_extract_becomes_an_outlet(clipped_extract):
     A clipped or regional extract ends somewhere. That end is an outlet of
     this network even though the full hydrofabric continues past it.
     """
-    gdf, counters = nw.load_reach_network(str(clipped_extract), None)
+    gdf, _ = nw.load_reach_network(str(clipped_extract), None)
     gdf = nw.tag_headwater_reaches(nw.tag_terminal_reaches(gdf))
     row = gdf.set_index(REACH_ID_FIELD).loc["B"]
 

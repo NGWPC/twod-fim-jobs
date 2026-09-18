@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, ClassVar, Literal
+from typing import Annotated, ClassVar, Literal, Sequence
 
 from pydantic import (
     BaseModel,
@@ -18,7 +18,8 @@ from twod_fim_jobs.consts import (
     DEFAULT_MIN_LENGTH_THRESHOLD_KM,
     DEFAULT_NEGATIVE_LAKE_BUFFER_METERS,
 )
-from twod_fim_jobs.models.common import Asset, JobWarning
+from twod_fim_jobs.models.common import Asset
+from twod_fim_jobs.models.warnings import JobWarning
 
 Hash8 = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{8}$")]
 """First 8 hex of SHA-256 (32-bit) — identity-hash role length."""
@@ -72,10 +73,10 @@ class AmbiguousReachClassificationWarning(_CodedWarning):
 
     # Excluded from serialization: persisted warnings are {code, message} only.
     n_reaches: int = Field(exclude=True)
-    sample_reach_ids: list[int] = Field(exclude=True)
+    sample_reach_ids: list[str | int] = Field(exclude=True)
 
-    def __init__(self, reach_ids: list[int], sample_size: int = 10):
-        sample = sorted(reach_ids)[:sample_size]
+    def __init__(self, reach_ids: Sequence[str | int], sample_size: int = 10):
+        sample = sorted(reach_ids, key=str)[:sample_size]
         message = (
             f"{len(reach_ids)} reach(es) flagged by both coastal and lake "
             f"logic; counted against coastal per the accounting rule. "

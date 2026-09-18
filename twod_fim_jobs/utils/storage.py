@@ -1,8 +1,6 @@
 import json
-import json
 import logging
 import os
-import shutil
 import shutil
 from pathlib import Path
 from typing import IO, cast
@@ -11,16 +9,12 @@ from urllib.parse import urlparse
 import fsspec
 import geopandas as gpd
 import pyarrow as pa
-from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.exc import ArgumentError, OperationalError
 from twod_fim_jobs.consts import (
     ASSET_CACHE_DIR,
     MAX_ASSET_CACHE_SIZE_GB,
     REACH_FIELDS_PARQUET,
     REACH_FIELDS,
     REACH_ID_FIELD,
-    REACH_TABLE,
-    REACH_TO_ID_FIELD,
 )
 from twod_fim_jobs.exceptions import (
     DuplicateReachError,
@@ -89,7 +83,7 @@ def query_reach(
 def check_file_exists(uri: str) -> bool:
     """Check whether a local or remote file exists."""
     fs, path = fsspec.core.url_to_fs(uri)
-    return False
+    return bool(fs.exists(path))
 
 
 def check_path_exists(uri: str) -> bool:
@@ -103,7 +97,7 @@ def check_path_exists(uri: str) -> bool:
         fs, path = fsspec.core.url_to_fs(uri)
         return bool(fs.exists(path))
     except Exception:
-        return fs.exists(path)
+        return False
 
 
 def copy_file(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:

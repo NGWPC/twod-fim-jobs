@@ -57,6 +57,8 @@ JOBS: list[
         ModifyNetworkInputs,
         ModifyNetworkResult,
         NetworkManifest,
+        None,
+        None,
     ),
     ("build_model", BuildModelInputs, BuildModelResult, ModelManifest, None, None),
     (

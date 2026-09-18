@@ -23,6 +23,9 @@ removal is counted in exactly one branch, so the reconciliation identity
 holds by construction. Trims, strands, and splits keep their rows.
 """
 
+# GeoPandas' pandas-derived stubs do not preserve GeoDataFrame or Series types
+# through column indexing and frame transforms used throughout this module.
+# pyright: reportArgumentType=false, reportAssignmentType=false, reportAttributeAccessIssue=false, reportCallIssue=false, reportReturnType=false
 from __future__ import annotations
 
 import logging
@@ -527,7 +530,7 @@ def apply_coastal(
     reaches leave it null, since they never touched the coast layer.
     """
     gdf = gdf.reset_index(drop=True)
-    within_pos, crossing_pos, up_poly, dn_poly, poly_map = _classify_crossings(
+    within_pos, crossing_pos, up_poly, _dn_poly, poly_map = _classify_crossings(
         gdf, coastal_gdf
     )
     coast_ids = _waterbody_ids(coastal_gdf, COAST_ID_FIELD, COASTAL_LAYER)

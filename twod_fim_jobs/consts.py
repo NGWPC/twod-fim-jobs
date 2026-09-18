@@ -75,6 +75,7 @@ REACH_ID_FIELD: str = os.environ.get("REACH_ID_FIELD", "reach_id")
 REACH_TO_ID_FIELD: str = os.environ.get("REACH_TO_ID_FIELD", "reach_to_id")
 DA_FIELD: str = os.environ.get("DA_FIELD", "total_da_sqkm")
 STREAM_ORDER_FIELD: str = os.environ.get("STREAM_ORDER_FIELD", "stream_order")
+SLOPE_FIELD: str = os.environ.get("SLOPE_FIELD", "slope")
 REACH_FIELDS = [
     REACH_ID_FIELD,
     REACH_TO_ID_FIELD,
@@ -150,3 +151,74 @@ LD_Q_FLOODED_AREA_PRCNT_INCREASE_RANGE: tuple[float, float] = (10.0, 15.0)
 # integer axis: every whole discharge is available, so nothing is constrained.
 # The orchestrator sends a real grid per reach (DR-041).
 Q_GRID_RESOLUTION: int = int(os.environ.get("Q_GRID_RESOLUTION", 1))
+
+
+### MODIFY_NETWORK ###
+
+# Inputs. stream_order_filter_threshold deliberately has no default:
+# omitted means no stream-order filtering at all (see modify_network_specs.md).
+DEFAULT_DRAINAGE_AREA_THRESHOLD_PERCENT: float = 5.0  # DR-024
+DEFAULT_MIN_LENGTH_THRESHOLD_KM: float = 5.0  # DR-024, revised from 3
+DEFAULT_LAKE_AREA_THRESHOLD_SQKM: float = 5.0
+DEFAULT_NEGATIVE_LAKE_BUFFER_METERS: float = 50.0  # DR-034 ALT-A "shrink"
+
+# Artifact names (written under base_output_path/<identity_hash>/)
+NETWORK_FILENAME = "network.gpkg"
+LAKES_FILENAME = "lakes.gpkg"
+NETWORK_MANIFEST_FILENAME = "network.json"
+
+
+# NHF v1.2.3 input layer/field names. STREAM_ORDER_FIELD (above) is shared:
+# modify_network's output network is build_model's input reach db.
+FLOWPATHS_LAYER = "flowpaths"  # NHF input layer; the OUTPUT layer is REACH_TABLE
+LAKES_LAYER = "lakes_polygons"
+COASTAL_LAYER = "coastal_influence_polygons"
+FP_ID_FIELD = "fp_id"
+FP_TO_ID_FIELD = "fp_to_id"
+AREA_SQKM_FIELD = "area_sqkm"
+LENGTH_KM_FIELD = "length_km"
+# Identity columns on the lakes and coastal layers, carried onto the reaches
+# they touch. A layer without its column yields a null reference, never a
+# fabricated one.
+LAKE_ID_FIELD = "lake_id"
+COAST_ID_FIELD = "coast_id"
+
+# Output tag columns - the literal GPKG column names in network.gpkg
+# (contract: specs-and-manifests/network.schema.json assets.network).
+# REACH_ID_FIELD / REACH_TO_ID_FIELD (above) name the working topology columns.
+IS_HEADWATER_FIELD = "is_headwater"
+IS_TERMINAL_FIELD = "is_terminal"
+TERMINAL_REASON_FIELD = "terminal_reason"
+LAKE_INLET_FIELD = "lake_inlet"
+LAKE_OUTLET_FIELD = "lake_outlet"
+IS_TRIMMED_FIELD = "is_trimmed"
+LAKE_TO_ID_FIELD = "lake_to_id"
+COAST_TO_ID_FIELD = "coast_to_id"
+
+# terminal_reason vocabulary (null when is_terminal is false)
+TERMINAL_REASON_OUTLET = "outlet"
+TERMINAL_REASON_COAST = "coast"
+TERMINAL_REASON_LAKE = "lake"
+
+
+# The output schema of network.gpkg. Every source column not listed here is
+# dropped on write: fp_id/fp_to_id are superseded by reach_id/reach_to_id, and
+# unlisted NHF attributes are not part of the contract. stream_order,
+# total_da_sqkm and length_km are kept because build_model reads them off this
+# network. area_sqkm (the LOCAL catchment) is deliberately not carried: nothing
+# downstream reads it, and it would be wrong on a merged row unless summed.
+OUTPUT_COLUMNS = [
+    REACH_ID_FIELD,
+    REACH_TO_ID_FIELD,
+    LAKE_TO_ID_FIELD,
+    COAST_TO_ID_FIELD,
+    IS_HEADWATER_FIELD,
+    IS_TERMINAL_FIELD,
+    TERMINAL_REASON_FIELD,
+    LAKE_INLET_FIELD,
+    LAKE_OUTLET_FIELD,
+    IS_TRIMMED_FIELD,
+    STREAM_ORDER_FIELD,
+    DA_FIELD,
+    LENGTH_KM_FIELD,
+]

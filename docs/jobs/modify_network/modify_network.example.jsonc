@@ -1,0 +1,63 @@
+{
+  "type": "network",  // Discriminator vs. model/run records.
+  "hash_algo": "sha256",  // Hash function for every hash/checksum in this document.
+  "twod_fim_version": "0.1.0",  // Producer software version (provenance).
+  "created_at": "2026-06-01T09:00:00Z",  // Write completion time (UTC). network.json is written last, after network.gpkg/lakes.gpkg.
+  "identity_hash": "7c2a9e41",  // Hash of the identity object.
+  "id": "7c2a9e41",  // Equal to identity_hash — no realization code to append.
+  "identity": {
+    "sdr_commit": "826a602d",  // Methodology version pin (output-determining).
+    "reach_network_hash": "3ba1c0e2",  // Hash of the raw hydrofabric network source + version.
+    "lakes_layer_hash": "d4e9f1a0",  // Hash of the lakes source + version. Null when no lakes dataset was supplied and lake processing was skipped.
+    "coastal_influence_layer_hash": "91bb2c3d",  // Hash of the coastal/tidal-influence vector source + version. Null when no coastal dataset was supplied and coastal processing was skipped.
+    "drainage_area_threshold_percent": 5.0,  // Max drainage-area difference (%) between reaches eligible for merge (DR-024).
+    "stream_order_filter_threshold": 3,  // Minimum Strahler stream order kept in the network at all. Null when no threshold was given and the filter did not run.
+    "min_length_threshold_km": 5.0,  // Minimum length (km) a reach should reach by merging — a floor, not a ceiling: merging continues until the chain clears it (DR-024).
+    "lake_area_threshold_sqkm": 5.0,  // Minimum lake area (km2) considered at all; smaller waterbodies are dropped before reach classification.
+    "negative_lake_buffer_meters": 50.0  // Inward buffer (m) approximating the dead-pool extent (DR-034 ALT-A).
+  },
+  "inputs": {
+    "reach_network_path": "s3://bucket/pre/nhf_network_raw.gpkg",  // Raw hydrofabric reach network. Must be a GPKG file; column/layer names follow the NHF v1.2.3 flowpaths layer schema.
+    "base_output_path": "s3://twod-fim/version=v1/network",  // Output location for the modified network and manifest; artifacts are written under <base_output_path>/<identity_hash>/.
+    "lakes_layer_path": "s3://bucket/reference/nhf_lakes_polygons.gpkg",  // Lakes dataset (NHF v1.2.3 lakes_polygons layer schema). Must be a GPKG file. Omit to skip lake processing entirely.
+    "coastal_influence_layer_path": "s3://bucket/reference/coastal_boundary.gpkg",  // Coastal/tidal-influence surface boundary vector dataset. Must be a GPKG file; default layer name is coastal_influence_polygons, with polygon ids in coast_id. Omit to skip coastal processing entirely.
+    "drainage_area_threshold_percent": 5.0,  // Max drainage-area difference (%) between reaches eligible for merge (DR-024).
+    "stream_order_filter_threshold": 3,  // Minimum Strahler stream order kept in the network at all. Omit to skip stream-order filtering entirely — every reach enters processing.
+    "min_length_threshold_km": 5.0,  // Minimum length (km) a reach should reach by merging — a floor, not a ceiling: merging continues until the chain clears it (DR-024).
+    "lake_area_threshold_sqkm": 5.0,  // Minimum lake area (km2) considered at all; smaller waterbodies are dropped before any reach classification.
+    "negative_lake_buffer_meters": 50.0  // Inward buffer (m) applied to raw lake polygons to approximate the dead-pool extent (DR-034 ALT-A).
+  },
+  "properties": {
+    "n_reaches_input": 2483911,  // Rows in reach_network_path as read, before the stream-order filter and any other processing.
+    "n_reaches_below_stream_order_removed": 1611402,  // Dropped by the stream_order_filter_threshold filter. Null when no threshold was given and the filter did not run.
+    "n_reaches_encompassed_removed_lake": 6104,  // Fully inside a lake polygon — classified as encompassed and dropped. Intermediate classification; leaves no column.
+    "n_reaches_encompassed_removed_coastal": 3184,  // Fully inside coastal coverage — classified as encompassed and dropped. Intermediate classification; leaves no column.
+    "n_reaches_trimmed_inlet_lake": 812,  // Downstream end inside a lake — trimmed to upstream portion, is_terminal set. Row kept; not in the reconciliation.
+    "n_reaches_trimmed_outlet_lake": 799,  // Upstream end inside a lake — trimmed to downstream portion, is_headwater set. Row kept; not in the reconciliation.
+    "n_reaches_trimmed_coastal": 421,  // Downstream end inside coastal coverage, upstream not — trimmed, terminal_reason='coast'. Row kept; not in the reconciliation.
+    "n_reaches_dropped_coastal_cascade": 1907,  // Removed for being downstream of a coastal encompassed/trimmed reach, not for their own classification.
+    "n_reaches_stranded_coastal": 37,  // Tributaries left pointing at a cascade-deleted reach — made terminal (terminal_reason='coast'), geometry untouched. Row kept; not in the reconciliation.
+    "n_reaches_split_passthrough_lake": 133,  // Passed through a lake with both ends outside it — split into an inlet/outlet pair, minting a new reach_id (adds one row).
+    "n_reaches_trimmed_between_lakes": 24,  // Started inside one lake and ended inside another — trimmed at both ends, keeping the dry middle as a channel between the two. Row kept; not in the reconciliation.
+    "n_reaches_orphaned_lake": 58,  // Left with no upstream and no downstream once lake removal took both neighbors, and not an original headwater — the island-stub case. Dropped, so it enters the reconciliation.
+    "n_reaches_merged": 41209,  // Consumed by a drainage-area-difference merge into a downstream neighbor.
+    "n_reaches_output": 820180,  // Rows in the written network.gpkg, after every step including merge.
+    "n_headwater_reaches": 615178,  // Rows in the written network.gpkg with is_headwater true — a state of the final artifact, not a count of any one step.
+    "n_terminal_reaches": 9540  // Rows in the written network.gpkg with is_terminal true — a state of the final artifact, not a count of any one step.
+  },
+  "assets": {
+    "network": {
+      "checksum": "5151515151515151",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
+      "derived": false,  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
+      "href": "network.gpkg",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
+      "source_url": null  // External provenance URL (DEM/land-cover endpoint, or reach network file). null for purely computed assets.
+    },
+    "lakes": {
+      "checksum": "6262626262626262",  // First 16 hex of SHA-256 (64-bit). File-integrity checksums; longer than identity hashes to allow cross-corpus content comparison.
+      "derived": false,  // True for outputs regenerable from sources (terrain, roughness); subject to S3 lifecycle deletion.
+      "href": "lakes.gpkg",  // Path to the file, e.g. dem.tif, cl.geojson, or a full s3:// URI.
+      "source_url": null  // External provenance URL (DEM/land-cover endpoint, or reach network file). null for purely computed assets.
+    }
+  },
+  "warnings": []  // Only ambiguous_reach_classification is ever persisted here; network_exists is response-only and never lands in a manifest.
+}

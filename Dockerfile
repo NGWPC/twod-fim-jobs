@@ -47,6 +47,10 @@ FROM two-dim-fim-base AS build_model
 
 ENTRYPOINT ["twod_fim_jobs", "build_model"]
 
+FROM two-dim-fim-base AS modify_network
+
+ENTRYPOINT ["twod_fim_jobs", "modify_network"]
+
 
 # ND scenarios with LISFLOOD-FP solver (gpu)
 FROM ghcr.io/dewberry/lisflood-fp:sha-aa006ae776b084eac5d00c8b165d2f1e1f689b0d-gpu AS run_nd_scenarios-lisflood-gpu

@@ -9,12 +9,11 @@ from urllib.parse import urlparse
 import fsspec
 import geopandas as gpd
 import pyarrow as pa
-
 from twod_fim_jobs.consts import (
     ASSET_CACHE_DIR,
     MAX_ASSET_CACHE_SIZE_GB,
-    REACH_FIELDS,
     REACH_FIELDS_PARQUET,
+    REACH_FIELDS,
     REACH_ID_FIELD,
 )
 from twod_fim_jobs.exceptions import (
@@ -84,7 +83,21 @@ def query_reach(
 def check_file_exists(uri: str) -> bool:
     """Check whether a local or remote file exists."""
     fs, path = fsspec.core.url_to_fs(uri)
-    return fs.exists(path)
+    return bool(fs.exists(path))
+
+
+def check_path_exists(uri: str) -> bool:
+    """Whether a local path or S3 URI exists.
+
+    An unreachable backend is reported as "does not exist" so a transient
+    storage failure cannot be mistaken for an existing artifact — the caller
+    would otherwise skip a rebuild it should have performed.
+    """
+    try:
+        fs, path = fsspec.core.url_to_fs(uri)
+        return bool(fs.exists(path))
+    except Exception:
+        return False
 
 
 def copy_file(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:

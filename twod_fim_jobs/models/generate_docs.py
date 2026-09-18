@@ -35,6 +35,11 @@ from twod_fim_jobs.models.run_kwse_scenarios import (
     RunKWSEScenariosResult,
 )
 from twod_fim_jobs.models.solvers import RunScenarioManifest
+from twod_fim_jobs.models.modify_network import (
+    ModifyNetworkInputs,
+    ModifyNetworkResult,
+    NetworkManifest,
+)
 
 
 JOBS: list[
@@ -47,6 +52,14 @@ JOBS: list[
         dict[str, type[BaseModel]] | None,
     ]
 ] = [
+    (
+        "modify_network",
+        ModifyNetworkInputs,
+        ModifyNetworkResult,
+        NetworkManifest,
+        None,
+        None,
+    ),
     ("build_model", BuildModelInputs, BuildModelResult, ModelManifest, None, None),
     (
         "run_nd_scenarios",

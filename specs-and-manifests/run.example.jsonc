@@ -1,0 +1,76 @@
+{
+  "type": "run", // c:header
+  "hash_algo": "sha256", // c:header
+  "twod_fim_version": "2.0.1", // c:header
+  "created_at": "2026-06-09T15:10:22Z", // c:header
+  "reach_id": 12345,
+  "model_id": "a3f9c1e8+N200S200E300W200", // the exact Model realization this run used — see model.example.jsonc
+  "identity_hash": "af1436e4", // computed as hash of identity object
+  "scenario_code": "KWSE200.2Q200", // bc_type + bc_value + Q + q, concatenated. Q integer; KWSE value 0-1 decimal digit
+  "id": "af1436e4_KWSE200.2Q200", // note underscore, not '+' like Model's id
+  "identity": {
+    "sdr_commit": "abcde123",
+    "solver": "lisflood@8.1" // fixed by which job container ran this, not caller-chosen — still recorded as provenance
+  },
+  "scenario": { // Run's realization; concatenates into scenario_code. bc_value is the NOMINAL/target stage
+    "q": 200,
+    "bc_type": "KWSE",
+    "bc_value": 200.2
+  },
+  "inputs": { // one scenario's worth of the call args, verbatim — this is Run's provenance.
+    // The job call itself may batch many scenarios (scenarios: list[...]) in one invocation;
+    // each scenario in that batch still gets its own run.json like this one.
+    "model_id": "a3f9c1e8+N200S200E300W200",
+    "reach_id": 12345,
+    "results_base_path": "s3://twod-fim/version=v1/results",
+    "q": 200,
+    "bc_type": "KWSE",
+    "bc_value": 200.2, // caller-supplied nominal, from plan_scenarios; would be null for an ND run
+    "hotstart": { // optional: warm-start from a nearby scenario point on the SAME reach/model — reach_id/run_identity omitted
+      "scenario_point": "z=283/q=150",
+      "run_identity": "af1436e4"
+    },
+    "downstream_scenario": "s3://twod-fim/version=v1/results/reach=12344/b7e2d4f0/af1436e4/z=283.2/q=200", // the DOWNSTREAM reach (12344 per model.example.jsonc), its own model identity, same run identity since same sdr_commit + solver
+    "max_simulation_length_hours": 48,
+    "max_simulation_wall_time_minutes": 30,
+    "save_velocity": false
+  },
+  "properties": { // computed/diagnostic; informational, not part of identity
+    "achieved_bc_value": 200.18, // what the solve actually produced, vs. the 200.2 nominal target above
+    "depth_stats": {
+      "min": 0.0,
+      "max": 4.82,
+      "mean": 1.14,
+      "median": 0.91,
+      "std": 0.87
+    },
+    "stl_stats": {
+      "elevation": {
+        "min": 199.9,
+        "max": 200.6,
+        "mean": 200.2,
+        "median": 200.2,
+        "std": 0.14
+      },
+      "n_sampled_cells": 212
+    },
+    "iterations": 340,
+    "volume_convergence": 0.00082, // below the 1e-3 threshold, DR-028
+    "sim_clock_time_s": 172800,
+    "wall_clock_time_s": 612.4
+  },
+  "assets": { // this run's own outputs; become the next run's provenance inputs when referenced
+    "depth": {
+      "href": "depth.tif",
+      "checksum": "7878787878787878",
+      "source_url": null,
+      "derived": false
+    },
+    "stl": {
+      "href": "stl.geojson",
+      "checksum": "9090909090909090",
+      "source_url": null
+    }
+  },
+  "warnings": []
+}
